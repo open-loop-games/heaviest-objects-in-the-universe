@@ -1,4 +1,10 @@
-Title Idea: node_modules (or The Heavyest Objects in the Universe)
+# Original Concept (Historical)
+
+> Initial brainstorm that led to the game design. See [GAME_DESIGN.md](./GAME_DESIGN.md) for current mechanics.
+
+---
+
+Title Idea: node_modules (or The Heaviest Objects in the Universe)
 
 The Concept:
 You are not simulating an OS; you are simulating the installation process. The game takes place on an infinite 2D canvas (pan/zoom enabled). You have one central "Root" node. Your goal is to install "The Ultimate Package," but every time you add a module, it recursively pulls in dozens of dependencies, which pull in their own dependencies, creating a sprawling, breathing, chaotic web.

@@ -38,5 +38,6 @@ pnpm lint         # ESLint
 ## Docs
 
 - [Game Design](docs/GAME_DESIGN.md) - Full mechanics and progression
-- [Original Concept](docs/CONCEPT.md) - Initial brainstorm
-- [Visual Design](docs/NO_TEXT_DESIGN.md) - No-text communication system
+- [Visual Design](docs/VISUAL_DESIGN.md) - No-text communication system
+- [Conflict/Symlink](docs/CONFLICT_SYMLINK_REDESIGN.md) - Wire-based conflicts, halo-based symlinks
+- [Original Concept](docs/CONCEPT.md) - Initial brainstorm (historical)

@@ -53,21 +53,33 @@ src/
 ## Design Documents
 
 - `docs/GAME_DESIGN.md` - Full game design doc (mechanics, progression, balance)
-- `docs/RESEARCH_NPM_HEAVY_PACKAGES.md` - Real npm data, icon sources, implementation notes
+- `docs/VISUAL_DESIGN.md` - Complete visual language and teaching systems
+- `docs/CONFLICT_SYMLINK_REDESIGN.md` - Wire-based conflicts, halo-based symlinks (implemented)
+- `docs/RESEARCH_NPM_HEAVY_PACKAGES.md` - Real npm data, icon sources
+- `TODO.md` - Incomplete work tracking
 
-## No-Text Communication
+## No-Text Communication (STRICT)
 
-All game state communicated visually:
+**Jam rule:** "Anything you can type out is text; symbols are fine."
+
+This means **NO numbers, NO letters** anywhere in the game UI. Only:
+- Unicode symbols (↓ ◆ ● ★ ⚡ ⟲)
+- Geometric shapes (rendered graphics)
+- Progress bars, fill levels, dot counters
+- Colors and animations
 
 | Element | Meaning |
 |---------|---------|
-| **Shapes** | Version (circle=stable, square=v1, triangle=v2, diamond=v3, star=rare) |
+| **Package icons** | Identity (Devicon for real packages, archetype shapes for fallback) |
 | **Border color** | State (blue=installing, green=ready, red=conflict, cyan=optimized) |
 | **Fill color** | Health/heat level |
 | **Progress ring** | Installation/resolution progress |
-| **Wire style** | Solid=dependency, dotted=symlink |
+| **Wire style** | Solid=dependency, double=symlink, crackling red=conflict |
+| **Glows** | Affordability (green=can click, blue=almost, red=needs attention) |
+| **Halos** | Duplicate detection (matching colors pulse in sync) |
+| **Bar fill** | Resource amount (NOT numeric display) |
 
-Icon sources for real packages: Devicon, Simple Icons (see research doc)
+See `docs/VISUAL_DESIGN.md` for full visual language spec.
 
 ## Game Mechanics Quick Reference
 
@@ -80,8 +92,9 @@ Icon sources for real packages: Devicon, Simple Icons (see research doc)
 1. Click node → spend bandwidth → create package
 2. Package bursts → spawns 1-5 dependencies
 3. Chain reaction → tree grows fractally
-4. Conflicts spawn → resolve by holding or symlinking
-5. Weight accumulates → gravity increases → prestige
+4. Conflicts spawn (incompatible archetypes) → click wire to Prune or Upgrade
+5. Duplicates appear → drag to merge (symlink)
+6. Weight accumulates → gravity increases → prestige
 
 **Prestige:** At 100k weight, collapse into black hole, gain cache tokens, restart with multipliers.
 
@@ -98,16 +111,21 @@ Icon sources for real packages: Devicon, Simple Icons (see research doc)
 - Canvas with pan/zoom
 - Package installation + dependency spawning
 - Force-directed physics
-- Conflict generation/resolution
+- Wire-based conflict system (Prune/Upgrade actions)
+- Symlink data layer + duplicate detection
 - Prestige system
-- HUD with resource bars
 
 **Partial:**
-- Symlink mechanic (data exists, UI incomplete)
+- HUD (has resource bars, needs full no-text compliance)
+- Symlink UI (drag-to-merge interaction incomplete)
 - Upgrade system (types defined, no shop UI)
+- Edge indicators (off-screen event arrows)
 
 **Not Started:**
-- Real package identities/icons
+- Real package icons (Devicon integration)
+- Vulnerability spread mechanic
 - Sound effects
 - Particle effects
 - Save/load
+
+See `TODO.md` for full tracking.

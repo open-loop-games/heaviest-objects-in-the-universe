@@ -2,9 +2,9 @@
 
 > Replacing abstract version shapes with thematic, visually distinct mechanics
 
-**Status:** Proposed
-**Date:** 2024-12-29
-**Related:** [VISUAL_TEACHING.md](./VISUAL_TEACHING.md) - Core visual teaching principles
+**Status:** Core mechanics implemented. Vulnerability spread mechanic not started.
+**Date:** 2025-12-29
+**Related:** [VISUAL_DESIGN.md](./VISUAL_DESIGN.md) - Visual language and teaching systems
 
 ---
 
@@ -455,34 +455,37 @@ Elements that don't exist yet appear with:
 
 ## 5. Implementation Phases
 
-### Phase 1: Remove Old System
-- [ ] Delete VersionShape type and all references
-- [ ] Remove shape rendering from nodes
-- [ ] Remove shape-based conflict logic
-- [ ] Clean up formulas.ts
+### Phase 1: Remove Old System ✅
+- [x] Delete VersionShape type and all references
+- [x] Remove shape rendering from nodes
+- [x] Remove shape-based conflict logic
+- [x] Clean up formulas.ts
 
-### Phase 2: Wire Conflicts
-- [ ] Add Wire.conflicted state
-- [ ] Add incompatibility rules to registry
-- [ ] Check for conflicts on package spawn
-- [ ] Render conflicted wires (red, crackling)
-- [ ] Add click detection on wires
-- [ ] Render action buttons on wire click
-- [ ] Implement Prune action
-- [ ] Implement Upgrade action with mappings
+### Phase 2: Wire Conflicts ✅
+- [x] Add Wire.conflicted state
+- [x] Add incompatibility rules to registry
+- [x] Check for conflicts on package spawn
+- [x] Render conflicted wires (red, crackling)
+- [x] Add click detection on wires
+- [x] Render action buttons on wire click
+- [x] Implement Prune action
+- [x] Implement Upgrade action with mappings
 
-### Phase 3: Symlink System
-- [ ] Detect duplicate packages (same identity)
-- [ ] Render matching halos on duplicates
-- [ ] Add drag-to-merge interaction
-- [ ] Implement merge logic (remove dupe, create symlink wire)
-- [ ] Update efficiency calculation
+### Phase 3: Symlink System ✅
+- [x] Detect duplicate packages (same identity)
+- [x] Render matching halos on duplicates
+- [x] Add drag-to-merge interaction
+- [x] Implement merge logic (remove dupe, create symlink wire)
+- [x] Update efficiency calculation
 
-### Phase 4: Polish
-- [ ] Conflict wire particle effects
-- [ ] Symlink merge animation
-- [ ] Camera auto-pan to first conflict
-- [ ] Halo color cycling for multiple duplicate groups
+### Phase 4: Polish ✅
+- [x] Conflict wire particle effects (crackling bolts)
+- [x] Symlink merge animation (burst effects)
+- [x] Edge indicators for off-screen conflicts (replaces camera auto-pan per design)
+- [x] First conflict special treatment (node dimming, edge vignette)
+- [x] Halo color cycling for multiple duplicate groups
+- [x] Reduced motion accessibility support
+- [x] Efficiency stat with progressive disclosure in HUD
 - [ ] Sound effects (future)
 
 ---
@@ -633,7 +636,204 @@ Based on flow research from VISUAL_TEACHING.md.
 
 ---
 
-## 10. Testing Checklist
+## 10. Vulnerability Spread Mechanic
+
+### Overview
+
+Vulnerabilities represent security issues (CVEs) that spread through the dependency tree. Unlike conflicts (which block), vulnerabilities **creep** - creating urgency without hard stops.
+
+### Cause: Random CVE Events
+
+```typescript
+const VULNERABILITY_CHANCE_PER_TICK = 0.001; // ~1 per 15 minutes
+const VULNERABILITY_SPREAD_RATE = 0.1; // 10% chance per tick to spread
+
+// Higher chance on:
+// - Stale packages (2x)
+// - Legacy archetype (1.5x)
+// - Deep in tree (1.2x per depth level)
+```
+
+### Visual: Infection Spread
+
+```
+STAGE 1 - SOURCE:
+    ┌───┐
+    │☣⚛ │  ← Biohazard overlay OR cracked surface
+    └─┬─┘    Dark red border, pulse animation
+      │
+
+STAGE 2 - SPREADING:
+    ┌───┐
+    │☣⚛ │
+    └─┬─┘
+      ║     ← Red veins creep DOWN the wire
+      ║        Animated: slow, visible progression
+    ┌─╨─┐
+    │ ⚛ │  ← Target node still healthy (for now)
+    └───┘
+
+STAGE 3 - INFECTED:
+    ┌───┐
+    │☣⚛ │
+    └─┬─┘
+      ║
+    ┌─╨─┐
+    │☣⚛ │  ← Cracks appear from wire connection point
+    └─┬─┘    Spreads to ITS dependencies next
+      ║
+```
+
+### Visual Indicators
+
+| Stage | Border | Overlay | Animation | Particles |
+|-------|--------|---------|-----------|-----------|
+| **Source** | Dark red `#991B1B` | ☣ biohazard | Fast pulse | Red sparks emit |
+| **Spreading wire** | — | Red vein texture | Creeping motion | Infection particles along wire |
+| **Newly infected** | Red, cracks appear | Hairline fractures | Crack spread from wire point | Dust/debris |
+| **Critical** | Bright red, glowing cracks | Full crack pattern | Shake + fast pulse | Heavy particle emit |
+
+### Spread Rules
+
+1. Vulnerability starts at ONE random package
+2. Each tick, infected packages have 10% chance to infect each child
+3. Spread follows dependency direction (parent → child only)
+4. Cannot spread through symlink wires (symlinks are safe!)
+5. Spread rate increases with heat level
+
+### Heat Interaction
+
+| Heat Level | Spread Rate Modifier |
+|------------|---------------------|
+| 0-30% | 1.0x (normal) |
+| 30-60% | 1.5x (faster) |
+| 60-90% | 2.0x (dangerous) |
+| 90%+ | 3.0x (outbreak) |
+
+### Resolution: Patch Action
+
+**Icon:** 💉 (syringe) or 🛡 (shield)
+
+Clicking an infected node shows patch button:
+
+```
+    ┌───┐
+    │☣⚛ │
+    └─┬─┘
+   ┌──┴──┐
+   │ 💉  │  ← Patch button appears on hover
+   └─────┘
+
+Cost: 2x install bandwidth
+Time: 500ms progress ring
+```
+
+**Patch Animation:**
+```
+t=0:      Player clicks 💉
+t=0-500:  Progress ring fills (green)
+t=500:    Cracks fill with gold/cyan "kintsugi" effect
+t=600:    ☣ overlay fades out
+t=700:    Brief green pulse + healing particles
+t=800:    Node returns to healthy state
+```
+
+### Patched Visual (Kintsugi)
+
+Patched nodes show gold-filled cracks as "battle scars":
+
+```
+    ┌───┐
+    │ ⚛ │  ← Gold vein lines where cracks were
+    └───┘    Subtle golden shimmer
+             Badge of honor / visual history
+```
+
+The kintsugi effect:
+- Shows the node was vulnerable but is now fixed
+- Fades slowly over time (30s) back to normal
+- Creates visual storytelling without text
+
+### Cascade Scenarios
+
+**Unpatched spread:**
+```
+[Source] ──► [Child1] ──► [Grandchild1]
+    │                          │
+    └──► [Child2] ──► [Grandchild2]
+
+All eventually infected if ignored
+Heat rises significantly
+```
+
+**Strategic patching:**
+- Patch the SOURCE first = stops all spread
+- Patch a HUB = protects many dependents
+- Symlink paths = natural firebreaks
+
+### First Vulnerability Teaching
+
+```
+t=0:       Random package becomes source
+t=0-200:   Screen edge red vignette (all edges, brief)
+t=200:     Non-infected nodes dim slightly (0.8 alpha)
+t=500:     Edge arrow if off-screen
+t=1000:    First spread begins (very slow, obvious)
+t=2000:    Child node shows cracks appearing
+t=3000+:   Player discovers hover → 💉 button
+```
+
+**Key:** Spread is SLOW initially so player has time to discover mechanic.
+
+### Balance Considerations
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Spawn rate | ~1 per 15 min | Rare enough to be notable |
+| Initial spread rate | 10%/tick | Slow enough to react |
+| Patch cost | 2x install | Meaningful but not punishing |
+| Heat contribution | +5 per infected | Creates pressure |
+| Symlink immunity | 100% | Rewards optimization |
+
+### Relationship to Other Mechanics
+
+| Mechanic | Interaction |
+|----------|-------------|
+| **Conflicts** | Separate system; can have both conflict AND vulnerability |
+| **Symlinks** | Immune to spread; creates safe deduplication paths |
+| **Heat** | Vulnerabilities add heat; high heat speeds spread |
+| **Prestige** | Clears all vulnerabilities on reset |
+| **Hub packages** | High-value patch targets (protect many) |
+
+### Implementation Phases
+
+#### Phase 1: Core Spread
+- [ ] Add `vulnerable` state to Package
+- [ ] Random vulnerability spawn event
+- [ ] Visual: ☣ overlay, red border
+- [ ] Spread logic (parent → child, % chance)
+
+#### Phase 2: Visual Polish
+- [ ] Crack pattern texture
+- [ ] Red vein wire animation
+- [ ] Creeping spread visual
+- [ ] Particle effects
+
+#### Phase 3: Resolution
+- [ ] Patch action button (💉)
+- [ ] Patch cost and progress
+- [ ] Kintsugi healing animation
+- [ ] Heat integration
+
+#### Phase 4: Balance
+- [ ] Tune spawn rate
+- [ ] Tune spread rate
+- [ ] Tune costs
+- [ ] Symlink immunity bonus
+
+---
+
+## 11. Testing Checklist
 
 ### First-Time Player Verification
 
@@ -662,6 +862,6 @@ Watch new players (no hints) and verify:
 
 ---
 
-*Document Version: 1.1*
-*Updated: Added visual teaching alignment, accessibility, timing*
-*Status: Ready for Implementation Review*
+*Document Version: 1.2*
+*Updated: All phases implemented*
+*Status: Complete (except sound effects)*

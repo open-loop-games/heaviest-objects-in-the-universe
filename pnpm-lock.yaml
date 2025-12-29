@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      devicon:
+        specifier: ^2.17.0
+        version: 2.17.0
       pixi.js:
         specifier: ^8.14.3
         version: 8.14.3
@@ -411,6 +414,9 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  devicon@2.17.0:
+    resolution: {integrity: sha512-2nKUdjobJlmRSaCHa50PGsVq0VDURnq9gVzQoJggsM/NKN0tLhC/Uq2zmy2pH36Q/1q3gvYwp/GjTgv/R0Ysbg==}
 
   earcut@3.0.2:
     resolution: {integrity: sha512-X7hshQbLyMJ/3RPhyObLARM2sNxxmRALLKx1+NVFFnQ9gKzmCrxm9+uLIAdBcvc8FNLpctqlQ2V6AE92Ol9UDQ==}
@@ -835,6 +841,8 @@ snapshots:
   alien-signals@3.1.2: {}
 
   csstype@3.2.3: {}
+
+  devicon@2.17.0: {}
 
   earcut@3.0.2: {}
 

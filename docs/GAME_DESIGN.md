@@ -137,47 +137,18 @@ Late Game:   20% clicking, 80% passive (optimization/prestige timing)
 
 ---
 
-## 5. Conflict System (No-Text Mechanics)
+## 5. Conflict & Symlink Systems
 
-Conflicts communicate through **shapes** and **colors** only.
+> **See [CONFLICT_SYMLINK_REDESIGN.md](./CONFLICT_SYMLINK_REDESIGN.md) for full implementation details.**
 
-### Shape Language
+### Summary
 
-| Shape | Meaning |
-|-------|---------|
-| ● Circle | Stable/resolved |
-| ■ Square | Version 1.x |
-| ▲ Triangle | Version 2.x |
-| ◆ Diamond | Version 3.x |
-| ★ Star | Special/rare |
+The original version-shape system was replaced with wire-based conflicts and halo-based symlinks:
 
-### Conflict Resolution (Visual)
-
-```
-CONFLICT STATE:
-┌─────────┐         ┌─────────┐
-│ Parent  │────────▶│ Child   │
-│   [▲]   │   ✗     │   [■]   │  ← Red border = mismatch
-└─────────┘         └─────────┘
-   Needs               Has
-  Triangle            Square
-
-RESOLUTION OPTIONS:
-
-Option A: Upgrade Child (hold on child)
-┌─────────┐         ┌─────────┐
-│   [▲]   │────────▶│ [■→▲]  │  ← Progress ring fills
-└─────────┘         └─────────┘
-
-Option B: Symlink (drag from matching node)
-┌─────────┐         ┌─────────┐
-│   [▲]   │◀── ─ ───│   [▲]   │  ← Dotted line = symlink
-└─────────┘    │    └─────────┘
-               │
-          ┌────┴────┐
-          │ [▲→●]   │  ← Original becomes stable
-          └─────────┘
-```
+| Mechanic | Trigger | Visual | Resolution |
+|----------|---------|--------|------------|
+| **Conflict** | Incompatible archetypes (react+angular, moment+date-fns) | Red crackling wire | Click wire → Prune (✕) or Upgrade (↻) |
+| **Symlink** | Duplicate packages | Matching colored halo | Drag one onto other to merge |
 
 ### Color Language
 
@@ -187,10 +158,10 @@ Option B: Symlink (drag from matching node)
 | Yellow | Warning/suboptimal |
 | Orange | High heat/stress |
 | Red | Conflict/error |
-| Blue | Selected/active |
-| Purple | Rare/special |
+| Blue | Installing/selected |
+| Cyan | Optimized/symlinked |
+| Purple | Symlink wire |
 | Gray | Paused/inactive |
-| White | Neutral/uninstalled |
 
 ---
 
