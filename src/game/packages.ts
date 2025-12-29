@@ -1,40 +1,38 @@
 // Package creation and management logic
 
-import { gameState, gameConfig, addPackage, addWire, addHeat, spendBandwidth } from './state';
+import { toRaw } from 'vue';
+import { gameState, gameConfig } from './state';
+import { enterScope as _enterScope, exitScope } from './scope';
+import { addPackage, addWire, spendBandwidth } from './mutations';
+import { generateId, generateWireId } from './id-generator';
 import {
   type Package,
   type Wire,
-  type WireType,
-  type Position,
-  type VersionShape,
+  type InternalState,
 } from './types';
 import {
   rollDependencyCount,
-  rollVersionShape,
   rollPackageSize,
-  getConflictChance,
 } from './formulas';
 import { getEffectiveInstallCost } from './upgrades';
-import { pickRandomIdentity, isConflictProne, type PackageIdentity } from './registry';
+import { pickRandomIdentity, pickDirectInstallIdentity, checkIncompatibilityWithPackages, areIncompatible, STARTER_KIT_IDENTITY, STARTER_KIT_INTERNAL_DEPS, type PackageIdentity } from './registry';
+import { setRecalculateCallback } from './symlinks';
+
+// Re-export ID initialization for save/load
+export { initIdCounterFromState } from './id-generator';
+
+// Re-export queries for backwards compatibility
+export { findPackageAtPosition, getInternalStats } from './queries';
 
 /**
- * Roll a random wire type (most are regular deps)
+ * Get deterministic size for a package based on its identity.
+ * Same identity = same size, for visual consistency of duplicates.
  */
-function rollWireType(): WireType {
-  const roll = Math.random();
-  if (roll < 0.70) return 'dependency';      // 70% regular
-  if (roll < 0.90) return 'devDependency';   // 20% dev
-  return 'peerDependency';                    // 10% peer
-}
-
-let nextId = 0;
-
-function generateId(): string {
-  return `pkg_${nextId++}`;
-}
-
-function generateWireId(): string {
-  return `wire_${nextId++}`;
+function getIdentitySize(identity: PackageIdentity | undefined, minSize: number = 10): number {
+  if (!identity) return rollPackageSize();
+  // Use identity weight directly - no random variance
+  // This ensures duplicates of the same package look identical
+  return Math.max(minSize, identity.weight);
 }
 
 // Root package identity - npm itself
@@ -62,14 +60,20 @@ export function createRootPackage(): Package | null {
     position: { x: 0, y: 0 },
     velocity: { vx: 0, vy: 0 },
     state: 'ready',
-    version: 'circle', // Root is always stable
     size: 100,
     depth: 0,
     children: [],
     installProgress: 1,
     conflictProgress: 0,
-    heat: 0,
     identity: ROOT_IDENTITY,
+    // Scope system - root doesn't have internal tree
+    internalPackages: null,
+    internalWires: null,
+    internalState: null,
+    // Ghost system
+    isGhost: false,
+    ghostTargetId: null,
+    ghostTargetScope: null,
   };
 
   gameState.rootId = id;
@@ -79,27 +83,58 @@ export function createRootPackage(): Package | null {
 
 /**
  * Attempt to install a new package as a child of the target
+ * This is a DIRECT player install - uses tier-appropriate packages
  */
 export function installPackage(parentId: string): Package | null {
   const parent = gameState.packages.get(parentId);
   if (!parent) return null;
+
+  // Tutorial gating: before first prestige, must stabilize previous package before installing next
+  if (gameState.meta.totalPrestiges === 0 && parentId === gameState.rootId) {
+    // Find existing top-level packages
+    const topLevelPackages = Array.from(gameState.packages.values()).filter(
+      p => p.parentId === gameState.rootId
+    );
+
+    // If there's already a top-level package that isn't stable, block install
+    const unstableTopLevel = topLevelPackages.find(
+      p => p.internalState !== null && p.internalState !== 'stable'
+    );
+    if (unstableTopLevel) {
+      // Can't install new package until current one is stabilized
+      return null;
+    }
+  }
 
   const cost = getEffectiveInstallCost();
   if (!spendBandwidth(cost)) {
     return null; // Not enough bandwidth
   }
 
+  // Mark first click complete for onboarding
+  if (!gameState.onboarding.firstClickComplete) {
+    gameState.onboarding.firstClickComplete = true;
+  }
+
   const id = generateId();
   const angle = Math.random() * Math.PI * 2;
   const distance = 80 + Math.random() * 40;
 
-  // Pick a real package identity
-  const identity = pickRandomIdentity();
+  // First install before prestige: always use starter-kit
+  const isFirstInstall = gameState.meta.totalPrestiges === 0 &&
+    parentId === gameState.rootId &&
+    parent.children.length === 0;
 
-  // Use identity weight with some variance, or fallback to random
-  const size = identity
-    ? Math.max(10, identity.weight + Math.floor(Math.random() * 20) - 10)
-    : rollPackageSize();
+  // Pick a package identity based on ecosystem tier
+  const identity = isFirstInstall
+    ? STARTER_KIT_IDENTITY
+    : pickDirectInstallIdentity(gameState.meta.ecosystemTier);
+
+  // Use deterministic size based on identity (no variance for duplicate consistency)
+  const size = getIdentitySize(identity);
+
+  // Check if this is a top-level package (parent is root)
+  const isTopLevel = parentId === gameState.rootId;
 
   const pkg: Package = {
     id,
@@ -110,31 +145,37 @@ export function installPackage(parentId: string): Package | null {
     },
     velocity: { vx: 0, vy: 0 },
     state: 'installing',
-    version: rollVersionShape(),
     size,
     depth: parent.depth + 1,
     children: [],
     installProgress: 0,
     conflictProgress: 0,
-    heat: 0,
     identity,
+    // Scope system - top-level packages have internal trees
+    internalPackages: isTopLevel ? new Map() : null,
+    internalWires: isTopLevel ? new Map() : null,
+    internalState: isTopLevel ? 'pristine' : null,
+    // Ghost system
+    isGhost: false,
+    ghostTargetId: null,
+    ghostTargetScope: null,
   };
 
   // Add wire connecting parent to child
-  const wireType = rollWireType();
   const wire: Wire = {
     id: generateWireId(),
     fromId: parentId,
     toId: id,
-    wireType,
+    wireType: 'dependency',
     isSymlink: false,
     flowProgress: 0,
+    conflicted: false,
+    conflictTime: 0,
   };
 
   parent.children.push(id);
   addPackage(pkg);
   addWire(wire);
-  addHeat(gameConfig.heatPerPackage);
 
   return pkg;
 }
@@ -154,26 +195,39 @@ export function spawnDependencies(packageId: string): Package[] {
   // Use identity-based dep count if available, otherwise use distribution
   let count: number;
   if (pkg.identity && pkg.identity.baseDeps > 0) {
-    // Use package's typical dep count with variance
-    const variance = Math.floor(Math.random() * 3) - 1; // -1, 0, or 1
+    const variance = Math.floor(Math.random() * 3) - 1;
     count = Math.max(0, pkg.identity.baseDeps + variance);
   } else {
     count = rollDependencyCount(gameConfig);
   }
 
+  // Early game clamp: before first prestige, limit cascade size
+  if (gameState.meta.totalPrestiges === 0) {
+    const packageCount = gameState.packages.size;
+    if (packageCount < 10) {
+      count = Math.min(count, 2);
+    } else if (packageCount < 30) {
+      count = Math.min(count, 3);
+    } else if (packageCount < 60) {
+      count = Math.min(count, 4);
+    }
+  }
+
   const spawned: Package[] = [];
 
   for (let i = 0; i < count; i++) {
-    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5;
-    const distance = 60 + Math.random() * 30;
+    // Fan children downward, spread evenly with randomness
+    const spreadAngle = Math.PI * 0.7;
+    const startAngle = Math.PI * 0.5 - spreadAngle / 2;
+    const baseAngle = count > 1
+      ? startAngle + (spreadAngle * i) / (count - 1)
+      : Math.PI * 0.5;
+    const angle = baseAngle + (Math.random() - 0.5) * 0.3;
+    const distance = 80 + Math.random() * 40;
 
     const id = generateId();
-
-    // Pick identity for the child
     const identity = pickRandomIdentity();
-    const size = identity
-      ? Math.max(10, identity.weight + Math.floor(Math.random() * 20) - 10)
-      : rollPackageSize();
+    const size = getIdentitySize(identity);
 
     const child: Package = {
       id,
@@ -187,143 +241,322 @@ export function spawnDependencies(packageId: string): Package[] {
         vy: Math.sin(angle) * 2,
       },
       state: 'installing',
-      version: rollVersionShape(),
       size,
       depth: pkg.depth + 1,
       children: [],
       installProgress: 0,
       conflictProgress: 0,
-      heat: 0,
       identity,
+      internalPackages: null,
+      internalWires: null,
+      internalState: null,
+      isGhost: false,
+      ghostTargetId: null,
+      ghostTargetScope: null,
     };
 
-    // Check for version conflict with parent
-    // Legacy packages have higher conflict chance
-    const conflictBonus = identity && isConflictProne(identity) ? 0.15 : 0;
-    if (shouldCreateConflict(pkg.version, child.version, conflictBonus)) {
-      child.state = 'conflict';
-    }
+    // Check for incompatibility conflict with ancestors
+    const isConflicted = checkIncompatibilityWithPackages(identity, packageId, toRaw(gameState.packages));
 
-    const wireType = rollWireType();
     const wire: Wire = {
       id: generateWireId(),
       fromId: packageId,
       toId: id,
-      wireType,
+      wireType: 'dependency',
       isSymlink: false,
       flowProgress: 0,
+      conflicted: isConflicted,
+      conflictTime: isConflicted ? Date.now() : 0,
     };
+
+    if (isConflicted) {
+      child.state = 'conflict';
+      if (!gameState.onboarding.firstConflictSeen) {
+        gameState.onboarding.firstConflictSeen = true;
+      }
+    }
 
     pkg.children.push(id);
     addPackage(child);
     addWire(wire);
-    addHeat(gameConfig.heatPerPackage);
-
     spawned.push(child);
   }
 
   return spawned;
 }
 
-/**
- * Check if a version conflict should be created
- * @param extraBonus - additional conflict chance (e.g., for legacy packages)
- */
-function shouldCreateConflict(
-  parentVersion: VersionShape,
-  childVersion: VersionShape,
-  extraBonus: number = 0
-): boolean {
-  // Conflict chance based on heat
-  const baseChance = getConflictChance(gameState.resources.heat, gameConfig);
-
-  // Higher chance if versions are very different
-  const versionMismatch = parentVersion !== childVersion && parentVersion !== 'circle';
-  const mismatchBonus = versionMismatch ? 0.1 : 0;
-
-  return Math.random() < (baseChance + mismatchBonus + extraBonus);
-}
+// ============================================
+// INTERNAL SCOPE SYSTEM
+// ============================================
 
 /**
- * Find packages that could be symlinked (same version, not already linked)
+ * Enter a package's internal scope
+ * If the package is pristine, spawns its internal dependencies first
  */
-export function findSymlinkCandidates(packageId: string): Package[] {
+export function enterPackageScope(packageId: string): boolean {
   const pkg = gameState.packages.get(packageId);
-  if (!pkg) return [];
+  if (!pkg) return false;
 
-  const candidates: Package[] = [];
+  if (!_enterScope(packageId)) return false;
 
-  for (const [id, other] of gameState.packages) {
-    if (id === packageId) continue;
-    if (other.version !== pkg.version) continue;
+  // If pristine, spawn internal dependencies now
+  if (pkg.internalState === 'pristine') {
+    spawnInternalDependencies(packageId);
+  }
 
-    // Check if already linked
-    const alreadyLinked = Array.from(gameState.wires.values()).some(
-      w => w.isSymlink && ((w.fromId === packageId && w.toId === id) || (w.fromId === id && w.toId === packageId))
-    );
+  return true;
+}
 
-    if (!alreadyLinked) {
-      candidates.push(other);
+/**
+ * Exit the current package scope back to root
+ */
+export function exitPackageScope(): void {
+  const currentScope = gameState.currentScope;
+
+  // Recalculate state before exiting
+  if (currentScope !== 'root') {
+    recalculateInternalState(currentScope);
+  }
+
+  exitScope();
+}
+
+/**
+ * Spawn internal dependencies for a top-level package
+ */
+export function spawnInternalDependencies(packageId: string): void {
+  const pkg = gameState.packages.get(packageId);
+  if (!pkg) return;
+
+  if (!pkg.internalPackages || !pkg.internalWires) return;
+  if (pkg.internalPackages.size > 0) return;
+
+  const isStarterKit = pkg.identity?.name === 'starter-kit';
+
+  const depIdentities: PackageIdentity[] = isStarterKit
+    ? [...STARTER_KIT_INTERNAL_DEPS]
+    : [];
+
+  if (!isStarterKit) {
+    let count: number;
+    if (pkg.identity && pkg.identity.baseDeps > 0) {
+      const variance = Math.floor(Math.random() * 5) - 2;
+      count = Math.max(6, pkg.identity.baseDeps + variance);
+    } else {
+      count = 6 + Math.floor(Math.random() * 7);
+    }
+    count = Math.min(count, 12);
+    count = Math.max(count, 6);
+
+    for (let i = 0; i < count; i++) {
+      depIdentities.push(pickRandomIdentity());
     }
   }
 
-  return candidates;
-}
+  const count = depIdentities.length;
 
-/**
- * Create a symlink between two packages
- */
-export function createSymlink(fromId: string, toId: string): Wire | null {
-  const from = gameState.packages.get(fromId);
-  const to = gameState.packages.get(toId);
+  // Spawn internal packages in a circle
+  for (let i = 0; i < count; i++) {
+    const baseAngle = (Math.PI * 2 * i) / count - Math.PI / 2;
+    const angle = baseAngle + (Math.random() - 0.5) * 0.2;
+    const distance = 80 + Math.random() * 40;
 
-  if (!from || !to) return null;
-  if (from.version !== to.version) return null;
+    const id = generateId();
+    const identity = depIdentities[i]!;
+    const size = getIdentitySize(identity);
 
-  const wire: Wire = {
-    id: generateWireId(),
-    fromId,
-    toId,
-    wireType: 'symlink',
-    isSymlink: true,
-    flowProgress: 0,
-  };
+    const innerPkg: Package = {
+      id,
+      parentId: packageId,
+      position: {
+        x: Math.cos(angle) * distance,
+        y: Math.sin(angle) * distance,
+      },
+      velocity: {
+        vx: Math.cos(angle) * 2,
+        vy: Math.sin(angle) * 2,
+      },
+      state: 'installing',
+      size,
+      depth: 1,
+      children: [],
+      installProgress: 0.8 + Math.random() * 0.2,
+      conflictProgress: 0,
+      identity,
+      internalPackages: null,
+      internalWires: null,
+      internalState: null,
+      isGhost: false,
+      ghostTargetId: null,
+      ghostTargetScope: null,
+    };
 
-  addWire(wire);
+    const isConflicted = checkInternalIncompatibility(identity, pkg.internalPackages);
 
-  // Mark both as optimized
-  from.state = 'optimized';
-  to.state = 'optimized';
+    const wire: Wire = {
+      id: generateWireId(),
+      fromId: packageId,
+      toId: id,
+      wireType: 'dependency',
+      isSymlink: false,
+      flowProgress: 0,
+      conflicted: isConflicted,
+      conflictTime: isConflicted ? Date.now() : 0,
+    };
 
-  return wire;
-}
+    if (isConflicted) {
+      innerPkg.state = 'conflict';
+    }
 
-/**
- * Get all packages in the tree (breadth-first)
- */
-export function getAllPackages(): Package[] {
-  return Array.from(gameState.packages.values());
-}
+    pkg.internalPackages.set(id, innerPkg);
+    pkg.internalWires.set(wire.id, wire);
 
-/**
- * Get packages at a specific depth
- */
-export function getPackagesAtDepth(depth: number): Package[] {
-  return Array.from(gameState.packages.values()).filter(p => p.depth === depth);
-}
+    pkg.size += size;
+    gameState.resources.weight += size;
+  }
 
-/**
- * Find package at screen position (for click detection)
- */
-export function findPackageAtPosition(pos: Position, radius: number = 30): Package | null {
-  for (const pkg of gameState.packages.values()) {
-    const dx = pkg.position.x - pos.x;
-    const dy = pkg.position.y - pos.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+  // SECOND PASS: Spawn sub-deps for some internal packages
+  const internalPkgIds = Array.from(pkg.internalPackages.keys());
 
-    if (dist <= radius) {
-      return pkg;
+  for (const parentInternalId of internalPkgIds) {
+    if (Math.random() > 0.4) continue;
+
+    const parentInternalPkg = pkg.internalPackages.get(parentInternalId);
+    if (!parentInternalPkg) continue;
+    if (parentInternalPkg.depth >= 2) continue;
+
+    const subDepCount = 1 + Math.floor(Math.random() * 2);
+    for (let j = 0; j < subDepCount; j++) {
+      const parentAngle = Math.atan2(parentInternalPkg.position.y, parentInternalPkg.position.x);
+      const subAngle = parentAngle + (Math.random() - 0.5) * 0.5;
+      const subDistance = Math.sqrt(
+        parentInternalPkg.position.x ** 2 + parentInternalPkg.position.y ** 2
+      ) + 50 + Math.random() * 30;
+
+      const subId = generateId();
+      const subIdentity = pickRandomIdentity();
+      const subSize = getIdentitySize(subIdentity, 5);
+
+      const subPkg: Package = {
+        id: subId,
+        parentId: parentInternalId,
+        position: {
+          x: Math.cos(subAngle) * subDistance,
+          y: Math.sin(subAngle) * subDistance,
+        },
+        velocity: {
+          vx: Math.cos(subAngle) * 1.5,
+          vy: Math.sin(subAngle) * 1.5,
+        },
+        state: 'installing',
+        size: subSize,
+        depth: 2,
+        children: [],
+        installProgress: 0.9 + Math.random() * 0.1,
+        conflictProgress: 0,
+        identity: subIdentity,
+        internalPackages: null,
+        internalWires: null,
+        internalState: null,
+        isGhost: false,
+        ghostTargetId: null,
+        ghostTargetScope: null,
+      };
+
+      const subConflicted = checkInternalIncompatibility(subIdentity, pkg.internalPackages);
+
+      const subWire: Wire = {
+        id: generateWireId(),
+        fromId: parentInternalId,
+        toId: subId,
+        wireType: 'dependency',
+        isSymlink: false,
+        flowProgress: 0,
+        conflicted: subConflicted,
+        conflictTime: subConflicted ? Date.now() : 0,
+      };
+
+      if (subConflicted) {
+        subPkg.state = 'conflict';
+      }
+
+      parentInternalPkg.children.push(subId);
+      pkg.internalPackages.set(subId, subPkg);
+      pkg.internalWires.set(subWire.id, subWire);
+
+      pkg.size += subSize;
+      gameState.resources.weight += subSize;
     }
   }
-  return null;
+
+  recalculateInternalState(packageId);
 }
+
+/**
+ * Check if a package identity conflicts with any existing internal packages
+ */
+function checkInternalIncompatibility(
+  identity: ReturnType<typeof pickRandomIdentity> | undefined,
+  internalPackages: Map<string, Package>
+): boolean {
+  if (!identity) return false;
+
+  for (const innerPkg of internalPackages.values()) {
+    if (innerPkg.identity) {
+      if (areIncompatible(identity.name, innerPkg.identity.name)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Callback for stable celebration
+let onStableCelebration: ((packageId: string) => void) | null = null;
+
+export function setStableCelebrationCallback(callback: (packageId: string) => void): void {
+  onStableCelebration = callback;
+}
+
+/**
+ * Recalculate internal state based on conflicts and duplicates
+ */
+export function recalculateInternalState(packageId: string): void {
+  const pkg = gameState.packages.get(packageId);
+  if (!pkg || !pkg.internalPackages || !pkg.internalWires) return;
+
+  const previousState = pkg.internalState;
+
+  let conflictCount = 0;
+  for (const wire of pkg.internalWires.values()) {
+    if (wire.conflicted) conflictCount++;
+  }
+
+  const identityCounts = new Map<string, number>();
+  for (const innerPkg of pkg.internalPackages.values()) {
+    if (innerPkg.identity && !innerPkg.isGhost) {
+      const name = innerPkg.identity.name;
+      identityCounts.set(name, (identityCounts.get(name) || 0) + 1);
+    }
+  }
+  let duplicateCount = 0;
+  for (const count of identityCounts.values()) {
+    if (count > 1) duplicateCount += count - 1;
+  }
+
+  let newState: InternalState;
+  if (conflictCount === 0 && duplicateCount === 0) {
+    newState = 'stable';
+  } else {
+    newState = 'unstable';
+  }
+
+  pkg.internalState = newState;
+
+  if (previousState !== 'stable' && newState === 'stable' && onStableCelebration) {
+    onStableCelebration(packageId);
+  }
+}
+
+// Register callback for symlinks.ts to avoid circular import
+setRecalculateCallback(recalculateInternalState);
