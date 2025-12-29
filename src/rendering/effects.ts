@@ -3,6 +3,7 @@
 import { Graphics, Container, type Application } from 'pixi.js';
 import { Colors } from './colors';
 import { gameState } from '../game/state';
+import { prefersReducedMotion } from './accessibility';
 
 interface RippleEffect {
   x: number;
@@ -207,6 +208,11 @@ export class EffectsRenderer {
    * Get shake offset for a conflicting node
    */
   getConflictShake(conflictProgress: number): { x: number; y: number } {
+    // No shake for reduced motion
+    if (prefersReducedMotion()) {
+      return { x: 0, y: 0 };
+    }
+
     if (conflictProgress <= 0) {
       // Idle conflict shake
       const shake = Math.sin(Date.now() * 0.02) * 2;

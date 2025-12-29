@@ -21,12 +21,16 @@ export const Colors = {
   borderOptimized: 0x5affff,
   borderSelected: 0xffff5a,
 
-  // Version shapes
-  shapeCircle: 0x5aff5a,   // Stable - green
-  shapeSquare: 0x5a5aff,   // v1.x - blue
-  shapeTriangle: 0xffaa5a, // v2.x - orange
-  shapeDiamond: 0xff5aff,  // v3.x - purple
-  shapeStar: 0xffff5a,     // Rare - gold
+  // Accent colors (used for progress rings, heat, effects)
+  accentGreen: 0x5aff5a,
+  accentBlue: 0x5a5aff,
+  accentOrange: 0xffaa5a,
+  accentPurple: 0xff5aff,
+  accentGold: 0xffff5a,
+
+  // Legacy aliases (kept for compatibility)
+  shapeCircle: 0x5aff5a,
+  shapeTriangle: 0xffaa5a,
 
   // Wires
   wireDefault: 0x4a4a6a,
@@ -75,13 +79,3 @@ export function getBorderColor(state: string): number {
   }
 }
 
-export function getShapeColor(version: string): number {
-  switch (version) {
-    case 'circle': return Colors.shapeCircle;
-    case 'square': return Colors.shapeSquare;
-    case 'triangle': return Colors.shapeTriangle;
-    case 'diamond': return Colors.shapeDiamond;
-    case 'star': return Colors.shapeStar;
-    default: return Colors.shapeCircle;
-  }
-}
