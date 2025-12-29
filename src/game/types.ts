@@ -4,9 +4,10 @@ import type { PackageIdentity } from './registry';
 
 export type PackageState = 'installing' | 'ready' | 'conflict' | 'optimized';
 
-export type VersionShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'star';
+export type WireType = 'dependency' | 'symlink' | 'sibling';
 
-export type WireType = 'dependency' | 'devDependency' | 'peerDependency' | 'symlink';
+// Internal state for top-level packages (scope system)
+export type InternalState = 'pristine' | 'unstable' | 'stable';
 
 export interface Position {
   x: number;
@@ -24,14 +25,22 @@ export interface Package {
   position: Position;
   velocity: Velocity;
   state: PackageState;
-  version: VersionShape;
   size: number; // Weight contribution
   depth: number; // How deep in the tree (for rendering inner trees)
   children: string[]; // Child package IDs
   installProgress: number; // 0-1 for installation animation
   conflictProgress: number; // 0-1 for conflict resolution
-  heat: number; // Local heat contribution
   identity?: PackageIdentity; // Real package identity (name, icon, archetype)
+
+  // Scope system (top-level packages only, null for inner deps)
+  internalPackages: Map<string, Package> | null;
+  internalWires: Map<string, Wire> | null;
+  internalState: InternalState | null; // null for inner deps
+
+  // Ghost status (for symlinked-away nodes)
+  isGhost: boolean;
+  ghostTargetId: string | null; // Package ID where real node lives
+  ghostTargetScope: string | null; // Scope (package ID) where real node lives
 }
 
 export interface Wire {
@@ -41,6 +50,8 @@ export interface Wire {
   wireType: WireType;
   isSymlink: boolean; // Kept for backwards compat, derived from wireType
   flowProgress: number; // 0-1 for data flow animation
+  conflicted: boolean; // True if wire connects incompatible packages
+  conflictTime: number; // Timestamp when conflict started (for animations)
 }
 
 export interface GameResources {
@@ -48,26 +59,17 @@ export interface GameResources {
   maxBandwidth: number;
   bandwidthRegen: number;
   weight: number;
-  heat: number;
-  maxHeat: number;
 }
 
 export interface MetaResources {
   cacheTokens: number;
-  algorithmFragments: number;
   ecosystemTier: number;
   totalPrestiges: number;
 }
 
 export interface Upgrades {
-  bandwidthRegenLevel: number;
-  maxBandwidthLevel: number;
-  autoInstallLevel: number;
-  autoResolveLevel: number;
-  installSpeedLevel: number;
-  costReductionLevel: number;
-  symlinkUnlocked: boolean;
-  pruneUnlocked: boolean;
+  bandwidthLevel: number;    // Combined: regen + capacity
+  efficiencyLevel: number;   // Combined: speed + cost reduction
 }
 
 export interface GameStats {
@@ -76,6 +78,15 @@ export interface GameStats {
   totalSymlinksCreated: number;
   maxWeightReached: number;
   currentEfficiency: number;
+}
+
+// Onboarding milestone tracking for staged HUD reveal
+export interface OnboardingState {
+  introAnimationComplete: boolean;  // Root node materialization done
+  firstClickComplete: boolean;      // Player has clicked root at least once
+  firstConflictSeen: boolean;       // Player has seen a conflict
+  firstSymlinkSeen: boolean;        // Player has seen duplicates (symlink opportunity)
+  firstPrestigeComplete: boolean;   // Player has prestiged at least once
 }
 
 export interface GameState {
@@ -88,10 +99,17 @@ export interface GameState {
   // Upgrades
   upgrades: Upgrades;
 
+  // Onboarding (for staged HUD reveal)
+  onboarding: OnboardingState;
+
   // Graph data
   packages: Map<string, Package>;
   wires: Map<string, Wire>;
   rootId: string | null;
+
+  // Scope system
+  currentScope: 'root' | string; // 'root' or package ID
+  tutorialGating: boolean; // true until first prestige - gates package installs
 
   // Stats
   stats: GameStats;
@@ -116,11 +134,6 @@ export interface GameConfig {
   // Production rates
   baseBandwidthRegen: number;
   cacheTokenMultiplier: number;
-
-  // Heat mechanics
-  heatPerPackage: number;
-  heatDecay: number;
-  conflictChancePerHeat: number;
 
   // Dependencies
   minDependencies: number;
