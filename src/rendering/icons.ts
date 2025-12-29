@@ -1,275 +1,538 @@
-// Simplified package icons drawn with Pixi.js Graphics
-// Based on Devicon/Simple Icons designs, simplified for small rendering
+// Package icons using Devicon SVGs with Pixi.js Graphics.svg()
+// Fetches SVG content and creates Graphics objects
+// Includes procedural icon generation for packages without devicons
 
 import { Graphics } from 'pixi.js';
 
-// Icon draw functions - each draws centered at (0,0) within a given size
-export type IconDrawFn = (g: Graphics, size: number, color: number) => void;
+/**
+ * Hash a string to a number (for deterministic procedural generation)
+ */
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash);
+}
 
-// React - simplified atom with orbits
-const drawReact: IconDrawFn = (g, size, color) => {
-  const r = size * 0.4;
+/**
+ * Generate a unique hue (0-360) from a package name
+ */
+export function nameToHue(name: string): number {
+  return hashString(name) % 360;
+}
 
-  // Draw three elliptical orbits at different rotations
-  // Orbit 1: horizontal
-  drawEllipse(g, 0, 0, r, r * 0.35, 0, color);
-  // Orbit 2: rotated 60 degrees
-  drawEllipse(g, 0, 0, r, r * 0.35, Math.PI / 3, color);
-  // Orbit 3: rotated -60 degrees
-  drawEllipse(g, 0, 0, r, r * 0.35, -Math.PI / 3, color);
+/**
+ * Convert HSL to hex color
+ */
+function hslToHex(h: number, s: number, l: number): number {
+  s /= 100;
+  l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color);
+  };
+  return (f(0) << 16) | (f(8) << 8) | f(4);
+}
 
-  // Center dot
-  g.circle(0, 0, size * 0.1);
-  g.fill({ color });
+// Cache for SVG content strings
+const svgCache = new Map<string, string | null>();
+const loadingPromises = new Map<string, Promise<string | null>>();
+// Track SVGs that failed to parse (valid fetch but Pixi can't render)
+const parseFailures = new Set<string>();
+
+// Build devicon file path from iconKey
+// Use -plain variant to avoid gradient parsing warnings
+function getDeviconPath(iconKey: string): string {
+  return `/node_modules/devicon/icons/${iconKey}/${iconKey}-plain.svg`;
+}
+
+/**
+ * Fetch and cache SVG content
+ */
+async function fetchSvgContent(iconKey: string): Promise<string | null> {
+  // Check cache
+  if (svgCache.has(iconKey)) {
+    return svgCache.get(iconKey) || null;
+  }
+
+  // Check if already loading
+  if (loadingPromises.has(iconKey)) {
+    return loadingPromises.get(iconKey)!;
+  }
+
+  const url = getDeviconPath(iconKey);
+
+  const promise = (async () => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const svgText = await response.text();
+      svgCache.set(iconKey, svgText);
+      return svgText;
+    } catch (e) {
+      // Silent fail - will use fallback
+      svgCache.set(iconKey, null);
+      return null;
+    }
+  })();
+
+  loadingPromises.set(iconKey, promise);
+  return promise;
+}
+
+/**
+ * Create a Graphics object with the icon SVG
+ * Returns null if SVG not loaded yet (triggers async load)
+ */
+export function createIconGraphics(iconKey: string, size: number): Graphics | null {
+  // Already know this one can't be parsed
+  if (parseFailures.has(iconKey)) {
+    return null;
+  }
+
+  const svgContent = svgCache.get(iconKey);
+
+  // Not in cache - start loading
+  if (svgContent === undefined) {
+    fetchSvgContent(iconKey);
+    return null;
+  }
+
+  // Failed to load
+  if (svgContent === null) {
+    return null;
+  }
+
+  // Create Graphics from SVG
+  const graphics = new Graphics();
+
+  try {
+    graphics.svg(svgContent);
+  } catch {
+    // Mark as unparseable so we don't retry every frame
+    parseFailures.add(iconKey);
+    return null;
+  }
+
+  // Scale to fit size (devicon SVGs are 128x128)
+  const svgSize = 128;
+  const scale = size / svgSize;
+  graphics.scale.set(scale);
+
+  // Center the icon (pivot at center of original SVG)
+  graphics.pivot.set(svgSize / 2, svgSize / 2);
+
+  return graphics;
+}
+
+/**
+ * Check if icon SVG is loaded and ready to render
+ */
+export function isIconReady(iconKey: string): boolean {
+  if (parseFailures.has(iconKey)) return false;
+  const cached = svgCache.get(iconKey);
+  return cached !== undefined && cached !== null;
+}
+
+/**
+ * Check if icon is currently loading
+ */
+export function isIconLoading(iconKey: string): boolean {
+  return loadingPromises.has(iconKey) && !svgCache.has(iconKey);
+}
+
+/**
+ * Preload icons for faster rendering
+ */
+export async function preloadIcons(iconKeys: string[]): Promise<void> {
+  await Promise.all(iconKeys.map(fetchSvgContent));
+}
+
+/**
+ * Draw a simple fallback icon shape (for known icon keys)
+ */
+export function drawFallbackIcon(g: Graphics, iconKey: string, size: number, color: number): void {
+  const s = size * 0.35;
+
+  // Different shapes based on package type for visual variety
+  if (iconKey === 'react') {
+    drawAtom(g, s, color);
+  } else if (iconKey === 'vuejs') {
+    drawVShape(g, s, color);
+  } else if (iconKey === 'angular') {
+    drawShield(g, s, color);
+  } else if (iconKey === 'typescript') {
+    drawSquare(g, s, color);
+  } else if (iconKey === 'nodejs') {
+    drawHexagon(g, s, color);
+  } else if (iconKey === 'webpack' || iconKey === 'rollup' || iconKey === 'vitejs') {
+    drawCube(g, s, color);
+  } else {
+    drawBox(g, s, color);
+  }
+}
+
+// ============================================
+// ARCHETYPE-BASED SHAPE POOLS (Layer 3)
+// ============================================
+// Each archetype has a pool of semantically appropriate shapes.
+// Hash picks which shape within the pool + unique color.
+
+type ShapeDrawFn = (g: Graphics, s: number, color: number) => void;
+
+// Utility shapes: rounded, friendly, simple
+const UTILITY_SHAPES: ShapeDrawFn[] = [
+  drawCircleDot,
+  drawRing,
+  drawPill,
+  drawDoubleRing,
+  drawCircleWithDot,
+];
+
+// Framework shapes: polygonal, substantial, architectural
+const FRAMEWORK_SHAPES: ShapeDrawFn[] = [
+  drawPentagon,
+  drawHexagonFilled,
+  drawOctagon,
+  drawHeptagon,
+  drawShieldFilled,
+];
+
+// Tooling shapes: angular, precise, mechanical
+const TOOLING_SHAPES: ShapeDrawFn[] = [
+  drawDiamond,
+  drawSquareFilled,
+  drawCross,
+  drawGear,
+  drawArrowUp,
+  drawBowtie,
+];
+
+// Legacy shapes: warning-like, dated, distinct
+const LEGACY_SHAPES: ShapeDrawFn[] = [
+  drawTriangle,
+  drawTriangleDown,
+  drawHourglass,
+  drawOctagonStop,
+];
+
+// Runtime shapes: Node-like, system-level
+const RUNTIME_SHAPES: ShapeDrawFn[] = [
+  drawHexagonFilled,
+  drawRoundedSquare,
+  drawCube,
+  drawCircleWithDot,
+];
+
+// Map archetype to shape pool
+const ARCHETYPE_SHAPES: Record<string, ShapeDrawFn[]> = {
+  utility: UTILITY_SHAPES,
+  framework: FRAMEWORK_SHAPES,
+  tooling: TOOLING_SHAPES,
+  legacy: LEGACY_SHAPES,
+  runtime: RUNTIME_SHAPES,
 };
 
-// Helper to draw a rotated ellipse
-function drawEllipse(g: Graphics, cx: number, cy: number, rx: number, ry: number, rotation: number, color: number) {
-  const points = 24;
-  const cos = Math.cos(rotation);
-  const sin = Math.sin(rotation);
+// Fallback pool for unknown archetypes (all shapes)
+const ALL_SHAPES: ShapeDrawFn[] = [
+  ...UTILITY_SHAPES,
+  ...FRAMEWORK_SHAPES,
+  ...TOOLING_SHAPES,
+  ...LEGACY_SHAPES,
+];
 
-  for (let i = 0; i <= points; i++) {
-    const angle = (i / points) * Math.PI * 2;
-    const x = Math.cos(angle) * rx;
-    const y = Math.sin(angle) * ry;
-    // Rotate point
-    const rx2 = x * cos - y * sin + cx;
-    const ry2 = x * sin + y * cos + cy;
+/**
+ * Create a procedurally generated icon based on package name and archetype.
+ * Same name + archetype = same visual appearance (deterministic).
+ * Archetype determines shape category, hash picks specific shape + color.
+ */
+export function drawProceduralIcon(
+  g: Graphics,
+  packageName: string,
+  size: number,
+  archetype?: string
+): void {
+  if (!packageName) return;
 
-    if (i === 0) {
-      g.moveTo(rx2, ry2);
-    } else {
-      g.lineTo(rx2, ry2);
-    }
+  const hash = hashString(packageName);
+  const hue = hash % 360;
+  const color = hslToHex(hue, 70, 55);
+  const s = size * 0.35;
+
+  // Get shape pool based on archetype (Layer 3: semantic assignment)
+  const shapePool = archetype && ARCHETYPE_SHAPES[archetype]
+    ? ARCHETYPE_SHAPES[archetype]
+    : ALL_SHAPES;
+
+  // Pick shape from pool based on hash (Layer 2: more shapes)
+  const shapeIndex = Math.floor(hash / 360) % shapePool.length;
+  const drawShape = shapePool[shapeIndex]!;
+
+  drawShape(g, s, color);
+}
+
+// Additional shape helpers for procedural icons
+// Use Pixi's poly() for cleaner path handling
+function drawDiamond(g: Graphics, s: number, color: number): void {
+  g.poly([0, -s, s, 0, 0, s, -s, 0], true);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+function drawTriangle(g: Graphics, s: number, color: number): void {
+  g.poly([0, -s, s * 0.87, s * 0.5, -s * 0.87, s * 0.5], true);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+function drawPentagon(g: Graphics, s: number, color: number): void {
+  const points: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    const angle = (i * 2 * Math.PI / 5) - Math.PI / 2;
+    points.push(Math.cos(angle) * s, Math.sin(angle) * s);
   }
+  g.poly(points, true);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+function drawStar(g: Graphics, s: number, color: number): void {
+  const innerR = s * 0.4;
+  const points: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    const outerAngle = (i * 2 * Math.PI / 5) - Math.PI / 2;
+    const innerAngle = outerAngle + Math.PI / 5;
+    points.push(Math.cos(outerAngle) * s, Math.sin(outerAngle) * s);
+    points.push(Math.cos(innerAngle) * innerR, Math.sin(innerAngle) * innerR);
+  }
+  g.poly(points, true);
+  g.fill({ color, alpha: 0.8 });
   g.stroke({ color, width: 1.5 });
 }
 
-// Vue - V shape
-const drawVue: IconDrawFn = (g, size, color) => {
-  const h = size * 0.4;
-  const w = size * 0.35;
-
-  // Outer V
-  g.moveTo(-w, -h);
-  g.lineTo(0, h * 0.7);
-  g.lineTo(w, -h);
-  g.lineTo(w * 0.6, -h);
-  g.lineTo(0, h * 0.2);
-  g.lineTo(-w * 0.6, -h);
-  g.closePath();
-  g.fill({ color });
-};
-
-// Node.js - hexagon with N
-const drawNode: IconDrawFn = (g, size, color) => {
-  const r = size * 0.38;
-
-  // Hexagon
-  g.moveTo(r, 0);
-  for (let i = 1; i <= 6; i++) {
-    const angle = (i * Math.PI) / 3;
-    g.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
-  }
-  g.stroke({ color, width: 1.5 });
-
-  // N letter
-  const nw = size * 0.15;
-  const nh = size * 0.2;
-  g.moveTo(-nw, nh);
-  g.lineTo(-nw, -nh);
-  g.lineTo(nw, nh);
-  g.lineTo(nw, -nh);
-  g.stroke({ color, width: 1.5 });
-};
-
-// TypeScript - TS in rounded square
-const drawTypeScript: IconDrawFn = (g, size, color) => {
-  const s = size * 0.35;
-  const r = size * 0.06;
-
-  // Rounded rectangle
-  g.roundRect(-s, -s, s * 2, s * 2, r);
-  g.stroke({ color, width: 1.5 });
-
-  // T shape (simplified)
-  g.moveTo(-s * 0.5, -s * 0.4);
-  g.lineTo(s * 0.1, -s * 0.4);
-  g.stroke({ color, width: 1.5 });
-  g.moveTo(-s * 0.2, -s * 0.4);
-  g.lineTo(-s * 0.2, s * 0.5);
-  g.stroke({ color, width: 1.5 });
-
-  // S curve (simplified)
-  g.moveTo(s * 0.5, -s * 0.3);
-  g.lineTo(s * 0.2, -s * 0.3);
-  g.lineTo(s * 0.2, 0);
-  g.lineTo(s * 0.5, 0);
-  g.lineTo(s * 0.5, s * 0.4);
-  g.lineTo(s * 0.15, s * 0.4);
-  g.stroke({ color, width: 1.2 });
-};
-
-// Webpack - cube/crystal
-const drawWebpack: IconDrawFn = (g, size, color) => {
-  const s = size * 0.35;
-
-  // Hexagonal crystal shape
-  g.moveTo(0, -s);
-  g.lineTo(s * 0.9, -s * 0.4);
-  g.lineTo(s * 0.9, s * 0.4);
-  g.lineTo(0, s);
-  g.lineTo(-s * 0.9, s * 0.4);
-  g.lineTo(-s * 0.9, -s * 0.4);
-  g.closePath();
-  g.stroke({ color, width: 1.5 });
-
-  // Inner lines (W shape)
-  g.moveTo(0, -s * 0.4);
-  g.lineTo(0, s * 0.5);
-  g.moveTo(-s * 0.5, -s * 0.1);
-  g.lineTo(0, s * 0.2);
-  g.lineTo(s * 0.5, -s * 0.1);
-  g.stroke({ color, width: 1 });
-};
-
-// Babel - book/scroll
-const drawBabel: IconDrawFn = (g, size, color) => {
-  const w = size * 0.3;
-  const h = size * 0.35;
-
-  // Book shape
-  g.moveTo(-w, -h);
-  g.lineTo(w, -h);
-  g.lineTo(w, h);
-  g.lineTo(-w, h);
-  g.lineTo(-w, -h);
-  g.moveTo(0, -h);
-  g.lineTo(0, h);
-  g.stroke({ color, width: 1.5 });
-
-  // Lines on pages
-  g.moveTo(-w * 0.7, -h * 0.3);
-  g.lineTo(-w * 0.2, -h * 0.3);
-  g.moveTo(-w * 0.7, 0);
-  g.lineTo(-w * 0.2, 0);
-  g.moveTo(w * 0.2, -h * 0.3);
-  g.lineTo(w * 0.7, -h * 0.3);
-  g.stroke({ color, width: 1 });
-};
-
-// ESLint - bracket with dot
-const drawEslint: IconDrawFn = (g, size, color) => {
-  const s = size * 0.35;
-
-  // Hexagon shape
-  const sides = 6;
-  g.moveTo(s, 0);
-  for (let i = 1; i <= sides; i++) {
-    const angle = (i * 2 * Math.PI) / sides - Math.PI / 6;
-    g.lineTo(Math.cos(angle) * s, Math.sin(angle) * s);
-  }
-  g.stroke({ color, width: 1.5 });
-
-  // Inner checkmark
-  g.moveTo(-s * 0.3, 0);
-  g.lineTo(-s * 0.05, s * 0.25);
-  g.lineTo(s * 0.35, -s * 0.25);
-  g.stroke({ color, width: 1.5 });
-};
-
-// Jest - jester hat shape
-const drawJest: IconDrawFn = (g, size, color) => {
-  const s = size * 0.35;
-
-  // J shape
-  g.moveTo(-s * 0.3, -s * 0.8);
-  g.lineTo(s * 0.5, -s * 0.8);
-  g.moveTo(s * 0.1, -s * 0.8);
-  g.lineTo(s * 0.1, s * 0.4);
-  g.quadraticCurveTo(s * 0.1, s * 0.8, -s * 0.3, s * 0.8);
-  g.quadraticCurveTo(-s * 0.6, s * 0.8, -s * 0.6, s * 0.4);
-  g.stroke({ color, width: 1.5 });
-};
-
-// Vite - lightning bolt
-const drawVite: IconDrawFn = (g, size, color) => {
-  const s = size * 0.38;
-
-  // Lightning bolt
-  g.moveTo(s * 0.3, -s);
-  g.lineTo(-s * 0.4, s * 0.1);
-  g.lineTo(0, s * 0.1);
-  g.lineTo(-s * 0.3, s);
-  g.lineTo(s * 0.4, -s * 0.1);
-  g.lineTo(0, -s * 0.1);
-  g.closePath();
-  g.fill({ color });
-};
-
-// Svelte - S curve
-const drawSvelte: IconDrawFn = (g, size, color) => {
-  const s = size * 0.35;
-
-  // S shape
-  g.moveTo(s * 0.4, -s * 0.7);
-  g.quadraticCurveTo(-s * 0.2, -s * 0.7, -s * 0.4, -s * 0.3);
-  g.quadraticCurveTo(-s * 0.5, 0, 0, 0);
-  g.quadraticCurveTo(s * 0.5, 0, s * 0.4, s * 0.3);
-  g.quadraticCurveTo(s * 0.2, s * 0.7, -s * 0.4, s * 0.7);
+function drawCross(g: Graphics, s: number, color: number): void {
+  const w = s * 0.35;
+  g.poly([
+    -w, -s, w, -s, w, -w, s, -w, s, w, w, w,
+    w, s, -w, s, -w, w, -s, w, -s, -w, -w, -w
+  ], true);
+  g.fill({ color, alpha: 0.8 });
   g.stroke({ color, width: 2 });
-};
+}
 
-// Rollup - scroll/roll
-const drawRollup: IconDrawFn = (g, size, color) => {
-  const s = size * 0.35;
-
-  // Rolled paper
-  g.circle(0, 0, s * 0.6);
-  g.stroke({ color, width: 1.5 });
-  g.circle(0, 0, s * 0.3);
-  g.stroke({ color, width: 1 });
-};
-
-// Next.js - N in circle
-const drawNext: IconDrawFn = (g, size, color) => {
-  const s = size * 0.38;
-
-  // Circle
+function drawCircleDot(g: Graphics, s: number, color: number): void {
   g.circle(0, 0, s);
-  g.stroke({ color, width: 1.5 });
-
-  // N
-  const nw = s * 0.35;
-  const nh = s * 0.5;
-  g.moveTo(-nw, nh);
-  g.lineTo(-nw, -nh);
-  g.lineTo(nw, nh);
-  g.lineTo(nw, -nh);
-  g.stroke({ color, width: 1.5 });
-};
-
-// Express - E
-const drawExpress: IconDrawFn = (g, size, color) => {
-  const w = size * 0.25;
-  const h = size * 0.35;
-
-  // E shape
-  g.moveTo(w, -h);
-  g.lineTo(-w, -h);
-  g.lineTo(-w, h);
-  g.lineTo(w, h);
-  g.moveTo(-w, 0);
-  g.lineTo(w * 0.5, 0);
+  g.fill({ color, alpha: 0.8 });
   g.stroke({ color, width: 2 });
-};
+}
 
-// Angular - A shield
-const drawAngular: IconDrawFn = (g, size, color) => {
-  const s = size * 0.38;
+// ============================================
+// NEW SHAPES (Layer 2)
+// ============================================
 
-  // Shield shape
+// Utility shapes
+function drawRing(g: Graphics, s: number, color: number): void {
+  g.circle(0, 0, s);
+  g.stroke({ color, width: 3 });
+  g.circle(0, 0, s * 0.5);
+  g.stroke({ color, width: 2 });
+}
+
+function drawPill(g: Graphics, s: number, color: number): void {
+  g.roundRect(-s * 1.2, -s * 0.5, s * 2.4, s, s * 0.5);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+function drawDoubleRing(g: Graphics, s: number, color: number): void {
+  g.circle(0, 0, s);
+  g.stroke({ color, width: 2 });
+  g.circle(0, 0, s * 0.6);
+  g.stroke({ color, width: 2 });
+}
+
+function drawCircleWithDot(g: Graphics, s: number, color: number): void {
+  g.circle(0, 0, s);
+  g.stroke({ color, width: 2 });
+  g.circle(0, 0, s * 0.3);
+  g.fill({ color, alpha: 0.9 });
+}
+
+// Framework shapes
+function drawHexagonFilled(g: Graphics, s: number, color: number): void {
+  const points: number[] = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = (i * Math.PI / 3) - Math.PI / 2;
+    points.push(Math.cos(angle) * s, Math.sin(angle) * s);
+  }
+  g.poly(points, true);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+function drawOctagon(g: Graphics, s: number, color: number): void {
+  const points: number[] = [];
+  for (let i = 0; i < 8; i++) {
+    const angle = (i * Math.PI / 4) - Math.PI / 8;
+    points.push(Math.cos(angle) * s, Math.sin(angle) * s);
+  }
+  g.poly(points, true);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+function drawHeptagon(g: Graphics, s: number, color: number): void {
+  const points: number[] = [];
+  for (let i = 0; i < 7; i++) {
+    const angle = (i * 2 * Math.PI / 7) - Math.PI / 2;
+    points.push(Math.cos(angle) * s, Math.sin(angle) * s);
+  }
+  g.poly(points, true);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+function drawShieldFilled(g: Graphics, s: number, color: number): void {
+  g.moveTo(0, -s);
+  g.lineTo(s, -s * 0.4);
+  g.lineTo(s * 0.8, s * 0.5);
+  g.lineTo(0, s);
+  g.lineTo(-s * 0.8, s * 0.5);
+  g.lineTo(-s, -s * 0.4);
+  g.closePath();
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+// Tooling shapes
+function drawSquareFilled(g: Graphics, s: number, color: number): void {
+  g.rect(-s * 0.85, -s * 0.85, s * 1.7, s * 1.7);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+function drawGear(g: Graphics, s: number, color: number): void {
+  // Outer gear teeth
+  const teeth = 8;
+  const outerR = s;
+  const innerR = s * 0.7;
+  const points: number[] = [];
+  for (let i = 0; i < teeth; i++) {
+    const angle1 = (i * 2 * Math.PI / teeth);
+    const angle2 = angle1 + Math.PI / teeth * 0.4;
+    const angle3 = angle1 + Math.PI / teeth * 0.6;
+    const angle4 = angle1 + Math.PI / teeth;
+    points.push(Math.cos(angle1) * outerR, Math.sin(angle1) * outerR);
+    points.push(Math.cos(angle2) * outerR, Math.sin(angle2) * outerR);
+    points.push(Math.cos(angle3) * innerR, Math.sin(angle3) * innerR);
+    points.push(Math.cos(angle4) * innerR, Math.sin(angle4) * innerR);
+  }
+  g.poly(points, true);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 1.5 });
+  // Center hole
+  g.circle(0, 0, s * 0.25);
+  g.fill({ color: 0x1a1a2e, alpha: 1 });
+}
+
+function drawArrowUp(g: Graphics, s: number, color: number): void {
+  const w = s * 0.4;
+  g.poly([
+    0, -s,           // top point
+    s * 0.7, 0,      // right wing
+    w, 0,            // right inner
+    w, s,            // right bottom
+    -w, s,           // left bottom
+    -w, 0,           // left inner
+    -s * 0.7, 0,     // left wing
+  ], true);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+function drawBowtie(g: Graphics, s: number, color: number): void {
+  g.poly([
+    -s, -s * 0.7,
+    0, 0,
+    -s, s * 0.7,
+    s, s * 0.7,
+    0, 0,
+    s, -s * 0.7,
+  ], true);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+// Legacy shapes
+function drawTriangleDown(g: Graphics, s: number, color: number): void {
+  g.poly([0, s, s * 0.87, -s * 0.5, -s * 0.87, -s * 0.5], true);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+function drawHourglass(g: Graphics, s: number, color: number): void {
+  g.poly([
+    -s * 0.7, -s,
+    s * 0.7, -s,
+    0, 0,
+    s * 0.7, s,
+    -s * 0.7, s,
+    0, 0,
+  ], true);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+function drawOctagonStop(g: Graphics, s: number, color: number): void {
+  // Stop sign style octagon (flatter top/bottom)
+  const points: number[] = [];
+  for (let i = 0; i < 8; i++) {
+    const angle = (i * Math.PI / 4);
+    points.push(Math.cos(angle) * s, Math.sin(angle) * s);
+  }
+  g.poly(points, true);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+// Runtime shapes
+function drawRoundedSquare(g: Graphics, s: number, color: number): void {
+  g.roundRect(-s * 0.8, -s * 0.8, s * 1.6, s * 1.6, s * 0.3);
+  g.fill({ color, alpha: 0.8 });
+  g.stroke({ color, width: 2 });
+}
+
+// ============================================
+// Fallback shape helpers (for known icon keys)
+// ============================================
+function drawAtom(g: Graphics, s: number, color: number): void {
+  g.ellipse(0, 0, s * 0.9, s * 0.35);
+  g.stroke({ color, width: 1.5 });
+  g.ellipse(0, 0, s * 0.35, s * 0.9);
+  g.stroke({ color, width: 1.5 });
+  g.circle(0, 0, s * 0.18);
+  g.fill({ color });
+}
+
+function drawVShape(g: Graphics, s: number, color: number): void {
+  g.moveTo(-s, -s * 0.8);
+  g.lineTo(0, s * 0.8);
+  g.lineTo(s, -s * 0.8);
+  g.lineTo(s * 0.6, -s * 0.8);
+  g.lineTo(0, s * 0.3);
+  g.lineTo(-s * 0.6, -s * 0.8);
+  g.closePath();
+  g.fill({ color });
+}
+
+function drawShield(g: Graphics, s: number, color: number): void {
   g.moveTo(0, -s);
   g.lineTo(s, -s * 0.5);
   g.lineTo(s * 0.8, s * 0.6);
@@ -277,93 +540,44 @@ const drawAngular: IconDrawFn = (g, size, color) => {
   g.lineTo(-s * 0.8, s * 0.6);
   g.lineTo(-s, -s * 0.5);
   g.closePath();
-  g.stroke({ color, width: 1.5 });
-
-  // A
-  g.moveTo(0, -s * 0.4);
-  g.lineTo(-s * 0.3, s * 0.4);
-  g.moveTo(0, -s * 0.4);
-  g.lineTo(s * 0.3, s * 0.4);
-  g.moveTo(-s * 0.15, s * 0.1);
-  g.lineTo(s * 0.15, s * 0.1);
-  g.stroke({ color, width: 1.2 });
-};
-
-// Lodash - underscore
-const drawLodash: IconDrawFn = (g, size, color) => {
-  const w = size * 0.35;
-
-  // Underscore
-  g.moveTo(-w, size * 0.1);
-  g.lineTo(w, size * 0.1);
-  g.stroke({ color, width: 3 });
-};
-
-// NPM - cube
-const drawNpm: IconDrawFn = (g, size, color) => {
-  const s = size * 0.32;
-
-  // Square
-  g.rect(-s, -s, s * 2, s * 2);
-  g.stroke({ color, width: 1.5 });
-
-  // n shape inside
-  g.moveTo(-s * 0.6, s * 0.6);
-  g.lineTo(-s * 0.6, -s * 0.3);
-  g.lineTo(-s * 0.1, s * 0.6);
-  g.lineTo(-s * 0.1, -s * 0.3);
-  g.moveTo(s * 0.2, s * 0.6);
-  g.lineTo(s * 0.2, -s * 0.3);
-  g.stroke({ color, width: 1.2 });
-};
-
-// Vitest - checkmark in circle
-const drawVitest: IconDrawFn = (g, size, color) => {
-  const s = size * 0.35;
-
-  // Lightning V
-  g.moveTo(-s * 0.6, -s * 0.4);
-  g.lineTo(0, s * 0.6);
-  g.lineTo(s * 0.6, -s * 0.6);
   g.stroke({ color, width: 2 });
-};
+}
 
-// Map of icon keys to draw functions
-export const ICON_REGISTRY: Record<string, IconDrawFn> = {
-  'react': drawReact,
-  'vuejs': drawVue,
-  'nodejs': drawNode,
-  'typescript': drawTypeScript,
-  'webpack': drawWebpack,
-  'babel': drawBabel,
-  'eslint': drawEslint,
-  'jest': drawJest,
-  'vitejs': drawVite,
-  'svelte': drawSvelte,
-  'rollup': drawRollup,
-  'nextjs': drawNext,
-  'express': drawExpress,
-  'angularjs': drawAngular,
-  'lodash': drawLodash,
-  'npm': drawNpm,
-  'vitest': drawVitest,
-};
+function drawSquare(g: Graphics, s: number, color: number): void {
+  g.roundRect(-s, -s, s * 2, s * 2, s * 0.15);
+  g.stroke({ color, width: 2 });
+}
 
-/**
- * Draw an icon if it exists, returns true if drawn
- */
-export function drawIcon(g: Graphics, iconKey: string, size: number, color: number): boolean {
-  const drawFn = ICON_REGISTRY[iconKey];
-  if (drawFn) {
-    drawFn(g, size, color);
-    return true;
+function drawHexagon(g: Graphics, s: number, color: number): void {
+  g.moveTo(s, 0);
+  for (let i = 1; i <= 6; i++) {
+    const angle = (i * Math.PI) / 3;
+    g.lineTo(Math.cos(angle) * s, Math.sin(angle) * s);
   }
+  g.stroke({ color, width: 2 });
+}
+
+function drawCube(g: Graphics, s: number, color: number): void {
+  g.moveTo(0, -s);
+  g.lineTo(s * 0.87, -s * 0.5);
+  g.lineTo(s * 0.87, s * 0.5);
+  g.lineTo(0, s);
+  g.lineTo(-s * 0.87, s * 0.5);
+  g.lineTo(-s * 0.87, -s * 0.5);
+  g.closePath();
+  g.stroke({ color, width: 1.5 });
+}
+
+function drawBox(g: Graphics, s: number, color: number): void {
+  g.roundRect(-s * 0.8, -s * 0.8, s * 1.6, s * 1.6, 3);
+  g.stroke({ color, width: 2 });
+}
+
+// Legacy exports for compatibility during transition
+export function drawIcon(_g: Graphics, _iconKey: string, _size: number, _color: number): boolean {
   return false;
 }
 
-/**
- * Check if an icon exists for the given key
- */
 export function hasIcon(iconKey: string): boolean {
-  return iconKey in ICON_REGISTRY;
+  return isIconReady(iconKey);
 }
