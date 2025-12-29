@@ -1,5 +1,6 @@
 // Cost and production formulas based on design doc
 
+import { toRaw } from 'vue';
 import type { GameState, GameConfig } from './types';
 import { DEFAULT_CONFIG } from './config';
 
@@ -19,61 +20,87 @@ export function getInstallCost(
 // Note: getEffectiveBandwidthRegen is now in upgrades.ts (uses upgrade system)
 
 /**
- * Calculate efficiency based on unique vs total dependencies
+ * Calculate efficiency based on unique package identities vs total
  * Efficiency = unique / total (1.0 = perfect, lower = more duplicates)
  */
 export function calculateEfficiency(state: GameState): number {
-  const packages = Array.from(state.packages.values());
+  // Use toRaw() to avoid Vue reactivity tracking
+  const packages = Array.from(toRaw(state.packages).values());
   if (packages.length === 0) return 1;
 
-  // Count unique versions vs total
-  const versionCounts = new Map<string, number>();
+  // Count unique package identities vs total
+  const identityCounts = new Map<string, number>();
   for (const pkg of packages) {
-    const key = pkg.version;
-    versionCounts.set(key, (versionCounts.get(key) || 0) + 1);
+    const key = pkg.identity?.name || pkg.id; // Use identity name or fallback to id
+    identityCounts.set(key, (identityCounts.get(key) || 0) + 1);
   }
 
-  const uniqueVersions = versionCounts.size;
-  const totalPackages = packages.length;
+  // Count packages that appear more than once (duplicates)
+  let duplicateCount = 0;
+  for (const count of identityCounts.values()) {
+    if (count > 1) {
+      duplicateCount += count - 1; // Extra copies beyond the first
+    }
+  }
 
-  // Base efficiency + bonus for symlinks
-  const symlinks = Array.from(state.wires.values()).filter(w => w.isSymlink).length;
-  const symlinkBonus = symlinks * 0.05;
+  // Base efficiency: fewer duplicates = higher efficiency
+  const baseEfficiency = 1 - (duplicateCount / packages.length);
 
-  return Math.min(1, (uniqueVersions / totalPackages) + symlinkBonus);
+  // Bonus for symlink merges performed (much more impactful now)
+  // Each merge is worth 0.15 efficiency (capped at 1.0 total)
+  const mergeCount = state.stats.totalSymlinksCreated;
+  const mergeBonus = mergeCount * 0.15;
+
+  return Math.min(1, baseEfficiency + mergeBonus);
 }
 
 /**
- * Calculate gravity based on weight and structure
- * Gravity = weight^1.5 / structure
- * When gravity > 1, collapse begins
+ * Calculate stability ratio (stable packages / total top-level packages)
  */
-export function calculateGravity(state: GameState): number {
-  if (state.resources.weight <= 0) return 0;
+export function calculateStabilityRatio(state: GameState): number {
+  const packages = Array.from(toRaw(state.packages).values());
 
-  // Structure is based on symlinks and optimization
-  const symlinks = Array.from(state.wires.values()).filter(w => w.isSymlink).length;
-  const structure = Math.max(1, 10 + symlinks * 5);
+  // Only count top-level packages (direct children of root)
+  const topLevelPackages = packages.filter(p => p.parentId === state.rootId);
+  if (topLevelPackages.length === 0) return 1;
 
-  return Math.pow(state.resources.weight, 1.5) / (structure * 10000);
+  const stableCount = topLevelPackages.filter(p => p.internalState === 'stable').length;
+  return stableCount / topLevelPackages.length;
 }
 
 /**
  * Calculate cache tokens earned from prestige
- * Formula: floor(sqrt(weight / 1000)) * efficiency_bonus
+ * Formula: floor(base * efficiency_multiplier * stability_bonus)
+ *
+ * Base reward: sqrt(weight / threshold) * 3
+ *   - At exact threshold: ~3 tokens base
+ *   - Overshooting gives diminishing returns
+ *
+ * Efficiency multiplier: 0.5x (0%) to 1.5x (100%)
+ *   - This is the BIG lever - optimized trees get 3x more than bloated ones
+ *   - Symlinks reduce weight but boost efficiency, so they're worth it
+ *
+ * Stability bonus: 0.7x (all unstable) to 1.0x (all stable)
+ *   - Minor bonus for cleaning up before prestige
  */
-export function calculatePrestigeReward(state: GameState): number {
+export function calculatePrestigeReward(state: GameState, threshold: number): number {
   const weight = state.resources.weight;
-  const efficiencyBonus = 1 + (state.stats.currentEfficiency * 0.5);
 
-  return Math.floor(Math.sqrt(weight / 1000) * efficiencyBonus);
-}
+  // Base reward scales with sqrt of progress past threshold
+  // At threshold: sqrt(1) * 3 = 3 tokens
+  // At 2x threshold: sqrt(2) * 3 = ~4.2 tokens
+  const progress = Math.max(0, weight / Math.max(1, threshold));
+  const baseReward = Math.sqrt(progress) * 3;
 
-/**
- * Get conflict chance based on current heat
- */
-export function getConflictChance(heat: number, config: GameConfig = DEFAULT_CONFIG): number {
-  return heat * config.conflictChancePerHeat;
+  // Efficiency multiplier: 0.5x at 0%, 1.5x at 100%
+  // This is the main incentive to optimize
+  const efficiencyMultiplier = 0.5 + state.stats.currentEfficiency;
+
+  // Stability bonus: 0.7x (all unstable) to 1.0x (all stable)
+  const stabilityRatio = calculateStabilityRatio(state);
+  const stabilityBonus = 0.7 + (stabilityRatio * 0.3);
+
+  return Math.max(1, Math.floor(baseReward * efficiencyMultiplier * stabilityBonus));
 }
 
 /**
@@ -108,18 +135,6 @@ export function rollDependencyCount(_config: GameConfig = DEFAULT_CONFIG): numbe
   }
 
   return 0; // Fallback to leaf
-}
-
-/**
- * Get random version shape
- */
-export function rollVersionShape(): 'circle' | 'square' | 'triangle' | 'diamond' | 'star' {
-  const roll = Math.random();
-  if (roll < 0.3) return 'square';    // v1.x - most common
-  if (roll < 0.55) return 'triangle'; // v2.x - common
-  if (roll < 0.75) return 'diamond';  // v3.x - less common
-  if (roll < 0.9) return 'circle';    // stable
-  return 'star';                       // rare
 }
 
 /**

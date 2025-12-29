@@ -1,6 +1,8 @@
 // Upgrade definitions and purchase logic
+// 2 core upgrades: Bandwidth, Efficiency
 
-import { gameState, spendBandwidth } from './state';
+import { gameState } from './state';
+import { spendBandwidth } from './mutations';
 
 export interface UpgradeDefinition {
   id: string;
@@ -8,72 +10,37 @@ export interface UpgradeDefinition {
   maxLevel: number;
   baseCost: number;
   costMultiplier: number;
-  unlockAt: number; // Package count to unlock this upgrade
-  effect: (level: number) => number;
-  // Visual representation type for the effect
-  effectType: 'multiplier' | 'rate' | 'reduction';
+  unlockAt: number; // Package count to unlock
 }
 
-// Effect functions (defined separately to avoid self-reference issues)
+// Combined effect functions
 const effects = {
-  bandwidthRegen: (level: number) => 1 + level * 0.5,
-  maxBandwidth: (level: number) => 1000 + level * 500,
-  autoInstall: (level: number) => level * 0.2,
-  installSpeed: (level: number) => 1 + level * 0.3,
-  costReduction: (level: number) => Math.pow(0.92, level),
+  // Bandwidth: increases both regen and capacity
+  bandwidthRegen: (level: number) => 1 + level * 0.4,      // +40% regen per level
+  bandwidthCapacity: (level: number) => 1000 + level * 400, // +400 capacity per level
+
+  // Efficiency: faster installs and lower costs
+  installSpeed: (level: number) => 1 + level * 0.25,       // +25% speed per level
+  costReduction: (level: number) => Math.pow(0.94, level), // -6% cost per level
 };
 
-// Upgrade definitions - ordered by unlock progression
+// 2 core upgrades
 export const UPGRADES: Record<string, UpgradeDefinition> = {
-  bandwidthRegen: {
-    id: 'bandwidthRegen',
-    icon: '↓↓',
-    maxLevel: 20,
-    baseCost: 30,
-    costMultiplier: 1.7,
-    unlockAt: 3, // First upgrade - unlocks very early
-    effect: effects.bandwidthRegen,
-    effectType: 'multiplier',
-  },
-  installSpeed: {
-    id: 'installSpeed',
-    icon: '⚡',
-    maxLevel: 10,
-    baseCost: 40,
-    costMultiplier: 1.8,
-    unlockAt: 8, // Second upgrade
-    effect: effects.installSpeed,
-    effectType: 'multiplier',
-  },
-  maxBandwidth: {
-    id: 'maxBandwidth',
-    icon: '▢+',
+  bandwidth: {
+    id: 'bandwidth',
+    icon: '↓',
     maxLevel: 15,
-    baseCost: 100,
-    costMultiplier: 2.0,
-    unlockAt: 15, // Third upgrade
-    effect: effects.maxBandwidth,
-    effectType: 'multiplier',
+    baseCost: 40,
+    costMultiplier: 1.6,
+    unlockAt: 5,
   },
-  costReduction: {
-    id: 'costReduction',
-    icon: '◆−',
-    maxLevel: 10,
-    baseCost: 150,
-    costMultiplier: 2.2,
-    unlockAt: 25, // Fourth upgrade
-    effect: effects.costReduction,
-    effectType: 'reduction',
-  },
-  autoInstall: {
-    id: 'autoInstall',
-    icon: '▶▶',
-    maxLevel: 10,
-    baseCost: 200,
-    costMultiplier: 2.5,
-    unlockAt: 40, // Fifth upgrade - automation comes later
-    effect: effects.autoInstall,
-    effectType: 'rate',
+  efficiency: {
+    id: 'efficiency',
+    icon: '⚡',
+    maxLevel: 12,
+    baseCost: 60,
+    costMultiplier: 1.8,
+    unlockAt: 15,
   },
 };
 
@@ -88,7 +55,7 @@ export function getUpgradeLevel(upgradeId: string): number {
 function setUpgradeLevel(upgradeId: string, level: number): void {
   const key = `${upgradeId}Level` as keyof typeof gameState.upgrades;
   if (key in gameState.upgrades) {
-    (gameState.upgrades as Record<string, number | boolean>)[key] = level;
+    (gameState.upgrades as Record<string, number>)[key] = level;
   }
 }
 
@@ -133,39 +100,33 @@ export function purchaseUpgrade(upgradeId: string): boolean {
 
 // Apply all upgrade effects to game state
 export function applyUpgradeEffects(): void {
-  // Max bandwidth
-  const maxBwLevel = getUpgradeLevel('maxBandwidth');
-  gameState.resources.maxBandwidth = effects.maxBandwidth(maxBwLevel);
-
-  // Bandwidth regen is calculated dynamically in getEffectiveBandwidthRegen
+  // Max bandwidth from bandwidth upgrade
+  const bwLevel = getUpgradeLevel('bandwidth');
+  gameState.resources.maxBandwidth = effects.bandwidthCapacity(bwLevel);
 }
 
 // Get effective values with upgrades applied
 export function getEffectiveBandwidthRegen(): number {
-  const baseRegen = 5; // Increased base regen for better early game
-  const regenLevel = getUpgradeLevel('bandwidthRegen');
-  const regenMultiplier = effects.bandwidthRegen(regenLevel);
+  const baseRegen = 5;
+  const bwLevel = getUpgradeLevel('bandwidth');
+  const regenMultiplier = effects.bandwidthRegen(bwLevel);
 
-  // Cache token bonus
+  // Cache token bonus from prestige
   const cacheBonus = Math.pow(1.10, gameState.meta.cacheTokens);
 
   return baseRegen * regenMultiplier * cacheBonus * gameState.meta.ecosystemTier;
 }
 
 export function getEffectiveInstallSpeed(): number {
-  const speedLevel = getUpgradeLevel('installSpeed');
-  return effects.installSpeed(speedLevel);
+  const effLevel = getUpgradeLevel('efficiency');
+  return effects.installSpeed(effLevel);
 }
 
 export function getEffectiveCostMultiplier(): number {
-  const costLevel = getUpgradeLevel('costReduction');
-  return effects.costReduction(costLevel);
+  const effLevel = getUpgradeLevel('efficiency');
+  return effects.costReduction(effLevel);
 }
 
-export function getAutoInstallRate(): number {
-  const autoLevel = getUpgradeLevel('autoInstall');
-  return effects.autoInstall(autoLevel);
-}
 
 // Check if an upgrade is unlocked based on package count
 export function isUpgradeUnlocked(upgradeId: string): boolean {
@@ -181,7 +142,7 @@ export function getUnlockedUpgrades(): UpgradeDefinition[] {
     .sort((a, b) => a.unlockAt - b.unlockAt);
 }
 
-// Get the next upgrade that will unlock (for teaser display)
+// Get the next upgrade that will unlock
 export function getNextLockedUpgrade(): UpgradeDefinition | null {
   const locked = Object.values(UPGRADES)
     .filter(u => !isUpgradeUnlocked(u.id))
@@ -189,16 +150,66 @@ export function getNextLockedUpgrade(): UpgradeDefinition | null {
   return locked[0] || null;
 }
 
-// Get all upgrades (for internal use)
-export function getAllUpgrades(): UpgradeDefinition[] {
-  return Object.values(UPGRADES);
-}
-
 // Calculate install cost with upgrades applied
 export function getEffectiveInstallCost(): number {
   const packageCount = gameState.packages.size;
-  const baseCost = 10; // Base cost
-  const scaledCost = baseCost * Math.pow(1.12, packageCount); // Slightly lower scaling
+  const baseCost = 10;
+  const scaledCost = baseCost * Math.pow(1.12, packageCount);
   const costMultiplier = getEffectiveCostMultiplier();
   return Math.floor(scaledCost * costMultiplier);
+}
+
+// ============================================
+// PREVIEW SYSTEM (for upgrade hover previews)
+// ============================================
+
+import { ref } from 'vue';
+
+// Track which upgrade is being previewed
+export const previewedUpgradeId = ref<string | null>(null);
+
+export function setPreviewedUpgrade(id: string | null): void {
+  previewedUpgradeId.value = id;
+}
+
+export interface UpgradePreview {
+  upgradeId: string;
+  currentValue: number;
+  previewValue: number;
+  percentChange: number;
+}
+
+// Preview for bandwidth upgrade (shows capacity change)
+export function getPreviewBandwidth(): UpgradePreview {
+  const upgrade = UPGRADES.bandwidth;
+  const currentLevel = getUpgradeLevel('bandwidth');
+  const nextLevel = Math.min(currentLevel + 1, upgrade?.maxLevel ?? 15);
+
+  const currentValue = effects.bandwidthCapacity(currentLevel);
+  const previewValue = effects.bandwidthCapacity(nextLevel);
+
+  return {
+    upgradeId: 'bandwidth',
+    currentValue,
+    previewValue,
+    percentChange: ((previewValue - currentValue) / currentValue) * 100,
+  };
+}
+
+// Preview for efficiency upgrade (shows cost reduction)
+export function getPreviewEfficiency(): { current: number; preview: number } {
+  const upgrade = UPGRADES.efficiency;
+  const packageCount = gameState.packages.size;
+  const baseCost = 10;
+  const scaledCost = baseCost * Math.pow(1.12, packageCount);
+
+  const currentMultiplier = getEffectiveCostMultiplier();
+  const currentLevel = getUpgradeLevel('efficiency');
+  const nextLevel = Math.min(currentLevel + 1, upgrade?.maxLevel ?? 12);
+  const previewMultiplier = effects.costReduction(nextLevel);
+
+  return {
+    current: Math.floor(scaledCost * currentMultiplier),
+    preview: Math.floor(scaledCost * previewMultiplier),
+  };
 }

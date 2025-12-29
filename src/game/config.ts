@@ -12,11 +12,6 @@ export const DEFAULT_CONFIG: GameConfig = {
   baseBandwidthRegen: 1,
   cacheTokenMultiplier: 1.10,
 
-  // Heat mechanics
-  heatPerPackage: 0.01,
-  heatDecay: 0.005,
-  conflictChancePerHeat: 0.1,
-
   // Dependencies
   minDependencies: 1,
   maxDependencies: 5,
@@ -26,7 +21,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   prestigeWeightThreshold: 100000,
 
   // Physics
-  nodeRepulsion: 500,
+  nodeRepulsion: 150,    // Lower = nodes slide past each other easier
   wireAttraction: 0.01,
   damping: 0.95,
 };
@@ -34,7 +29,9 @@ export const DEFAULT_CONFIG: GameConfig = {
 // Starting values - tweak these for early game balance
 export const STARTING_BANDWIDTH = 150;
 export const STARTING_MAX_BANDWIDTH = 1000;
-export const STARTING_MAX_HEAT = 100;
+
+// Save version - increment to force reset on incompatible changes
+export const SAVE_VERSION = 2;
 
 /**
  * Create a fresh game state for new game or prestige reset
@@ -46,28 +43,29 @@ export function createInitialState(): GameState {
       maxBandwidth: STARTING_MAX_BANDWIDTH,
       bandwidthRegen: DEFAULT_CONFIG.baseBandwidthRegen,
       weight: 0,
-      heat: 0,
-      maxHeat: STARTING_MAX_HEAT,
     },
     meta: {
       cacheTokens: 0,
-      algorithmFragments: 0,
       ecosystemTier: 1,
       totalPrestiges: 0,
     },
     upgrades: {
-      bandwidthRegenLevel: 0,
-      maxBandwidthLevel: 0,
-      autoInstallLevel: 0,
-      autoResolveLevel: 0,
-      installSpeedLevel: 0,
-      costReductionLevel: 0,
-      symlinkUnlocked: false,
-      pruneUnlocked: false,
+      bandwidthLevel: 0,
+      efficiencyLevel: 0,
+    },
+    onboarding: {
+      introAnimationComplete: false,
+      firstClickComplete: false,
+      firstConflictSeen: false,
+      firstSymlinkSeen: false,
+      firstPrestigeComplete: false,
     },
     packages: new Map(),
     wires: new Map(),
     rootId: null,
+    // Scope system
+    currentScope: 'root',
+    tutorialGating: true, // Relaxed after first prestige
     stats: {
       totalPackagesInstalled: 0,
       totalConflictsResolved: 0,
