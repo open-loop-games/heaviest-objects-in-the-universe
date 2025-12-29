@@ -7,6 +7,7 @@ import {
   getUpgradeCost,
   canPurchaseUpgrade,
   purchaseUpgrade,
+  setPreviewedUpgrade,
   type UpgradeDefinition,
 } from '../game/upgrades';
 import { gameState } from '../game/state';
@@ -20,7 +21,6 @@ const unlockProgress = computed(() => {
   const next = nextUpgrade.value;
   if (!next) return 1;
 
-  // Find the previous unlock threshold
   const unlocked = unlockedUpgrades.value;
   const lastUnlocked = unlocked[unlocked.length - 1];
   const prevThreshold = lastUnlocked ? lastUnlocked.unlockAt : 0;
@@ -51,27 +51,7 @@ function buy(id: string): void {
   purchaseUpgrade(id);
 }
 
-// Get visual effect value (normalized 0-1 for display)
-function getEffectFill(upgrade: UpgradeDefinition): number {
-  const level = getLevel(upgrade.id);
-  if (level === 0) return 0;
-
-  switch (upgrade.effectType) {
-    case 'multiplier':
-      // Show as percentage of max effect
-      return level / upgrade.maxLevel;
-    case 'rate':
-      // Show as percentage of max rate
-      return level / upgrade.maxLevel;
-    case 'reduction':
-      // Show inverted (more reduction = more fill)
-      return level / upgrade.maxLevel;
-    default:
-      return level / upgrade.maxLevel;
-  }
-}
-
-// Check if panel should be visible (at least one upgrade unlocked or close to unlock)
+// Panel visible when at least one upgrade unlocked or close to first unlock
 const isPanelVisible = computed(() => {
   return unlockedUpgrades.value.length > 0 || unlockProgress.value > 0.5;
 });
@@ -92,36 +72,30 @@ const isPanelVisible = computed(() => {
               maxed: isMaxed(upgrade),
             }"
             @click="buy(upgrade.id)"
+            @mouseenter="!isMaxed(upgrade) && setPreviewedUpgrade(upgrade.id)"
+            @mouseleave="setPreviewedUpgrade(null)"
           >
             <!-- Icon -->
             <div class="upgrade-icon">{{ upgrade.icon }}</div>
 
-            <!-- Level + Effect visualization -->
-            <div class="upgrade-visual">
-              <!-- Level pips -->
-              <div class="level-pips">
-                <span
-                  v-for="i in upgrade.maxLevel"
-                  :key="i"
-                  class="pip"
-                  :class="{ filled: i <= getLevel(upgrade.id) }"
-                ></span>
-              </div>
-
-              <!-- Effect bar -->
-              <div class="effect-bar">
-                <div
-                  class="effect-fill"
-                  :class="upgrade.effectType"
-                  :style="{ width: (getEffectFill(upgrade) * 100) + '%' }"
-                ></div>
-              </div>
+            <!-- Level pips -->
+            <div class="upgrade-pips">
+              <span
+                v-for="i in upgrade.maxLevel"
+                :key="i"
+                class="pip"
+                :class="{ filled: i <= getLevel(upgrade.id) }"
+              ></span>
             </div>
 
-            <!-- Cost (numbers allowed) -->
+            <!-- Cost bar (visual only) -->
             <div class="upgrade-cost" v-if="!isMaxed(upgrade)">
-              <span class="cost-icon">↓</span>
-              <span class="cost-value">{{ getCost(upgrade.id) }}</span>
+              <div class="cost-bar">
+                <div
+                  class="cost-fill"
+                  :style="{ width: Math.min(100, (gameState.resources.bandwidth / getCost(upgrade.id)) * 100) + '%' }"
+                ></div>
+              </div>
             </div>
 
             <!-- Maxed indicator -->
@@ -142,7 +116,6 @@ const isPanelVisible = computed(() => {
             :style="{ width: (unlockProgress * 100) + '%' }"
           ></div>
         </div>
-        <div class="unlock-target">{{ nextUpgrade.unlockAt }}</div>
       </div>
     </div>
   </Transition>
@@ -151,29 +124,29 @@ const isPanelVisible = computed(() => {
 <style scoped>
 .upgrade-panel {
   position: absolute;
-  right: 16px;
-  top: 60px;
-  width: 160px;
+  right: 24px;
+  top: 100px;
+  width: 200px;
   background: rgba(20, 20, 30, 0.9);
-  border: 1px solid #3a3a5a;
-  border-radius: 8px;
-  padding: 8px;
+  border: 2px solid #3a3a5a;
+  border-radius: 12px;
+  padding: 12px;
   pointer-events: auto;
 }
 
 .upgrade-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .upgrade-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 10px;
+  padding: 10px 12px;
   background: #1a1a2a;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s, opacity 0.15s;
   opacity: 0.4;
@@ -200,87 +173,58 @@ const isPanelVisible = computed(() => {
 }
 
 .upgrade-icon {
-  font-size: 14px;
-  width: 24px;
-  height: 24px;
+  font-size: 24px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #2a2a3a;
-  border-radius: 4px;
+  border-radius: 8px;
   flex-shrink: 0;
 }
 
-.upgrade-visual {
+.upgrade-pips {
   flex: 1;
-  min-width: 0;
   display: flex;
-  flex-direction: column;
   gap: 3px;
-}
-
-.level-pips {
-  display: flex;
-  gap: 2px;
   flex-wrap: wrap;
 }
 
 .pip {
-  width: 4px;
-  height: 4px;
+  width: 8px;
+  height: 8px;
   background: #2a2a3a;
-  border-radius: 1px;
+  border-radius: 2px;
 }
 
 .pip.filled {
   background: #5aff5a;
 }
 
-.effect-bar {
-  height: 3px;
-  background: #2a2a3a;
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.effect-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.2s ease-out;
-}
-
-.effect-fill.multiplier {
-  background: linear-gradient(90deg, #5a7aff, #7a9aff);
-}
-
-.effect-fill.rate {
-  background: linear-gradient(90deg, #5aff7a, #7affaa);
-}
-
-.effect-fill.reduction {
-  background: linear-gradient(90deg, #ff7a5a, #ffaa7a);
-}
-
 .upgrade-cost {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  font-size: 11px;
-  color: #7a7aff;
   flex-shrink: 0;
+  width: 40px;
 }
 
-.cost-icon {
-  font-size: 10px;
+.cost-bar {
+  height: 8px;
+  background: #1a1a2a;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #3a3a5a;
 }
 
-.cost-value {
-  font-family: 'Courier New', monospace;
+.cost-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #5a7aff, #7a9aff);
+  border-radius: 3px;
+  transition: width 0.15s ease-out;
 }
 
 .upgrade-maxed {
   color: #5aff5a;
-  font-size: 12px;
+  font-size: 18px;
   flex-shrink: 0;
 }
 
@@ -288,64 +232,58 @@ const isPanelVisible = computed(() => {
 .next-unlock {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  padding-top: 8px;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid #2a2a3a;
 }
 
 .unlock-icon {
-  width: 24px;
-  height: 24px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #1a1a2a;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: 8px;
+  font-size: 20px;
   color: #5a5a7a;
   position: relative;
 }
 
 .unlock-icon.locked {
-  border: 1px dashed #3a3a5a;
+  border: 2px dashed #3a3a5a;
 }
 
 .locked-icon-bg {
   opacity: 0.3;
   filter: grayscale(100%);
-  font-size: 14px;
+  font-size: 24px;
 }
 
 .lock-overlay {
   position: absolute;
-  font-size: 8px;
-  bottom: -2px;
-  right: -2px;
+  font-size: 12px;
+  bottom: -3px;
+  right: -3px;
 }
 
 .unlock-progress {
   flex: 1;
-  height: 4px;
+  height: 8px;
   background: #1a1a2a;
-  border-radius: 2px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
 .unlock-fill {
   height: 100%;
   background: linear-gradient(90deg, #3a3a5a, #5a5a7a);
-  border-radius: 2px;
+  border-radius: 4px;
   transition: width 0.3s ease-out;
 }
 
-.unlock-target {
-  font-size: 10px;
-  color: #5a5a7a;
-  font-family: 'Courier New', monospace;
-}
-
-/* Panel enter/leave transition */
+/* Transitions */
 .panel-fade-enter-active,
 .panel-fade-leave-active {
   transition: opacity 0.3s, transform 0.3s;
@@ -357,7 +295,6 @@ const isPanelVisible = computed(() => {
   transform: translateX(20px);
 }
 
-/* Upgrade reveal transition */
 .upgrade-reveal-enter-active {
   transition: all 0.4s ease-out;
 }
