@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed } from 'vue'
 import {
   getUnlockedUpgrades,
   getNextLockedUpgrade,
@@ -9,52 +9,52 @@ import {
   purchaseUpgrade,
   setPreviewedUpgrade,
   type UpgradeDefinition,
-} from '../game/upgrades';
-import { gameState } from '../game/state';
+} from '../game/upgrades'
+import { gameState } from '../game/state'
 
-const unlockedUpgrades = computed(() => getUnlockedUpgrades());
-const nextUpgrade = computed(() => getNextLockedUpgrade());
-const packageCount = computed(() => gameState.packages.size);
+const unlockedUpgrades = computed(() => getUnlockedUpgrades())
+const nextUpgrade = computed(() => getNextLockedUpgrade())
+const packageCount = computed(() => gameState.packages.size)
 
 // Progress toward next unlock (0-1)
 const unlockProgress = computed(() => {
-  const next = nextUpgrade.value;
-  if (!next) return 1;
+  const next = nextUpgrade.value
+  if (!next) return 1
 
-  const unlocked = unlockedUpgrades.value;
-  const lastUnlocked = unlocked[unlocked.length - 1];
-  const prevThreshold = lastUnlocked ? lastUnlocked.unlockAt : 0;
+  const unlocked = unlockedUpgrades.value
+  const lastUnlocked = unlocked[unlocked.length - 1]
+  const prevThreshold = lastUnlocked ? lastUnlocked.unlockAt : 0
 
-  const current = packageCount.value;
-  const range = next.unlockAt - prevThreshold;
-  const progress = (current - prevThreshold) / range;
-  return Math.min(1, Math.max(0, progress));
-});
+  const current = packageCount.value
+  const range = next.unlockAt - prevThreshold
+  const progress = (current - prevThreshold) / range
+  return Math.min(1, Math.max(0, progress))
+})
 
 function getLevel(id: string): number {
-  return getUpgradeLevel(id);
+  return getUpgradeLevel(id)
 }
 
 function getCost(id: string): number {
-  return getUpgradeCost(id);
+  return getUpgradeCost(id)
 }
 
 function canBuy(id: string): boolean {
-  return canPurchaseUpgrade(id);
+  return canPurchaseUpgrade(id)
 }
 
 function isMaxed(upgrade: UpgradeDefinition): boolean {
-  return getLevel(upgrade.id) >= upgrade.maxLevel;
+  return getLevel(upgrade.id) >= upgrade.maxLevel
 }
 
 function buy(id: string): void {
-  purchaseUpgrade(id);
+  purchaseUpgrade(id)
 }
 
 // Panel visible when at least one upgrade unlocked or close to first unlock
 const isPanelVisible = computed(() => {
-  return unlockedUpgrades.value.length > 0 || unlockProgress.value > 0.5;
-});
+  return unlockedUpgrades.value.length > 0 || unlockProgress.value > 0.5
+})
 </script>
 
 <template>
@@ -93,7 +93,14 @@ const isPanelVisible = computed(() => {
               <div class="cost-bar">
                 <div
                   class="cost-fill"
-                  :style="{ width: Math.min(100, (gameState.resources.bandwidth / getCost(upgrade.id)) * 100) + '%' }"
+                  :style="{
+                    width:
+                      Math.min(
+                        100,
+                        (gameState.resources.bandwidth / getCost(upgrade.id)) *
+                          100
+                      ) + '%',
+                  }"
                 ></div>
               </div>
             </div>
@@ -113,7 +120,7 @@ const isPanelVisible = computed(() => {
         <div class="unlock-progress">
           <div
             class="unlock-fill"
-            :style="{ width: (unlockProgress * 100) + '%' }"
+            :style="{ width: unlockProgress * 100 + '%' }"
           ></div>
         </div>
       </div>
@@ -148,7 +155,10 @@ const isPanelVisible = computed(() => {
   background: #1a1a2a;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s, transform 0.1s, opacity 0.15s;
+  transition:
+    background 0.15s,
+    transform 0.1s,
+    opacity 0.15s;
   opacity: 0.4;
 }
 
@@ -286,7 +296,9 @@ const isPanelVisible = computed(() => {
 /* Transitions */
 .panel-fade-enter-active,
 .panel-fade-leave-active {
-  transition: opacity 0.3s, transform 0.3s;
+  transition:
+    opacity 0.3s,
+    transform 0.3s;
 }
 
 .panel-fade-enter-from,
