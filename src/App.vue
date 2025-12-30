@@ -2,7 +2,6 @@
 import { ref, provide } from 'vue'
 import GameCanvas from './components/GameCanvas.vue'
 import HUD from './components/HUD.vue'
-import UpgradePanel from './components/UpgradePanel.vue'
 import CausalParticles from './components/CausalParticles.vue'
 import type { ParticleType } from './components/CausalParticles.vue'
 
@@ -22,7 +21,6 @@ provide('spawnCausalParticle', spawnCausalParticle)
   <div class="app">
     <GameCanvas />
     <HUD />
-    <UpgradePanel />
     <CausalParticles ref="particleSystem" />
   </div>
 </template>

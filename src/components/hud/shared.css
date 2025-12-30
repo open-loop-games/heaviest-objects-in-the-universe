@@ -1,0 +1,144 @@
+/* ============================================
+   SHARED HUD COMPONENT STYLES
+   ============================================ */
+
+/* Note: Most CSS variables and keyframes are defined in style.css
+   This file contains reusable component patterns that may be
+   shared across multiple HUD sub-components. */
+
+/* ============================================
+   TRANSITIONS
+   ============================================ */
+
+/* Fade transition */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* HUD reveal transition (staged disclosure) */
+.hud-reveal-enter-active {
+  transition: all 0.4s ease-out;
+}
+
+.hud-reveal-leave-active {
+  transition: all 0.2s ease-in;
+}
+
+.hud-reveal-enter-from {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.9);
+}
+
+.hud-reveal-leave-to {
+  opacity: 0;
+}
+
+/* ============================================
+   RESOURCE ROW BASE
+   ============================================ */
+
+.resource-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(20, 20, 30, 0.8);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+/* Resource icon */
+.resource-icon {
+  font-size: 20px;
+  width: 28px;
+  text-align: center;
+}
+
+/* ============================================
+   SEGMENTED BAR
+   ============================================ */
+
+.resource-bar {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+}
+
+.segment {
+  flex: 1;
+  height: 16px;
+  background: #1a1a2a;
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.segment.filled {
+  background: linear-gradient(180deg, #5a7aff, #3a5adf);
+}
+
+/* ============================================
+   UPGRADE PIPS
+   ============================================ */
+
+.upgrade-pips {
+  display: flex;
+  gap: 3px;
+}
+
+.pip {
+  width: 8px;
+  height: 8px;
+  background: #2a2a3a;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pip.filled {
+  background: #5aff5a;
+}
+
+.pip.affordable {
+  background: #2a3a2a;
+  box-shadow: 0 0 6px #5aff5a;
+  animation: pip-glow 1s infinite;
+}
+
+@keyframes pip-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 4px #5aff5a;
+  }
+  50% {
+    box-shadow: 0 0 8px #5aff5a;
+  }
+}
+
+/* ============================================
+   WARNING STATES
+   ============================================ */
+
+.resource-row.warning-low .resource-icon {
+  color: #ffaa5a;
+}
+
+.resource-row.warning-critical .resource-icon {
+  color: #ff5a5a;
+  animation: pulse 0.5s infinite;
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 1;
+  }
+}
