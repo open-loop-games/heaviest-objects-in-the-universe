@@ -211,3 +211,51 @@ export const previewedActionType = ref<ActionPreviewType>(null)
 export function setActionPreview(type: ActionPreviewType): void {
   previewedActionType.value = type
 }
+
+// ============================================
+// COLLAPSE STATE (for prestige spaghettification)
+// ============================================
+
+export interface CollapseState {
+  active: boolean
+  progress: number // 0-1 overall collapse progress
+  targetX: number // Black hole position in world coordinates
+  targetY: number // Black hole position in world coordinates
+  startTime: number // When collapse started
+  absorbedPackages: Set<string> // Packages that have been consumed
+}
+
+export const collapseState = ref<CollapseState>({
+  active: false,
+  progress: 0,
+  targetX: 0,
+  targetY: 0,
+  startTime: 0,
+  absorbedPackages: new Set(),
+})
+
+export function startCollapse(targetX: number, targetY: number): void {
+  collapseState.value = {
+    active: true,
+    progress: 0,
+    targetX,
+    targetY,
+    startTime: Date.now(),
+    absorbedPackages: new Set(),
+  }
+}
+
+export function endCollapse(): void {
+  collapseState.value = {
+    active: false,
+    progress: 0,
+    targetX: 0,
+    targetY: 0,
+    startTime: 0,
+    absorbedPackages: new Set(),
+  }
+}
+
+export function markPackageAbsorbed(pkgId: string): void {
+  collapseState.value.absorbedPackages.add(pkgId)
+}

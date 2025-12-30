@@ -4,6 +4,8 @@ import { Graphics, Container, type Application } from 'pixi.js'
 import { Colors } from './colors'
 import { gameState } from '../game/state'
 import { prefersReducedMotion } from './accessibility'
+import { getPackageAtPath } from '../game/scope'
+import { isCascadeActive } from '../game/cascade'
 
 interface RippleEffect {
   x: number
@@ -47,6 +49,11 @@ interface CritEffect {
   count: number
 }
 
+interface StableCelebration {
+  startTime: number
+  duration: number
+}
+
 export class EffectsRenderer {
   private container: Container
   private ripples: RippleEffect[] = []
@@ -54,14 +61,22 @@ export class EffectsRenderer {
   private flashes: FlashEffect[] = []
   private autoCompletes: AutoCompleteEffect[] = []
   private crits: CritEffect[] = []
+  private stableCelebration: StableCelebration | null = null
   private rippleGraphics: Graphics
   private particleGraphics: Graphics
   private flashGraphics: Graphics
   private autoCompleteGraphics: Graphics
   private critGraphics: Graphics
+  private celebrationGraphics: Graphics
 
   // Pulse state for root node
   private pulsePhase = 0
+
+  // Track scope state for celebration detection
+  private prevScopeState: string | null = null
+  // Track scope session for proper celebration timing
+  private watchedScopePath: string | null = null
+  private framesInUnstable = 0 // Count frames spent in unstable state with cascade done
 
   constructor(_app: Application) {
     this.container = new Container()
@@ -72,12 +87,14 @@ export class EffectsRenderer {
     this.flashGraphics = new Graphics()
     this.autoCompleteGraphics = new Graphics()
     this.critGraphics = new Graphics()
+    this.celebrationGraphics = new Graphics()
 
     this.container.addChild(this.flashGraphics) // Behind others
     this.container.addChild(this.rippleGraphics)
     this.container.addChild(this.particleGraphics)
     this.container.addChild(this.autoCompleteGraphics)
-    this.container.addChild(this.critGraphics) // On top for visibility
+    this.container.addChild(this.critGraphics)
+    this.container.addChild(this.celebrationGraphics) // On top for visibility
   }
 
   /**
@@ -95,6 +112,7 @@ export class EffectsRenderer {
     this.flashGraphics.clear()
     this.autoCompleteGraphics.clear()
     this.critGraphics.clear()
+    this.celebrationGraphics.clear()
 
     // Update and draw flashes
     this.flashes = this.flashes.filter((flash) => {
@@ -280,6 +298,91 @@ export class EffectsRenderer {
 
       return true
     })
+
+    // Update and draw stable celebration (scope cleared)
+    if (this.stableCelebration) {
+      const elapsed = now - this.stableCelebration.startTime
+      const progress = elapsed / this.stableCelebration.duration
+
+      if (progress >= 1) {
+        this.stableCelebration = null
+      } else {
+        // Green color for stable
+        const celebrationColor = Colors.accentGreen
+
+        // Multiple expanding rings from center (0,0 in scope space)
+        const ringCount = 3
+        for (let i = 0; i < ringCount; i++) {
+          const ringDelay = i * 0.12
+          const ringProgress = Math.max(
+            0,
+            (progress - ringDelay) / (1 - ringDelay)
+          )
+          if (ringProgress <= 0 || ringProgress >= 1) continue
+
+          const easedProgress = 1 - Math.pow(1 - ringProgress, 2)
+          const ringRadius = 40 + easedProgress * 120
+          const ringAlpha = (1 - ringProgress) * 0.7
+
+          this.celebrationGraphics.circle(0, 0, ringRadius)
+          this.celebrationGraphics.stroke({
+            color: celebrationColor,
+            width: 4 - ringProgress * 3,
+            alpha: ringAlpha,
+          })
+        }
+
+        // Central flash (bright at start)
+        if (progress < 0.25) {
+          const flashProgress = progress / 0.25
+          const flashRadius = 20 + flashProgress * 30
+          const flashAlpha = (1 - flashProgress) * 0.6
+          this.celebrationGraphics.circle(0, 0, flashRadius)
+          this.celebrationGraphics.fill({ color: 0xffffff, alpha: flashAlpha })
+        }
+      }
+    }
+
+    // Observe scope state for celebration (rendering watches game state)
+    if (gameState.scopeStack.length > 0) {
+      const currentScopePath = gameState.scopeStack.join('/')
+      const pkg = getPackageAtPath(gameState.scopeStack)
+      const currentState = pkg?.internalState ?? null
+      const cascadeActive = isCascadeActive()
+
+      // Reset tracking when scope changes
+      if (this.watchedScopePath !== currentScopePath) {
+        this.watchedScopePath = currentScopePath
+        this.framesInUnstable = 0
+        this.prevScopeState = null
+      }
+
+      // Count frames where cascade is done but state is still unstable
+      // This means player has work to do and is actively in this scope
+      if (!cascadeActive && currentState === 'unstable') {
+        this.framesInUnstable++
+      }
+
+      // Only celebrate when:
+      // 1. Cascade is done
+      // 2. We transition unstable→stable
+      // 3. We've been in "workable unstable" state for at least 30 frames (~0.5s)
+      //    This prevents celebrating on quick state transitions during load/cascade settling
+      if (
+        !cascadeActive &&
+        this.prevScopeState === 'unstable' &&
+        currentState === 'stable' &&
+        this.framesInUnstable >= 30
+      ) {
+        this.spawnStableCelebration()
+      }
+
+      this.prevScopeState = currentState
+    } else {
+      this.prevScopeState = null
+      this.framesInUnstable = 0
+      this.watchedScopePath = null
+    }
   }
 
   /**
@@ -416,6 +519,46 @@ export class EffectsRenderer {
   }
 
   /**
+   * Spawn a stable celebration effect (scope fully cleared)
+   */
+  spawnStableCelebration(): void {
+    // Prevent multiple overlapping celebrations
+    if (this.stableCelebration) return
+
+    this.stableCelebration = {
+      startTime: Date.now(),
+      duration: 600,
+    }
+  }
+
+  /**
+   * Get the current celebration scale multiplier (for node pop effect)
+   * Returns 1.0 normally, > 1.0 during celebration pop
+   */
+  getCelebrationScale(): number {
+    if (!this.stableCelebration) return 1.0
+
+    const elapsed = Date.now() - this.stableCelebration.startTime
+    const progress = elapsed / this.stableCelebration.duration
+
+    if (progress >= 1) return 1.0
+
+    // Quick pop up then settle back: peak at ~0.15 progress
+    const popPeak = 0.15
+    if (progress < popPeak) {
+      // Rising: ease out
+      const riseProgress = progress / popPeak
+      const eased = 1 - Math.pow(1 - riseProgress, 2)
+      return 1.0 + eased * 0.25 // Max scale 1.25
+    } else {
+      // Falling: ease in
+      const fallProgress = (progress - popPeak) / (1 - popPeak)
+      const eased = 1 - Math.pow(1 - fallProgress, 3)
+      return 1.25 - eased * 0.25
+    }
+  }
+
+  /**
    * Get shake offset for a conflicting node
    */
   getConflictShake(conflictProgress: number): { x: number; y: number } {
@@ -443,10 +586,12 @@ export class EffectsRenderer {
     this.flashes = []
     this.autoCompletes = []
     this.crits = []
+    this.stableCelebration = null
     this.rippleGraphics.clear()
     this.particleGraphics.clear()
     this.flashGraphics.clear()
     this.autoCompleteGraphics.clear()
     this.critGraphics.clear()
+    this.celebrationGraphics.clear()
   }
 }

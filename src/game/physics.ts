@@ -2,7 +2,12 @@
 // Enhanced with tree-organizing forces for cleaner layouts
 
 import { toRaw } from 'vue'
-import { gameState, gameConfig } from './state'
+import {
+  gameState,
+  gameConfig,
+  collapseState,
+  markPackageAbsorbed,
+} from './state'
 import type { Package } from './types'
 import { getAllDuplicateGroups } from './symlinks'
 import { getPackageAtPath } from './scope'
@@ -573,12 +578,17 @@ function assignInternalChildAnchors(
   parentAngle: number,
   angleSpan: number,
   parentRadius: number,
-  internalPackages: Map<string, Package>
+  internalPackages: Map<string, Package>,
+  visited: Set<string> = new Set()
 ): void {
+  // Prevent infinite recursion from circular references
+  if (visited.has(parentId)) return
+  visited.add(parentId)
+
   // Find children of this parent
   const children: Package[] = []
   for (const pkg of internalPackages.values()) {
-    if (pkg.parentId === parentId) {
+    if (pkg.parentId === parentId && !visited.has(pkg.id)) {
       children.push(pkg)
     }
   }
@@ -589,8 +599,13 @@ function assignInternalChildAnchors(
   const childRadius = parentRadius + INTERNAL_CONFIG.radiusPerDepth
 
   // Distribute children within parent's angular slice
-  const angleStep = angleSpan / (children.length + 1)
-  const startAngle = parentAngle - angleSpan / 2
+  // Enforce minimum angular spread per child to prevent overlap
+  const minRequiredSpan = children.length * INTERNAL_CONFIG.minAngularSpread
+  const effectiveSpan = Math.max(angleSpan, minRequiredSpan)
+
+  const angleStep = effectiveSpan / (children.length + 1)
+  // Center the (possibly expanded) span around parent's angle
+  const startAngle = parentAngle - effectiveSpan / 2
 
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!
@@ -607,7 +622,8 @@ function assignInternalChildAnchors(
       childAngle,
       angleStep,
       childRadius,
-      internalPackages
+      internalPackages,
+      visited
     )
   }
 }
@@ -698,4 +714,149 @@ export function updateInternalPhysics(
     pkg.position.x += pkg.velocity.vx
     pkg.position.y += pkg.velocity.vy
   }
+}
+
+// ============================================
+// COLLAPSE PHYSICS (Prestige spaghettification)
+// ============================================
+
+const COLLAPSE_CONFIG = {
+  // Timing
+  duration: 4.0, // Total collapse duration in seconds (doubled for drama)
+
+  // Gravitational pull
+  baseAcceleration: 400, // Base acceleration toward black hole (slower for more spaghetti time)
+  maxVelocity: 800, // Maximum velocity cap (slower)
+
+  // Absorption
+  absorptionRadius: 15, // Distance at which packages are absorbed (smaller = more stretch visible)
+
+  // Spaghettification parameters (exported for rendering)
+  stretchStartDistance: 300, // Start stretching when this close
+  maxStretch: 4.0, // Maximum stretch factor (4x longer)
+  minWidth: 0.12, // Minimum width factor (12% of original)
+}
+
+/**
+ * Get spaghettification parameters for a package based on distance to black hole
+ * Returns stretch factor (1 = normal, >1 = elongated) and width factor (1 = normal, <1 = squeezed)
+ */
+export function getSpaghettification(pkg: Package): {
+  stretch: number
+  width: number
+  angle: number
+} {
+  if (!collapseState.value.active) {
+    return { stretch: 1, width: 1, angle: 0 }
+  }
+
+  const dx = collapseState.value.targetX - pkg.position.x
+  const dy = collapseState.value.targetY - pkg.position.y
+  const distance = Math.sqrt(dx * dx + dy * dy)
+  const angle = Math.atan2(dy, dx)
+
+  if (distance > COLLAPSE_CONFIG.stretchStartDistance) {
+    return { stretch: 1, width: 1, angle }
+  }
+
+  // Calculate stretch based on distance (closer = more stretched)
+  const t = 1 - distance / COLLAPSE_CONFIG.stretchStartDistance
+  const eased = t * t // Quadratic ease-in for dramatic effect near the hole
+
+  const stretch = 1 + eased * (COLLAPSE_CONFIG.maxStretch - 1)
+  const width = 1 - eased * (1 - COLLAPSE_CONFIG.minWidth)
+
+  return { stretch, width, angle }
+}
+
+/**
+ * Check if collapse is active
+ */
+export function isCollapseActive(): boolean {
+  return collapseState.value.active
+}
+
+/**
+ * Get collapse progress (0-1)
+ */
+export function getCollapseProgress(): number {
+  return collapseState.value.progress
+}
+
+/**
+ * Check if a package has been absorbed
+ */
+export function isPackageAbsorbed(pkgId: string): boolean {
+  return collapseState.value.absorbedPackages.has(pkgId)
+}
+
+/**
+ * Update physics during collapse - gravitational pull toward black hole
+ * Returns true when all packages have been absorbed
+ */
+export function updateCollapsePhysics(deltaTime: number): boolean {
+  if (!collapseState.value.active) return false
+
+  // Update progress
+  const elapsed = (Date.now() - collapseState.value.startTime) / 1000
+  collapseState.value.progress = Math.min(1, elapsed / COLLAPSE_CONFIG.duration)
+
+  const targetX = collapseState.value.targetX
+  const targetY = collapseState.value.targetY
+  const rawPackages = toRaw(gameState.packages)
+  const packages = Array.from(rawPackages.values())
+
+  let allAbsorbed = true
+
+  for (const pkg of packages) {
+    // Skip already absorbed packages
+    if (collapseState.value.absorbedPackages.has(pkg.id)) {
+      continue
+    }
+
+    allAbsorbed = false
+
+    // Calculate direction and distance to black hole
+    const dx = targetX - pkg.position.x
+    const dy = targetY - pkg.position.y
+    const distance = Math.sqrt(dx * dx + dy * dy)
+
+    // Check for absorption
+    if (distance < COLLAPSE_CONFIG.absorptionRadius) {
+      markPackageAbsorbed(pkg.id)
+      continue
+    }
+
+    // Normalize direction
+    const nx = dx / distance
+    const ny = dy / distance
+
+    // Acceleration increases as collapse progresses and as packages get closer
+    // This creates the "accelerating into the void" effect
+    const progressMult = 1 + collapseState.value.progress * 3 // 1x to 4x
+    const distanceMult =
+      1 + COLLAPSE_CONFIG.stretchStartDistance / Math.max(50, distance)
+    const acceleration =
+      COLLAPSE_CONFIG.baseAcceleration * progressMult * distanceMult
+
+    // Apply gravitational acceleration
+    pkg.velocity.vx += nx * acceleration * deltaTime
+    pkg.velocity.vy += ny * acceleration * deltaTime
+
+    // Clamp velocity
+    const collapseSpeed = Math.sqrt(pkg.velocity.vx ** 2 + pkg.velocity.vy ** 2)
+    if (collapseSpeed > COLLAPSE_CONFIG.maxVelocity) {
+      pkg.velocity.vx =
+        (pkg.velocity.vx / collapseSpeed) * COLLAPSE_CONFIG.maxVelocity
+      pkg.velocity.vy =
+        (pkg.velocity.vy / collapseSpeed) * COLLAPSE_CONFIG.maxVelocity
+    }
+
+    // Update position
+    pkg.position.x += pkg.velocity.vx * deltaTime
+    pkg.position.y += pkg.velocity.vy * deltaTime
+  }
+
+  // Complete when all absorbed or time is up
+  return allAbsorbed || collapseState.value.progress >= 1
 }
