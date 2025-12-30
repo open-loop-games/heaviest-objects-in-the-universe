@@ -15,7 +15,7 @@ import type { Package } from './types'
 import { triggerOrganizeBoost, markPackageRelocated } from './physics'
 import { updateCrossPackageDuplicates } from './cross-package'
 
-// Callback to avoid circular dependency
+// Callbacks to avoid circular dependency
 // Set by packages.ts on initialization - takes full scope path for arbitrary depth
 let _recalculateStateAtPath: ((scopePath: string[]) => void) | null = null
 
@@ -355,7 +355,7 @@ export function performSymlinkMerge(
     // Merging duplicates in inner scope grants a guaranteed crit on next pop
     gameState.cascade.guaranteedCrits++
 
-    // Recalculate internal state (might become stable) - use full scope path
+    // Recalculate internal state (celebration handled inside recalculateStateAtPath)
     const recalcFn = getRecalculateStateAtPath()
     if (recalcFn) {
       recalcFn([...gameState.scopeStack])

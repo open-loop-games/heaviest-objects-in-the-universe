@@ -13,7 +13,12 @@ import {
   getPrestigeThreshold,
   syncEcosystemTier,
 } from './state'
-import { getCurrentScopePackages, getCurrentScopeWires } from './scope'
+import {
+  getCurrentScopePackages,
+  getCurrentScopeWires,
+  isInPackageScope,
+} from './scope'
+import { recalculateStateAtPath } from './packages'
 import { saveToLocalStorage, clearSavedGame } from './persistence'
 import { getCompressionMultiplier } from './upgrades'
 
@@ -185,6 +190,11 @@ export function resolveWireConflict(wireId: string): boolean {
     targetPkg.state = 'ready'
     targetPkg.conflictProgress = 0
     gameState.stats.totalConflictsResolved++
+  }
+
+  // Recalculate scope state
+  if (isInPackageScope()) {
+    recalculateStateAtPath([...gameState.scopeStack])
   }
 
   return true

@@ -390,15 +390,6 @@ export function exitPackageScope(): void {
   exitScope()
 }
 
-// Callback for stable celebration
-let onStableCelebration: ((packageId: string) => void) | null = null
-
-export function setStableCelebrationCallback(
-  callback: (packageId: string) => void
-): void {
-  onStableCelebration = callback
-}
-
 /**
  * Recalculate internal state for a package at any path
  * Works for top-level packages (path length 1) or nested packages (path length 2+)
@@ -459,16 +450,6 @@ export function recalculateStateAtPath(scopePath: string[]): void {
 
   pkg.internalState = newState
 
-  // Trigger celebration callback for top-level packages
-  if (
-    scopePath.length === 1 &&
-    previousState !== 'stable' &&
-    newState === 'stable' &&
-    onStableCelebration
-  ) {
-    onStableCelebration(scopePath[0]!)
-  }
-
   // Propagate state change up the tree
   // If this package became stable/unstable, parent may need recalculation
   if (scopePath.length > 1 && previousState !== newState) {
@@ -483,6 +464,6 @@ function handleCascadeEnd(scopePath: string[]): void {
   recalculateStateAtPath(scopePath)
 }
 
-// Register callbacks - both now use path-based approach
+// Register callbacks
 setRecalculateCallback(recalculateStateAtPath)
 setCascadeEndCallback(handleCascadeEnd)
