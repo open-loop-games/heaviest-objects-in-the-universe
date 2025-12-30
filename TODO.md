@@ -223,8 +223,21 @@ Automation timing in `src/game/automation.ts`:
 - [x] Click hint indicator
 
 ### Upgrade System
-- [x] Shop UI panel (`UpgradePanel.vue`)
+- [x] Shop UI panel (`UpgradePanel.vue`) → removed, pips inline with resources
 - [x] No-text compliance (cost bars, symbol indicators)
+
+### Bandwidth Redesign ✓
+- [x] Core bandwidth costs (conflict 15 BW, symlink 8 BW, dep spawn 5 BW)
+- [x] Dependency queue system (drip-install when low BW)
+- [x] Queue visualization (faded outlines + progress rings)
+- [x] Automation toggles with BW drain
+- [x] HUD decomposition (BandwidthRow, WeightRow, AutomationRow, QualityMetrics)
+- [x] Unified HUD panel layout
+- [x] Upgrade pips inline with resource bars
+- [x] Compression upgrade (P3 gated)
+- [x] Automation speed upgrades
+- [x] Affordability indicators (gray wires/halos when unaffordable)
+- [x] Action cost preview on bandwidth bar (hover conflicts/duplicates)
 
 ### Teaching & Onboarding
 - [x] Empty canvas birth animation
@@ -234,4 +247,4 @@ Automation timing in `src/game/automation.ts`:
 
 ---
 
-*Last updated: 2025-12-29 (Fractal Rework complete)*
+*Last updated: 2025-12-30 (Bandwidth Redesign complete)*
