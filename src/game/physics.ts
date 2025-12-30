@@ -13,13 +13,13 @@ const RADIAL_CONFIG = {
   radiusPerDepth: 100, // Additional radius per depth level
   minAngularSpread: 0.15, // Minimum radians per node (prevents cramping)
   anchorStrength: 0.12, // Spring force toward anchor (higher = snappier)
-  anchorBoostStrength: 0.4, // Anchor strength during organize boost (strong!)
+  anchorBoostStrength: 0.25, // Anchor strength during organize boost (gentler)
   repulsionRange: 70, // Reduced - anchors handle positioning now
   hardPushDistance: 35, // Below this, extra push
   hardPushMultiplier: 2.5, // Close-range repulsion multiplier
   phasingDuration: 2.0, // Seconds of phasing after reparent
   phasingRepulsionMult: 0.05, // Very low repulsion while phasing
-  organizeBoostDuration: 2.5, // Seconds of boosted anchor pull after merge
+  organizeBoostDuration: 0.8, // Seconds of boosted anchor pull after merge (reduced for less jarring motion)
   chaosJitter: 5, // Minimal - anchors provide structure
   // Multi-ring configuration for top-level packages
   topLevelSpacing: 90, // Minimum spacing between top-level packages (they're big!)
@@ -485,35 +485,26 @@ export function isOrganizing(): boolean {
   return organizeBoostTimer > 0
 }
 
-/**
- * Apply gravity pull toward center (for black hole effect)
- */
-export function applyGravityEffect(
-  _deltaTime: number,
-  _gravityStrength: number
-): void {
-  // TODO: Implement gravity pull for prestige mechanic
-  // Nodes should drift toward center as gravity increases
-}
-
 // Internal scope anchor positions (separate from outer scope)
 const internalAnchorPositions = new Map<string, { x: number; y: number }>()
 
 // Internal scope physics configuration
 const INTERNAL_CONFIG = {
-  spacingPerNode: 70, // Circumference space per node (scales with count)
-  minRadius: 100, // Minimum ring radius
-  radiusPerDepth: 70, // Additional radius per depth level
+  spacingPerNode: 65, // Circumference space per node
+  minRadius: 130, // First ring radius (larger = more spacing in inner ring)
+  ringGap: 75, // Gap between rings
+  maxPerRing: 12, // Max first-level packages per ring
+  radiusPerDepth: 70, // Additional radius for children
   minAngularSpread: 0.2, // Minimum radians per node
-  anchorStrength: 0.18, // Slightly stronger than outer (snappier feel)
+  anchorStrength: 0.18, // Anchor strength (physics still active)
   repulsionRange: 60, // Repulsion distance
   hardPushDistance: 30, // Extra push when very close
   hardPushMultiplier: 3.0, // Close-range multiplier
 }
 
 /**
- * Compute radial anchors for internal packages (tree-aware)
- * Similar to outer computeRadialAnchors but operates on internal package map
+ * Compute radial anchors for internal packages with multi-ring overflow
+ * First-level packages distributed across rings, children in outer rings
  */
 function computeInternalAnchors(
   internalPackages: Map<string, Package>,
@@ -534,62 +525,54 @@ function computeInternalAnchors(
 
   if (firstLevel.length === 0) return
 
-  // Calculate radius based on count (scales dynamically)
-  const circumferenceNeeded = firstLevel.length * INTERNAL_CONFIG.spacingPerNode
-  const calculatedRadius = circumferenceNeeded / (2 * Math.PI)
-  const firstLevelRadius = Math.max(INTERNAL_CONFIG.minRadius, calculatedRadius)
+  // Sort by ID for stable ordering (prevents reshuffling on unrelated changes)
+  firstLevel.sort((a, b) => a.id.localeCompare(b.id))
 
-  // Calculate subtree sizes for proportional angle distribution
-  const subtreeSizes: { pkg: Package; size: number }[] = []
-  let totalSize = 0
-
-  for (const pkg of firstLevel) {
-    const size = getInternalSubtreeSize(pkg.id, internalPackages)
-    subtreeSizes.push({ pkg, size })
-    totalSize += size
-  }
-
-  // Distribute first-level packages around the ring
-  let currentAngle = -Math.PI / 2 // Start from top
-
-  for (const { pkg, size } of subtreeSizes) {
-    // Angle span proportional to subtree size
-    const proportion = size / totalSize
-    const angleSpan = Math.max(
-      INTERNAL_CONFIG.minAngularSpread,
-      Math.PI * 2 * proportion
+  // Distribute across rings (max 12 per ring)
+  for (let i = 0; i < firstLevel.length; i++) {
+    const pkg = firstLevel[i]!
+    const ringIndex = Math.floor(i / INTERNAL_CONFIG.maxPerRing)
+    const indexInRing = i % INTERNAL_CONFIG.maxPerRing
+    const countInThisRing = Math.min(
+      INTERNAL_CONFIG.maxPerRing,
+      firstLevel.length - ringIndex * INTERNAL_CONFIG.maxPerRing
     )
 
-    // Place at center of angular slice
-    const pkgAngle = currentAngle + angleSpan / 2
-    const x = Math.cos(pkgAngle) * firstLevelRadius
-    const y = Math.sin(pkgAngle) * firstLevelRadius
+    // Ring radius
+    const radius =
+      INTERNAL_CONFIG.minRadius + ringIndex * INTERNAL_CONFIG.ringGap
+
+    // Angle: evenly distributed in this ring, with ring offset
+    const ringOffset = ringIndex * 0.15 // Slight offset per ring
+    const angleStep = (Math.PI * 2) / countInThisRing
+    const angle = -Math.PI / 2 + ringOffset + indexInRing * angleStep
+
+    const x = Math.cos(angle) * radius
+    const y = Math.sin(angle) * radius
 
     internalAnchorPositions.set(pkg.id, { x, y })
 
-    // Recursively assign anchors to children (sub-deps)
+    // Assign children to outer rings (relative to this package's ring)
+    const childBaseRadius = radius + INTERNAL_CONFIG.radiusPerDepth
     assignInternalChildAnchors(
       pkg.id,
-      pkgAngle,
-      angleSpan,
-      firstLevelRadius,
-      2, // depth 2
+      angle,
+      angleStep * 0.8, // Children get slightly less angular space
+      childBaseRadius,
       internalPackages
     )
-
-    currentAngle += angleSpan
   }
 }
 
 /**
  * Recursively assign anchor positions to internal children
+ * Children are placed in outer rings within their parent's angular slice
  */
 function assignInternalChildAnchors(
   parentId: string,
   parentAngle: number,
   angleSpan: number,
   parentRadius: number,
-  depth: number,
   internalPackages: Map<string, Package>
 ): void {
   // Find children of this parent
@@ -618,37 +601,20 @@ function assignInternalChildAnchors(
 
     internalAnchorPositions.set(child.id, { x, y })
 
-    // Recurse for deeper levels (if any)
+    // Recurse for deeper levels
     assignInternalChildAnchors(
       child.id,
       childAngle,
       angleStep,
       childRadius,
-      depth + 1,
       internalPackages
     )
   }
 }
 
 /**
- * Get subtree size for internal package
- */
-function getInternalSubtreeSize(
-  pkgId: string,
-  internalPackages: Map<string, Package>
-): number {
-  let size = 1
-  for (const pkg of internalPackages.values()) {
-    if (pkg.parentId === pkgId) {
-      size += getInternalSubtreeSize(pkg.id, internalPackages)
-    }
-  }
-  return size
-}
-
-/**
  * Update physics for internal packages of a specific scope
- * Uses proper tree-aware radial anchors (same approach as outer physics)
+ * Uses tree-aware radial anchors with multi-ring overflow
  * @param scopePath - Path to the scope package (supports arbitrary depth)
  */
 export function updateInternalPhysics(
@@ -667,14 +633,15 @@ export function updateInternalPhysics(
   // The scope root ID is the last element in the path
   const scopeRootId = scopePath[scopePath.length - 1]!
 
-  // Compute tree-aware anchor positions (scales with count and depth)
+  // Compute tree-aware anchor positions (deterministic, stable)
   computeInternalAnchors(internalPackages, scopeRootId)
 
   for (const pkg of packages) {
     let fx = 0
     let fy = 0
 
-    // === SPRING FORCE TOWARD ANCHOR ===
+    // === STRONG SPRING TOWARD ANCHOR ===
+    // Tree-based anchors are the primary positioning force
     const anchor = internalAnchorPositions.get(pkg.id)
     if (anchor) {
       const dx = anchor.x - pkg.position.x
@@ -688,6 +655,7 @@ export function updateInternalPhysics(
     }
 
     // === REPULSION FROM OTHER NODES ===
+    // Secondary force to prevent overlap
     for (const other of packages) {
       if (other.id === pkg.id) continue
 

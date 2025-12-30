@@ -46,6 +46,10 @@ const tickCallbacks: TickCallback[] = []
 let animationFrameId: number | null = null
 let isRunning = false
 
+// Non-reactive timing state (no Vue overhead)
+let lastTick = 0
+let tickCount = 0
+
 // Camera transition state
 let cameraTargetX = 0
 let cameraTargetY = 0
@@ -123,9 +127,9 @@ function tick(): void {
   if (!isRunning) return
 
   const now = Date.now()
-  const deltaTime = (now - gameState.lastTick) / 1000 // Convert to seconds
-  gameState.lastTick = now
-  gameState.tickCount++
+  const deltaTime = (now - lastTick) / 1000 // Convert to seconds
+  lastTick = now
+  tickCount++
 
   // Smooth camera transitions
   updateCameraTransition(deltaTime)
@@ -148,7 +152,7 @@ function tick(): void {
   }
 
   // Update efficiency
-  if (gameState.tickCount % 30 === 0) {
+  if (tickCount % 30 === 0) {
     updateEfficiency()
   }
 
@@ -253,7 +257,7 @@ export function startGameLoop(): void {
   if (isRunning) return
 
   isRunning = true
-  gameState.lastTick = Date.now()
+  lastTick = Date.now()
   animationFrameId = requestAnimationFrame(tick)
 }
 

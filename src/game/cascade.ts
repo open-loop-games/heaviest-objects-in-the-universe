@@ -3,7 +3,16 @@
 // Supports arbitrary depth using scope paths
 
 import { gameState, getCompressionChance, getMaxCompressedDepth } from './state'
-import { DEP_SPAWN_COST, MAX_PENDING_DEPS } from './config'
+import {
+  DEP_SPAWN_COST,
+  MAX_PENDING_DEPS,
+  GOLDEN_SPAWN_CHANCE,
+  GOLDEN_WEIGHT_MULTIPLIER,
+  GOLDEN_MIN_DEPTH,
+  CACHE_FRAGMENT_CHANCE,
+  CACHE_FRAGMENT_MIN_DEPTH,
+  DEPTH_WEIGHT_MULTIPLIERS,
+} from './config'
 import { addWeight } from './mutations'
 import { generateId, generateWireId } from './id-generator'
 import {
@@ -365,13 +374,39 @@ function spawnNextFromQueue(): void {
   const id = generateId()
   const identity = spawn.identity as PackageIdentity
 
+  // Calculate effective depth for rewards (scope depth + internal depth)
+  const effectiveDepth = depth + spawn.depth
+
+  // Roll for golden package (depth 3+ only)
+  const isGolden =
+    effectiveDepth >= GOLDEN_MIN_DEPTH && Math.random() < GOLDEN_SPAWN_CHANCE
+
+  // Roll for cache fragment (depth 2+ only)
+  const hasCacheFragment =
+    effectiveDepth >= CACHE_FRAGMENT_MIN_DEPTH &&
+    Math.random() < CACHE_FRAGMENT_CHANCE
+
+  // Apply golden weight multiplier and depth weight bonus
+  const depthIndex = Math.min(
+    effectiveDepth,
+    DEPTH_WEIGHT_MULTIPLIERS.length - 1
+  )
+  const depthMultiplier = DEPTH_WEIGHT_MULTIPLIERS[depthIndex] ?? 1.0
+  const goldenMultiplier = isGolden ? GOLDEN_WEIGHT_MULTIPLIER : 1.0
+  const finalSize = Math.floor(spawn.size * depthMultiplier * goldenMultiplier)
+
+  // Track golden packages
+  if (isGolden) {
+    gameState.stats.goldenPackagesFound++
+  }
+
   const innerPkg: Package = {
     id,
     parentId: spawn.parentInternalId || spawn.packageId,
     position: spawn.position,
     velocity: spawn.velocity,
     state: 'installing',
-    size: spawn.size,
+    size: finalSize,
     depth: spawn.depth,
     children: [],
     installProgress: 0.7 + Math.random() * 0.3,
@@ -384,6 +419,9 @@ function spawnNextFromQueue(): void {
     isGhost: false,
     ghostTargetId: null,
     ghostTargetScope: null,
+    // Depth rewards
+    isGolden,
+    hasCacheFragment,
   }
 
   // Check for conflicts
@@ -394,7 +432,6 @@ function spawnNextFromQueue(): void {
     fromId: spawn.parentInternalId || spawn.packageId,
     toId: id,
     wireType: 'dependency',
-    isSymlink: false,
     flowProgress: 0,
     conflicted: isConflicted,
     conflictTime: isConflicted ? Date.now() : 0,
@@ -420,8 +457,8 @@ function spawnNextFromQueue(): void {
   targetWires.set(wire.id, wire)
 
   // Update weight (with compression applied to global weight)
-  targetPkg.size += spawn.size
-  addWeight(spawn.size)
+  targetPkg.size += finalSize
+  addWeight(finalSize)
 
   // Trigger particle effect
   if (onSpawnEffect) {
@@ -503,12 +540,4 @@ export function getAllPendingSpawns(): PendingSpawn[] {
 export function getCascadeScopePath(): string[] {
   const cascadeData = gameState.cascade as unknown as CascadeData
   return cascadeData.scopePath ? [...cascadeData.scopePath] : []
-}
-
-// Legacy exports for backwards compatibility
-export function startLayer2Cascade(
-  layer1PackageId: string,
-  internalPkgId: string
-): void {
-  startCascade([layer1PackageId, internalPkgId])
 }
