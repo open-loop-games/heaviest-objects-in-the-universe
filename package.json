@@ -12,7 +12,7 @@
     "lint:check": "eslint src",
     "format": "prettier --write src",
     "format:check": "prettier --check src",
-    "build:itch": "vue-tsc -b && vite build && cd dist && zip -r ../heaviest-objects.zip .",
+    "build:itch": "vue-tsc -b && BASE_URL=./ vite build && rm -f itch_assets/heaviest-objects-in-the-universe.zip && cd dist && zip -r ../itch_assets/heaviest-objects-in-the-universe.zip .",
     "prepare": "husky"
   },
   "lint-staged": {
