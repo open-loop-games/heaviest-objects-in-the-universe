@@ -4,21 +4,6 @@ import { toRaw } from 'vue'
 import type { GameState, GameConfig } from './types'
 import { DEFAULT_CONFIG } from './config'
 
-/**
- * Calculate the cost to install the next package
- * Formula: baseCost * multiplier^(owned - free)
- */
-export function getInstallCost(
-  ownedPackages: number,
-  freePackages: number = 0,
-  config: GameConfig = DEFAULT_CONFIG
-): number {
-  const effectiveOwned = Math.max(0, ownedPackages - freePackages)
-  return Math.floor(
-    config.baseBandwidthCost * Math.pow(config.costMultiplier, effectiveOwned)
-  )
-}
-
 // Note: getEffectiveBandwidthRegen is now in upgrades.ts (uses upgrade system)
 
 /**
@@ -160,25 +145,4 @@ export function rollPackageSize(): number {
   const base = 10 + Math.random() * 40
   const isLarge = Math.random() < 0.1
   return Math.floor(isLarge ? base * 5 : base)
-}
-
-/**
- * Format large numbers for display
- */
-export function formatNumber(n: number): string {
-  if (n < 1000) return Math.floor(n).toString()
-  if (n < 1000000) return (n / 1000).toFixed(1) + 'K'
-  if (n < 1000000000) return (n / 1000000).toFixed(1) + 'M'
-  return (n / 1000000000).toFixed(1) + 'G'
-}
-
-/**
- * Format weight as bytes
- */
-export function formatWeight(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  if (bytes < 1024 * 1024 * 1024)
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
 }

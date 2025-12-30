@@ -2,9 +2,12 @@
 import { Graphics } from 'pixi.js'
 import { drawPadlockShape, drawCrossedArrows } from '../primitives'
 
-export const SECURITY_ICONS: Record<string, (g: Graphics, s: number, color: number) => void> = {
+export const SECURITY_ICONS: Record<
+  string,
+  (g: Graphics, s: number, color: number) => void
+> = {
   // helmet: Viking/safety helmet
-  'helmet': (g, s, color) => {
+  helmet: (g, s, color) => {
     // Dome
     g.arc(0, 0, s * 0.7, Math.PI, 0, false)
     g.lineTo(s * 0.7, s * 0.3)
@@ -32,7 +35,7 @@ export const SECURITY_ICONS: Record<string, (g: Graphics, s: number, color: numb
   },
 
   // passport: ID card / passport booklet
-  'passport': (g, s, color) => {
+  passport: (g, s, color) => {
     // Passport booklet
     g.roundRect(-s * 0.6, -s * 0.8, s * 1.2, s * 1.6, s * 0.1)
     g.fill({ color, alpha: 0.8 })
@@ -55,16 +58,16 @@ export const SECURITY_ICONS: Record<string, (g: Graphics, s: number, color: numb
   },
 
   // bcrypt: Padlock (encryption)
-  'bcrypt': (g, s, color) => {
+  bcrypt: (g, s, color) => {
     drawPadlockShape(g, s, color, true)
   },
 
-  'bcryptjs': (g, s, color) => {
+  bcryptjs: (g, s, color) => {
     drawPadlockShape(g, s, color, true)
   },
 
   // cors: Crossed arrows (Cross-Origin Resource Sharing)
-  'cors': (g, s, color) => {
+  cors: (g, s, color) => {
     // Circle representing "origin"
     g.circle(0, 0, s * 0.9)
     g.stroke({ color, width: 2 })
@@ -73,7 +76,7 @@ export const SECURITY_ICONS: Record<string, (g: Graphics, s: number, color: numb
   },
 
   // jwt/jsonwebtoken: Token badge with three parts
-  'jsonwebtoken': (g, s, color) => {
+  jsonwebtoken: (g, s, color) => {
     const segmentH = s * 0.5
     const gap = s * 0.08
 
@@ -82,11 +85,23 @@ export const SECURITY_ICONS: Record<string, (g: Graphics, s: number, color: numb
     g.fill({ color: 0xff6b6b, alpha: 0.8 })
 
     // Payload (middle) - purple-ish
-    g.roundRect(-s * 0.6, -s * 0.85 + segmentH + gap, s * 1.2, segmentH, s * 0.1)
+    g.roundRect(
+      -s * 0.6,
+      -s * 0.85 + segmentH + gap,
+      s * 1.2,
+      segmentH,
+      s * 0.1
+    )
     g.fill({ color: 0xcc5de8, alpha: 0.8 })
 
     // Signature (bottom) - cyan-ish
-    g.roundRect(-s * 0.6, -s * 0.85 + (segmentH + gap) * 2, s * 1.2, segmentH, s * 0.1)
+    g.roundRect(
+      -s * 0.6,
+      -s * 0.85 + (segmentH + gap) * 2,
+      s * 1.2,
+      segmentH,
+      s * 0.1
+    )
     g.fill({ color: 0x22b8cf, alpha: 0.8 })
 
     // Dots between sections
@@ -95,14 +110,26 @@ export const SECURITY_ICONS: Record<string, (g: Graphics, s: number, color: numb
     g.fill({ color, alpha: 0.9 })
   },
 
-  'jwt': (g, s, color) => {
+  jwt: (g, s, color) => {
     const segmentH = s * 0.5
     const gap = s * 0.08
     g.roundRect(-s * 0.6, -s * 0.85, s * 1.2, segmentH, s * 0.1)
     g.fill({ color: 0xff6b6b, alpha: 0.8 })
-    g.roundRect(-s * 0.6, -s * 0.85 + segmentH + gap, s * 1.2, segmentH, s * 0.1)
+    g.roundRect(
+      -s * 0.6,
+      -s * 0.85 + segmentH + gap,
+      s * 1.2,
+      segmentH,
+      s * 0.1
+    )
     g.fill({ color: 0xcc5de8, alpha: 0.8 })
-    g.roundRect(-s * 0.6, -s * 0.85 + (segmentH + gap) * 2, s * 1.2, segmentH, s * 0.1)
+    g.roundRect(
+      -s * 0.6,
+      -s * 0.85 + (segmentH + gap) * 2,
+      s * 1.2,
+      segmentH,
+      s * 0.1
+    )
     g.fill({ color: 0x22b8cf, alpha: 0.8 })
     g.circle(0, -s * 0.85 + segmentH + gap / 2, s * 0.06)
     g.circle(0, -s * 0.85 + segmentH * 2 + gap * 1.5, s * 0.06)

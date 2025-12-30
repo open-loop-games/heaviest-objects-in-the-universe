@@ -30,7 +30,7 @@ export function getHoistLayoutInfo(): {
       scale: 1.0,
       innerRadius: BASE_RING_RADIUS,
       outerRadius: 0,
-      needsOuterRing: false
+      needsOuterRing: false,
     }
   }
 
@@ -41,7 +41,7 @@ export function getHoistLayoutInfo(): {
     scale,
     innerRadius: BASE_RING_RADIUS - scaledGap / 2,
     outerRadius: BASE_RING_RADIUS + scaledGap / 2,
-    needsOuterRing: true
+    needsOuterRing: true,
   }
 }
 
@@ -76,7 +76,10 @@ function redistributeRings(): void {
         // Offset outer ring by half step for better packing
         const outerIndex = i - innerCount
         const outerCount = count - innerCount
-        dep.orbitAngle = -Math.PI / 2 + Math.PI / outerCount + (outerIndex / outerCount) * Math.PI * 2
+        dep.orbitAngle =
+          -Math.PI / 2 +
+          Math.PI / outerCount +
+          (outerIndex / outerCount) * Math.PI * 2
       }
     })
   }
@@ -125,7 +128,11 @@ export function findSharedDeps(): Map<string, string[]> {
 /**
  * Check if a specific package can be hoisted (has shared dep)
  */
-export function canHoist(packageId: string): { canHoist: boolean; depName?: string; sourcePackages?: string[] } {
+export function canHoist(packageId: string): {
+  canHoist: boolean
+  depName?: string
+  sourcePackages?: string[]
+} {
   const pkg = gameState.packages.get(packageId)
   if (!pkg) return { canHoist: false }
   if (pkg.parentId !== gameState.rootId) return { canHoist: false }
@@ -190,7 +197,6 @@ export function getDropZoneDistance(x: number, y: number): number {
 // HOISTING ACTIONS
 // ============================================
 
-
 /**
  * Hoist a shared dep to the root ring
  * @param depName The name of the dependency to hoist
@@ -231,7 +237,9 @@ export function hoistDep(depName: string): string | null {
   if (!identity) return null
 
   // Get root position for orbit
-  const root = gameState.rootId ? gameState.packages.get(gameState.rootId) : null
+  const root = gameState.rootId
+    ? gameState.packages.get(gameState.rootId)
+    : null
   if (!root) return null
 
   // Create hoisted dep (position/angle will be set by redistributeRings)
@@ -285,13 +293,16 @@ export function getHoistedDeps(): HoistedDep[] {
  * Update hoisted deps positions (orbit around root, multi-ring layout)
  */
 export function updateHoistedPositions(): void {
-  const root = gameState.rootId ? gameState.packages.get(gameState.rootId) : null
+  const root = gameState.rootId
+    ? gameState.packages.get(gameState.rootId)
+    : null
   if (!root) return
 
   const layout = getHoistLayoutInfo()
 
   for (const hoisted of gameState.hoistedDeps.values()) {
-    const radius = hoisted.ringIndex === 0 ? layout.innerRadius : layout.outerRadius
+    const radius =
+      hoisted.ringIndex === 0 ? layout.innerRadius : layout.outerRadius
     hoisted.position.x = root.position.x + Math.cos(hoisted.orbitAngle) * radius
     hoisted.position.y = root.position.y + Math.sin(hoisted.orbitAngle) * radius
   }
@@ -316,6 +327,8 @@ export function isDepHoisted(depName: string): boolean {
 /**
  * Get the hoisted dep for a ghost package
  */
-export function getHoistedDepForGhost(ghostTargetId: string): HoistedDep | null {
+export function getHoistedDepForGhost(
+  ghostTargetId: string
+): HoistedDep | null {
   return gameState.hoistedDeps.get(ghostTargetId) || null
 }

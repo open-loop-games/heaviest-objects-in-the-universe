@@ -68,9 +68,7 @@ const showCompression = computed(() => {
 })
 
 const compressionLevel = computed(() => getUpgradeLevel('compression'))
-const compressionMaxLevel = computed(
-  () => UPGRADES.compression?.maxLevel ?? 8
-)
+const compressionMaxLevel = computed(() => UPGRADES.compression?.maxLevel ?? 8)
 const canAffordCompression = computed(() => canPurchaseUpgrade('compression'))
 
 function handleCompressionPipClick(pipIndex: number) {

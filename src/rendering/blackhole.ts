@@ -28,21 +28,21 @@ interface CollapseParticle {
   targetY: number
   delay: number
   color: number
-  wave: number  // Which wave this particle belongs to (0, 1, 2)
-  absorbed: boolean  // Has this particle reached the target?
+  wave: number // Which wave this particle belongs to (0, 1, 2)
+  absorbed: boolean // Has this particle reached the target?
 }
 
 // Absorption burst effect when particle reaches target
 interface AbsorptionBurst {
   x: number
   y: number
-  progress: number  // 0 to 1
+  progress: number // 0 to 1
   color: number
 }
 
 // Shockwave ring expanding from target
 interface ShockwaveRing {
-  progress: number  // 0 to 1
+  progress: number // 0 to 1
   startTime: number
 }
 
@@ -64,7 +64,7 @@ export class BlackHoleRenderer {
   private container: Container
   private backgroundContainer: Container
   private coreContainer: Container
-  private overlayContainer: Container  // Renders on top of everything
+  private overlayContainer: Container // Renders on top of everything
 
   private warpGraphics: Graphics
   private fieldGraphics: Graphics
@@ -97,7 +97,9 @@ export class BlackHoleRenderer {
   private lastAmbientSpawn = 0
 
   // World to screen converter (set by renderer)
-  private worldToScreen: ((x: number, y: number) => { x: number; y: number }) | null = null
+  private worldToScreen:
+    | ((x: number, y: number) => { x: number; y: number })
+    | null = null
 
   constructor(_app: Application) {
     this.container = new Container()
@@ -205,7 +207,12 @@ export class BlackHoleRenderer {
 
     // Update and draw ambient particles streaming to prestige panel (starts at 80%)
     if (progress >= GRAVITY_STAGES.PRESTIGE_NEAR) {
-      this.updateAmbientParticles(deltaTime, progress, screenWidth, screenHeight)
+      this.updateAmbientParticles(
+        deltaTime,
+        progress,
+        screenWidth,
+        screenHeight
+      )
       this.drawAmbientParticles(screenWidth, screenHeight)
     }
   }
@@ -249,7 +256,11 @@ export class BlackHoleRenderer {
   /**
    * Draw gravity field lines being pulled toward prestige panel
    */
-  private drawGravityField(progress: number, screenWidth: number, screenHeight: number): void {
+  private drawGravityField(
+    progress: number,
+    screenWidth: number,
+    screenHeight: number
+  ): void {
     const intensity =
       (progress - GRAVITY_STAGES.PULL_VISIBLE) /
       (1 - GRAVITY_STAGES.PULL_VISIBLE)
@@ -276,7 +287,10 @@ export class BlackHoleRenderer {
 
       // Curve toward prestige panel direction
       const midDist = (startDist + endDist) / 2
-      const midAngle = line.angle + (targetAngle - line.angle) * bendAmount * 0.5 + Math.sin(this.phase * 3 + line.offset) * 0.1
+      const midAngle =
+        line.angle +
+        (targetAngle - line.angle) * bendAmount * 0.5 +
+        Math.sin(this.phase * 3 + line.offset) * 0.1
       const midX = Math.cos(midAngle) * midDist * 0.8
       const midY = Math.sin(midAngle) * midDist * 0.8
 
@@ -298,7 +312,10 @@ export class BlackHoleRenderer {
         const dist = 40 + t * 8
         // Spiral bends toward prestige panel
         const bendT = t / 20
-        const angle = swirlAngle + t * 0.2 + (targetAngle - swirlAngle) * bendT * intensity * 0.3
+        const angle =
+          swirlAngle +
+          t * 0.2 +
+          (targetAngle - swirlAngle) * bendT * intensity * 0.3
         spiralPoints.push({
           x: Math.cos(angle) * dist,
           y: Math.sin(angle) * dist,
@@ -322,59 +339,6 @@ export class BlackHoleRenderer {
   }
 
   /**
-   * Draw the black hole core
-   */
-  private drawCore(progress: number): void {
-    const intensity =
-      (progress - GRAVITY_STAGES.CORE_VISIBLE) /
-      (1 - GRAVITY_STAGES.CORE_VISIBLE)
-
-    // Event horizon (black center)
-    const coreRadius = 20 + intensity * 30
-    const pulseRadius = coreRadius + Math.sin(this.phase * 4) * 5 * intensity
-
-    // Outer glow rings
-    for (let i = 4; i >= 0; i--) {
-      const glowRadius = pulseRadius + i * 15
-      const glowAlpha = 0.1 + intensity * 0.15 * (1 - i / 5)
-      const color = this.lerpColor(0x3a1a5a, 0x7a5aff, i / 5)
-
-      this.coreGraphics.circle(0, 0, glowRadius)
-      this.coreGraphics.fill({ color, alpha: glowAlpha })
-    }
-
-    // Accretion disk effect
-    const diskOuter = pulseRadius + 60
-    const diskInner = pulseRadius + 10
-
-    this.coreGraphics.ellipse(0, 0, diskOuter, diskOuter * 0.3)
-    this.coreGraphics.stroke({
-      color: 0xaa7aff,
-      width: 3,
-      alpha: 0.3 + intensity * 0.3,
-    })
-
-    // Inner bright ring
-    this.coreGraphics.circle(0, 0, diskInner)
-    this.coreGraphics.stroke({
-      color: 0xffaaff,
-      width: 2,
-      alpha: 0.4 + intensity * 0.4,
-    })
-
-    // Black core
-    this.coreGraphics.circle(0, 0, pulseRadius * 0.7)
-    this.coreGraphics.fill({ color: 0x000000, alpha: 0.9 })
-
-    // Singularity point
-    this.coreGraphics.circle(0, 0, 3)
-    this.coreGraphics.fill({
-      color: 0xffffff,
-      alpha: 0.3 + Math.sin(this.phase * 8) * 0.2,
-    })
-  }
-
-  /**
    * Start the collapse animation - particles spiral toward prestige panel in waves
    */
   startCollapse(onComplete: () => void): void {
@@ -389,16 +353,18 @@ export class BlackHoleRenderer {
 
     // Sort packages by distance from prestige target for wave assignment
     const packages = Array.from(gameState.packages.values())
-    const sortedPackages = packages.map(pkg => {
-      let screenPos = { x: pkg.position.x, y: pkg.position.y }
-      if (this.worldToScreen) {
-        screenPos = this.worldToScreen(pkg.position.x, pkg.position.y)
-      }
-      const dx = screenPos.x - this.prestigeTargetX
-      const dy = screenPos.y - this.prestigeTargetY
-      const dist = Math.sqrt(dx * dx + dy * dy)
-      return { pkg, screenPos, dist }
-    }).sort((a, b) => a.dist - b.dist)
+    const sortedPackages = packages
+      .map((pkg) => {
+        let screenPos = { x: pkg.position.x, y: pkg.position.y }
+        if (this.worldToScreen) {
+          screenPos = this.worldToScreen(pkg.position.x, pkg.position.y)
+        }
+        const dx = screenPos.x - this.prestigeTargetX
+        const dy = screenPos.y - this.prestigeTargetY
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        return { pkg, screenPos, dist }
+      })
+      .sort((a, b) => a.dist - b.dist)
 
     // Assign particles to 3 waves based on distance (closest first)
     const totalPackages = sortedPackages.length
@@ -418,7 +384,8 @@ export class BlackHoleRenderer {
         targetX: this.prestigeTargetX,
         targetY: this.prestigeTargetY,
         delay: waveDelay + withinWaveDelay,
-        color: pkg.state === 'conflict' ? Colors.borderConflict : Colors.borderReady,
+        color:
+          pkg.state === 'conflict' ? Colors.borderConflict : Colors.borderReady,
         wave,
         absorbed: false,
       })
@@ -437,8 +404,11 @@ export class BlackHoleRenderer {
     this.collapseProgress += deltaTime * 0.6 // Slightly slower for more dramatic effect
 
     // Screen shake - intensifies as more particles are absorbed
-    const absorbedCount = this.collapseParticles.filter(p => p.absorbed).length
-    const absorbedRatio = absorbedCount / Math.max(1, this.collapseParticles.length)
+    const absorbedCount = this.collapseParticles.filter(
+      (p) => p.absorbed
+    ).length
+    const absorbedRatio =
+      absorbedCount / Math.max(1, this.collapseParticles.length)
     const shakeAmount = 2 + absorbedRatio * 6 // Builds from 2 to 8
     this.shakeOffset.x = (Math.random() - 0.5) * shakeAmount
     this.shakeOffset.y = (Math.random() - 0.5) * shakeAmount
@@ -640,8 +610,11 @@ export class BlackHoleRenderer {
     }
 
     // Complete when all particles absorbed and animation done
-    const allAbsorbed = this.collapseParticles.every(p => p.absorbed)
-    if (this.collapseProgress >= 1 || (allAbsorbed && this.collapseProgress > 0.7)) {
+    const allAbsorbed = this.collapseParticles.every((p) => p.absorbed)
+    if (
+      this.collapseProgress >= 1 ||
+      (allAbsorbed && this.collapseProgress > 0.7)
+    ) {
       this.isCollapsing = false
       this.collapseParticles = []
       this.absorptionBursts = []
@@ -657,7 +630,11 @@ export class BlackHoleRenderer {
    * Draw intensifying vignette during collapse animation
    * Gets darker and more dramatic as more particles are absorbed
    */
-  private drawCollapseVignette(screenWidth: number, screenHeight: number, intensity: number): void {
+  private drawCollapseVignette(
+    screenWidth: number,
+    screenHeight: number,
+    intensity: number
+  ): void {
     // Base vignette that intensifies during collapse
     const vignetteIntensity = 0.3 + intensity * 0.5
 
@@ -682,7 +659,12 @@ export class BlackHoleRenderer {
       this.vignetteGraphics.fill({ color: 0x1a0a20, alpha })
 
       // Right
-      this.vignetteGraphics.rect(screenWidth - inset, inset, inset, screenHeight - inset * 2)
+      this.vignetteGraphics.rect(
+        screenWidth - inset,
+        inset,
+        inset,
+        screenHeight - inset * 2
+      )
       this.vignetteGraphics.fill({ color: 0x1a0a20, alpha })
     }
 
@@ -759,7 +741,9 @@ export class BlackHoleRenderer {
   /**
    * Set the world-to-screen coordinate converter
    */
-  setWorldToScreen(converter: (x: number, y: number) => { x: number; y: number }): void {
+  setWorldToScreen(
+    converter: (x: number, y: number) => { x: number; y: number }
+  ): void {
     this.worldToScreen = converter
   }
 
@@ -768,10 +752,17 @@ export class BlackHoleRenderer {
    * Creates urgency and draws attention toward prestige panel
    * Uses standard screen coordinates (0,0) to (screenWidth, screenHeight)
    */
-  private drawPrestigeVignette(screenWidth: number, screenHeight: number, progress: number): void {
+  private drawPrestigeVignette(
+    screenWidth: number,
+    screenHeight: number,
+    progress: number
+  ): void {
     // Scale intensity based on progress (PRESTIGE_NEAR to 1.0 maps to 0.3 to 1.0 intensity)
     const nearThreshold = GRAVITY_STAGES.PRESTIGE_NEAR
-    const progressIntensity = progress >= 1.0 ? 1.0 : (progress - nearThreshold) / (1.0 - nearThreshold) * 0.7 + 0.3
+    const progressIntensity =
+      progress >= 1.0
+        ? 1.0
+        : ((progress - nearThreshold) / (1.0 - nearThreshold)) * 0.7 + 0.3
 
     // Pulsing intensity
     const pulseSpeed = 2.5
@@ -846,8 +837,10 @@ export class BlackHoleRenderer {
 
         // Only spawn if package is on screen
         if (
-          screenPos.x > -100 && screenPos.x < screenWidth + 100 &&
-          screenPos.y > -100 && screenPos.y < screenHeight + 100
+          screenPos.x > -100 &&
+          screenPos.x < screenWidth + 100 &&
+          screenPos.y > -100 &&
+          screenPos.y < screenHeight + 100
         ) {
           this.ambientParticles.push({
             x: screenPos.x,
@@ -900,7 +893,10 @@ export class BlackHoleRenderer {
    * Draw ambient particles in standard screen coordinates
    * Overlay container is at (0,0), so use screen coords directly
    */
-  private drawAmbientParticles(_screenWidth: number, _screenHeight: number): void {
+  private drawAmbientParticles(
+    _screenWidth: number,
+    _screenHeight: number
+  ): void {
     for (const particle of this.ambientParticles) {
       // Use screen coordinates directly (overlay container is at 0,0)
       const x = particle.x

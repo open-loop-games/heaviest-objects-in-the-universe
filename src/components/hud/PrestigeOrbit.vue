@@ -123,9 +123,14 @@ const tierArcProgress = computed(() => {
       icon: '⟲',
       start: TIER_THRESHOLDS[1],
       end: TIER_THRESHOLDS[2],
-      progress: tokens >= TIER_THRESHOLDS[1]
-        ? Math.min(1, (tokens - TIER_THRESHOLDS[1]) / (TIER_THRESHOLDS[2] - TIER_THRESHOLDS[1]))
-        : 0,
+      progress:
+        tokens >= TIER_THRESHOLDS[1]
+          ? Math.min(
+              1,
+              (tokens - TIER_THRESHOLDS[1]) /
+                (TIER_THRESHOLDS[2] - TIER_THRESHOLDS[1])
+            )
+          : 0,
       complete: tokens >= TIER_THRESHOLDS[2],
     },
     // Tier 4: 21 → 42 tokens
@@ -134,9 +139,14 @@ const tierArcProgress = computed(() => {
       icon: '⚡',
       start: TIER_THRESHOLDS[2],
       end: TIER_THRESHOLDS[3],
-      progress: tokens >= TIER_THRESHOLDS[2]
-        ? Math.min(1, (tokens - TIER_THRESHOLDS[2]) / (TIER_THRESHOLDS[3] - TIER_THRESHOLDS[2]))
-        : 0,
+      progress:
+        tokens >= TIER_THRESHOLDS[2]
+          ? Math.min(
+              1,
+              (tokens - TIER_THRESHOLDS[2]) /
+                (TIER_THRESHOLDS[3] - TIER_THRESHOLDS[2])
+            )
+          : 0,
       complete: tokens >= TIER_THRESHOLDS[3],
     },
     // Tier 5: 42 → 63 tokens
@@ -145,9 +155,14 @@ const tierArcProgress = computed(() => {
       icon: '★',
       start: TIER_THRESHOLDS[3],
       end: TIER_THRESHOLDS[4],
-      progress: tokens >= TIER_THRESHOLDS[3]
-        ? Math.min(1, (tokens - TIER_THRESHOLDS[3]) / (TIER_THRESHOLDS[4] - TIER_THRESHOLDS[3]))
-        : 0,
+      progress:
+        tokens >= TIER_THRESHOLDS[3]
+          ? Math.min(
+              1,
+              (tokens - TIER_THRESHOLDS[3]) /
+                (TIER_THRESHOLDS[4] - TIER_THRESHOLDS[3])
+            )
+          : 0,
       complete: tokens >= TIER_THRESHOLDS[4],
     },
   ]
@@ -220,14 +235,14 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div
-    class="orbital-decay"
-    :class="{ ready: gravityReady }"
-  >
+  <div class="orbital-decay" :class="{ ready: gravityReady }">
     <!-- Inner container for horizontal orbit + reward layout -->
     <div class="orbital-decay-inner">
       <!-- Orbiting weight icons -->
-      <div class="orbit-container" :class="{ collapsed: gravityReady, 'has-tier-arcs': showCacheTokens }">
+      <div
+        class="orbit-container"
+        :class="{ collapsed: gravityReady, 'has-tier-arcs': showCacheTokens }"
+      >
         <div
           class="orbit-ring"
           :style="{
@@ -245,17 +260,16 @@ onUnmounted(() => {
         </div>
 
         <!-- Tier progress arcs (outer rings) - reveals after first prestige -->
-        <svg
-          v-if="showCacheTokens"
-          class="tier-arcs"
-          viewBox="0 0 200 200"
-        >
+        <svg v-if="showCacheTokens" class="tier-arcs" viewBox="0 0 200 200">
           <!-- Tier arc tracks and fills (4 quarter-circle arcs) -->
           <g
             v-for="arc in tierArcPaths"
             :key="arc.tier"
             class="tier-arc-group"
-            :class="{ complete: arc.complete, active: arc.progress > 0 && !arc.complete }"
+            :class="{
+              complete: arc.complete,
+              active: arc.progress > 0 && !arc.complete,
+            }"
             :style="{ '--arc-rotation': arc.rotation + 'deg' }"
           >
             <!-- Track (unfilled) -->
@@ -288,12 +302,23 @@ onUnmounted(() => {
               complete: arc.complete,
               active: arc.progress > 0 && !arc.complete,
               ['tier-' + arc.tier]: true,
-              'auto-active': (arc.tier === 2 && automationActive && automationType === 'resolve') ||
-                             (arc.tier === 3 && automationActive && automationType === 'dedup'),
-              'auto-flash': (arc.tier === 2 && showAutomationFlash && automationType === 'resolve') ||
-                            (arc.tier === 3 && showAutomationFlash && automationType === 'dedup'),
+              'auto-active':
+                (arc.tier === 2 &&
+                  automationActive &&
+                  automationType === 'resolve') ||
+                (arc.tier === 3 &&
+                  automationActive &&
+                  automationType === 'dedup'),
+              'auto-flash':
+                (arc.tier === 2 &&
+                  showAutomationFlash &&
+                  automationType === 'resolve') ||
+                (arc.tier === 3 &&
+                  showAutomationFlash &&
+                  automationType === 'dedup'),
             }"
-          >{{ arc.icon }}</span>
+            >{{ arc.icon }}</span
+          >
         </div>
 
         <!-- Quality arcs around singularity -->
@@ -660,8 +685,13 @@ onUnmounted(() => {
 }
 
 @keyframes tier-arc-pulse {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* Tier unlock icons container */
@@ -712,10 +742,18 @@ onUnmounted(() => {
   animation: tier-icon-pulse 2s ease-in-out infinite;
 }
 
-.tier-unlock-icon.active.tier-2 { color: #5aaaff; }
-.tier-unlock-icon.active.tier-3 { color: #5affc8; }
-.tier-unlock-icon.active.tier-4 { color: #ffc85a; }
-.tier-unlock-icon.active.tier-5 { color: #ff8cc8; }
+.tier-unlock-icon.active.tier-2 {
+  color: #5aaaff;
+}
+.tier-unlock-icon.active.tier-3 {
+  color: #5affc8;
+}
+.tier-unlock-icon.active.tier-4 {
+  color: #ffc85a;
+}
+.tier-unlock-icon.active.tier-5 {
+  color: #ff8cc8;
+}
 
 /* Complete icons - bright with glow */
 .tier-unlock-icon.complete {
@@ -745,12 +783,18 @@ onUnmounted(() => {
 }
 
 @keyframes tier-icon-pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 0.8; }
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.8;
+  }
 }
 
 @keyframes tier-5-complete {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateX(-50%) scale(1);
     text-shadow: 0 0 8px rgba(255, 140, 200, 0.8);
   }
@@ -778,19 +822,34 @@ onUnmounted(() => {
 }
 
 @keyframes tier-auto-spin-right {
-  from { transform: translateY(-50%) rotate(0deg); }
-  to { transform: translateY(-50%) rotate(360deg); }
+  from {
+    transform: translateY(-50%) rotate(0deg);
+  }
+  to {
+    transform: translateY(-50%) rotate(360deg);
+  }
 }
 
 @keyframes tier-auto-spin-bottom {
-  from { transform: translateX(-50%) rotate(0deg); }
-  to { transform: translateX(-50%) rotate(360deg); }
+  from {
+    transform: translateX(-50%) rotate(0deg);
+  }
+  to {
+    transform: translateX(-50%) rotate(360deg);
+  }
 }
 
 @keyframes tier-auto-flash {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.5); filter: brightness(2); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.5);
+    filter: brightness(2);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* ============================================

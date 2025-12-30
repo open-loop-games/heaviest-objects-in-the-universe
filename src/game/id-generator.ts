@@ -55,10 +55,3 @@ export function initIdCounterFromState(): void {
 
   nextId = maxId
 }
-
-/**
- * Reset ID counter (for testing or hard reset)
- */
-export function resetIdCounter(): void {
-  nextId = 0
-}

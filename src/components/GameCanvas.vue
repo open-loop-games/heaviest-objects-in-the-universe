@@ -8,7 +8,13 @@ import {
   setCameraTarget,
 } from '../game/loop'
 import { gameState, setActionPreview } from '../game/state'
-import { isInPackageScope, getCurrentScopeWires, getCurrentScopeRoot, isPackageCompressed, exitScope } from '../game/scope'
+import {
+  isInPackageScope,
+  getCurrentScopeWires,
+  getCurrentScopeRoot,
+  isPackageCompressed,
+  exitScope,
+} from '../game/scope'
 import {
   removePackageWithSubtree,
   removeWire,
@@ -597,7 +603,11 @@ function handlePrune() {
 
   // Spawn stability-up particle to show conflict resolved
   if (spawnCausalParticle && wireActionPosition.value) {
-    spawnCausalParticle('stability-up', wireActionPosition.value.x, wireActionPosition.value.y)
+    spawnCausalParticle(
+      'stability-up',
+      wireActionPosition.value.x,
+      wireActionPosition.value.y
+    )
   }
 
   clearWireSelection()
@@ -657,7 +667,11 @@ function handleUpgrade() {
 
   // Spawn stability-up particle to show conflict resolved
   if (spawnCausalParticle && wireActionPosition.value) {
-    spawnCausalParticle('stability-up', wireActionPosition.value.x, wireActionPosition.value.y)
+    spawnCausalParticle(
+      'stability-up',
+      wireActionPosition.value.x,
+      wireActionPosition.value.y
+    )
   }
 
   clearWireSelection()
@@ -731,7 +745,9 @@ function handleMouseMove(event: MouseEvent) {
       isInHoistZone = isInDropZone(worldPos.x, worldPos.y)
 
       // Get root for drop zone rendering
-      const root = gameState.rootId ? gameState.packages.get(gameState.rootId) : null
+      const root = gameState.rootId
+        ? gameState.packages.get(gameState.rootId)
+        : null
       if (root) {
         const distance = getDropZoneDistance(worldPos.x, worldPos.y)
         renderer.getNodeRenderer().updateDropZone(root.position, true, distance)
@@ -940,17 +956,21 @@ function handleMouseUp(event?: MouseEvent) {
         const hoistedDep = getHoistedDepForGhost(hoistedId)
         if (hoistedDep) {
           // Start the rising animation from source to ring
-          renderer.getNodeRenderer().startHoistAnimation(
-            hoistedId,
-            sourceX,
-            sourceY,
-            hoistedDep.position.x,
-            hoistedDep.position.y
-          )
+          renderer
+            .getNodeRenderer()
+            .startHoistAnimation(
+              hoistedId,
+              sourceX,
+              sourceY,
+              hoistedDep.position.x,
+              hoistedDep.position.y
+            )
         }
 
         // Success feedback
-        const root = gameState.rootId ? gameState.packages.get(gameState.rootId) : null
+        const root = gameState.rootId
+          ? gameState.packages.get(gameState.rootId)
+          : null
         if (root) {
           effects.spawnBurst(root.position.x, root.position.y, 0x8b5cf6) // Purple burst
           effects.spawnRipple(root.position.x, root.position.y, 0x8b5cf6)

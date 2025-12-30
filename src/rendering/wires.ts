@@ -33,7 +33,12 @@ export class WireRenderer {
    * Update or create graphics for a wire
    * @param canAffordResolve - whether player can afford to resolve conflict (for affordability indicator)
    */
-  updateWire(wire: Wire, fromPkg: Package, toPkg: Package, canAffordResolve: boolean = true): void {
+  updateWire(
+    wire: Wire,
+    fromPkg: Package,
+    toPkg: Package,
+    canAffordResolve: boolean = true
+  ): void {
     let graphics = this.wireGraphics.get(wire.id)
 
     if (!graphics) {
@@ -402,7 +407,11 @@ export class WireRenderer {
       graphics.moveTo(sx, sy)
       graphics.lineTo(mx, my)
       graphics.lineTo(ex, ey)
-      graphics.stroke({ color: crackleColor, width: 2, alpha: canAfford ? 0.8 : 0.5 })
+      graphics.stroke({
+        color: crackleColor,
+        width: 2,
+        alpha: canAfford ? 0.8 : 0.5,
+      })
 
       // Small spark at junction
       graphics.circle(mx, my, 2)

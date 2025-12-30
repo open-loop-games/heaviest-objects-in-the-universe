@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { gameState, computed_ecosystemTier } from '../../game/state'
-import { getUpgradeLevel, canPurchaseUpgrade, purchaseUpgrade } from '../../game/upgrades'
+import {
+  getUpgradeLevel,
+  canPurchaseUpgrade,
+  purchaseUpgrade,
+} from '../../game/upgrades'
 import {
   AUTO_RESOLVE_DRAIN,
   AUTO_DEDUP_DRAIN,
@@ -113,11 +117,7 @@ function handleHoistSpeedPip(pipIndex: number) {
   <div v-if="showRow" class="resource-row automation-row">
     <!-- Auto-resolve (Tier 2+) -->
     <div v-if="tier >= 2" class="auto-group">
-      <button
-        class="auto-toggle"
-        :class="resolveState"
-        @click="toggleResolve"
-      >
+      <button class="auto-toggle" :class="resolveState" @click="toggleResolve">
         <span class="auto-icon">⚙</span>
         <span class="toggle-dot" :class="resolveState">●</span>
       </button>
@@ -137,11 +137,7 @@ function handleHoistSpeedPip(pipIndex: number) {
 
     <!-- Auto-dedup (Tier 3+) -->
     <div v-if="tier >= 3" class="auto-group">
-      <button
-        class="auto-toggle"
-        :class="dedupState"
-        @click="toggleDedup"
-      >
+      <button class="auto-toggle" :class="dedupState" @click="toggleDedup">
         <span class="auto-icon">⟲</span>
         <span class="toggle-dot" :class="dedupState">●</span>
       </button>
@@ -161,11 +157,7 @@ function handleHoistSpeedPip(pipIndex: number) {
 
     <!-- Auto-hoist (Tier 3+) -->
     <div v-if="tier >= 3" class="auto-group">
-      <button
-        class="auto-toggle"
-        :class="hoistState"
-        @click="toggleHoist"
-      >
+      <button class="auto-toggle" :class="hoistState" @click="toggleHoist">
         <span class="auto-icon">⤴</span>
         <span class="toggle-dot" :class="hoistState">●</span>
       </button>

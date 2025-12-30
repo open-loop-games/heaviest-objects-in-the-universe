@@ -33,7 +33,10 @@ function getDeviconPaths(iconKey: string): { original: string; plain: string } {
 function tintSvgLight(svgText: string): string {
   let result = svgText
   result = result.replace(/fill="(?!none)[^"]*"/gi, `fill="${ICON_TINT_COLOR}"`)
-  result = result.replace(/fill:\s*(?!none)[^;"}]*/gi, `fill:${ICON_TINT_COLOR}`)
+  result = result.replace(
+    /fill:\s*(?!none)[^;"}]*/gi,
+    `fill:${ICON_TINT_COLOR}`
+  )
   return result
 }
 
@@ -101,8 +104,8 @@ const ICON_VARIANTS: Record<string, IconVariant> = {
   'react-query': { baseIcon: 'react', hueShift: 320 },
   // Vue ecosystem variants
   'vue-router': { baseIcon: 'vuejs', hueShift: 60 },
-  'vuex': { baseIcon: 'vuejs', hueShift: 200, saturate: 0.8 },
-  'pinia': { baseIcon: 'vuejs', hueShift: 330 },
+  vuex: { baseIcon: 'vuejs', hueShift: 200, saturate: 0.8 },
+  pinia: { baseIcon: 'vuejs', hueShift: 330 },
   // Node runtime packages now use procedural icons for better distinction
 }
 

@@ -30,7 +30,11 @@ import {
   getCrossPackageDuplicateInfo,
 } from '../game/cross-package'
 import { getCleanliness, isOrganizing } from '../game/physics'
-import { getHoistedDeps, updateHoistedPositions, findSharedDeps } from '../game/hoisting'
+import {
+  getHoistedDeps,
+  updateHoistedPositions,
+  findSharedDeps,
+} from '../game/hoisting'
 import { getAllPendingSpawns, isCascadeActive } from '../game/cascade'
 import { canAffordConflictResolve } from '../game/mutations'
 import { canAffordSymlinkMerge } from '../game/symlinks'
@@ -399,7 +403,9 @@ export class GameRenderer {
       // Get duplicate halo info if applicable (getDuplicateGroup is scope-aware)
       // Check affordability once for all duplicates this frame
       const canAffordMerge = canAffordSymlinkMerge()
-      let duplicateHalo: { color: number; pulsePhase: number; canAfford: boolean } | undefined
+      let duplicateHalo:
+        | { color: number; pulsePhase: number; canAfford: boolean }
+        | undefined
       const group = getDuplicateGroup(pkg.id)
       if (group) {
         duplicateHalo = {
@@ -431,8 +437,10 @@ export class GameRenderer {
       // Internal state glow for packages with internal scope
       // - At root: top-level packages
       // - Inside scope: compressed internal deps (have internalPackages)
-      const isCompressed = pkg.internalPackages !== null && pkg.internalWires !== null
-      const internalState = (isTopLevel || (inScope && isCompressed)) ? pkg.internalState : null
+      const isCompressed =
+        pkg.internalPackages !== null && pkg.internalWires !== null
+      const internalState =
+        isTopLevel || (inScope && isCompressed) ? pkg.internalState : null
 
       // Ghost node rendering (cross-package symlink)
       const isGhost = pkg.isGhost || false
@@ -478,7 +486,7 @@ export class GameRenderer {
       // Draw ephemeral lines for hovered hoisted dep
       const hoveredId = this.nodeRenderer.getHoveredHoistedId()
       if (hoveredId) {
-        const hoveredDep = hoistedDeps.find(h => h.id === hoveredId)
+        const hoveredDep = hoistedDeps.find((h) => h.id === hoveredId)
         if (hoveredDep) {
           // Get source package positions
           const sourcePositions: { x: number; y: number }[] = []
@@ -494,7 +502,6 @@ export class GameRenderer {
         // Clear ephemeral lines when not hovering
         this.nodeRenderer.drawEphemeralLines(null, [])
       }
-
     }
 
     // ============================================
@@ -503,7 +510,10 @@ export class GameRenderer {
     // Only render when inside a scope and cascade is active
     if (inScope && isCascadeActive()) {
       const pendingSpawns = getAllPendingSpawns()
-      this.nodeRenderer.updateQueuedDeps(pendingSpawns, gameState.resources.bandwidth)
+      this.nodeRenderer.updateQueuedDeps(
+        pendingSpawns,
+        gameState.resources.bandwidth
+      )
     } else {
       // Clear queued deps when not in cascade
       this.nodeRenderer.updateQueuedDeps([], 0)
@@ -685,7 +695,8 @@ export class GameRenderer {
 
     // Parent scope (one level up)
     const parentPath = currentScopePath.slice(0, -1)
-    const parentPkg = parentPath.length > 0 ? getPackageAtPath(parentPath) : null
+    const parentPkg =
+      parentPath.length > 0 ? getPackageAtPath(parentPath) : null
 
     // Grandparent scope (two levels up)
     const grandparentPath = currentScopePath.slice(0, -2)
@@ -775,7 +786,9 @@ export class GameRenderer {
         const grandparentPkg = getPackageAtPath(grandparentPath)
         if (grandparentPkg?.internalPackages && grandparentPkg?.internalWires) {
           const grandparentId = grandparentPath[grandparentPath.length - 1]!
-          const grandparentPackages = new Map(toRaw(grandparentPkg.internalPackages))
+          const grandparentPackages = new Map(
+            toRaw(grandparentPkg.internalPackages)
+          )
           grandparentPackages.set(grandparentId, {
             ...toRaw(grandparentPkg),
             position: { x: 0, y: 0 },
@@ -892,13 +905,27 @@ export class GameRenderer {
     midIcon?: boolean
   }): void {
     const {
-      startX, startY, endX, endY, color, pulsePhase, emphasized,
-      dashLength = 6, gapLength = 8,
-      baseAlpha = 0.15, emphasisMult = 2.0,
-      lineWidthNormal = 1.5, lineWidthEmph = 2.5,
-      arrowSizeNormal = 7, arrowSizeEmph = 10,
-      arrowAnimCycle = 2000, arrowStartT = 0.2, arrowRangeT = 0.25,
-      bidirectional = false, endIcon, midIcon = false
+      startX,
+      startY,
+      endX,
+      endY,
+      color,
+      pulsePhase,
+      emphasized,
+      dashLength = 6,
+      gapLength = 8,
+      baseAlpha = 0.15,
+      emphasisMult = 2.0,
+      lineWidthNormal = 1.5,
+      lineWidthEmph = 2.5,
+      arrowSizeNormal = 7,
+      arrowSizeEmph = 10,
+      arrowAnimCycle = 2000,
+      arrowStartT = 0.2,
+      arrowRangeT = 0.25,
+      bidirectional = false,
+      endIcon,
+      midIcon = false,
     } = config
 
     const dx = endX - startX
@@ -913,7 +940,8 @@ export class GameRenderer {
 
     const emphMult = emphasized ? emphasisMult : 1.0
     const actualBaseAlpha = emphasized ? baseAlpha * 2.3 : baseAlpha
-    const alpha = (actualBaseAlpha + 0.15 * Math.sin(pulsePhase * Math.PI * 2)) * emphMult
+    const alpha =
+      (actualBaseAlpha + 0.15 * Math.sin(pulsePhase * Math.PI * 2)) * emphMult
     const lineWidth = emphasized ? lineWidthEmph : lineWidthNormal
 
     // Draw dotted line
@@ -925,7 +953,11 @@ export class GameRenderer {
       const t2 = dashEnd / lineDist
       this.ghostLinesGraphics.moveTo(startX + dx * t1, startY + dy * t1)
       this.ghostLinesGraphics.lineTo(startX + dx * t2, startY + dy * t2)
-      this.ghostLinesGraphics.stroke({ color, width: lineWidth, alpha: Math.min(1, alpha) })
+      this.ghostLinesGraphics.stroke({
+        color,
+        width: lineWidth,
+        alpha: Math.min(1, alpha),
+      })
       currentDist += totalLength
     }
 
@@ -941,14 +973,38 @@ export class GameRenderer {
       const arrow1Y = startY + (midY - startY) * arrowT * 2
       const arrow2X = endX + (midX - endX) * arrowT * 2
       const arrow2Y = endY + (midY - endY) * arrowT * 2
-      this.drawChevronArrow(arrow1X, arrow1Y, nx, ny, arrowSize, color, arrowAlpha)
-      this.drawChevronArrow(arrow2X, arrow2Y, -nx, -ny, arrowSize, color, arrowAlpha)
+      this.drawChevronArrow(
+        arrow1X,
+        arrow1Y,
+        nx,
+        ny,
+        arrowSize,
+        color,
+        arrowAlpha
+      )
+      this.drawChevronArrow(
+        arrow2X,
+        arrow2Y,
+        -nx,
+        -ny,
+        arrowSize,
+        color,
+        arrowAlpha
+      )
     } else {
       // Single arrow moving toward end
       const arrowT = arrowStartT + animOffset * arrowRangeT
       const arrowX = startX + dx * arrowT
       const arrowY = startY + dy * arrowT
-      this.drawChevronArrow(arrowX, arrowY, nx, ny, arrowSize, color, arrowAlpha)
+      this.drawChevronArrow(
+        arrowX,
+        arrowY,
+        nx,
+        ny,
+        arrowSize,
+        color,
+        arrowAlpha
+      )
     }
 
     // Optional midpoint icon (merge indicator)
@@ -966,7 +1022,11 @@ export class GameRenderer {
         ? endIcon.sizeEmph + 2 * Math.sin(pulsePhase * Math.PI * 2)
         : endIcon.sizeNormal + 1.5 * Math.sin(pulsePhase * Math.PI * 2)
       this.ghostLinesGraphics.circle(iconX, iconY, iconSize)
-      this.ghostLinesGraphics.stroke({ color, width: emphasized ? 2.5 : 2, alpha: arrowAlpha })
+      this.ghostLinesGraphics.stroke({
+        color,
+        width: emphasized ? 2.5 : 2,
+        alpha: arrowAlpha,
+      })
     }
   }
 
@@ -974,8 +1034,13 @@ export class GameRenderer {
    * Draw a ghost line with drag hint between two duplicate packages
    */
   private drawGhostLineWithHint(
-    x1: number, y1: number, x2: number, y2: number,
-    color: number, pulsePhase: number, isFirstDuplicate: boolean
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    color: number,
+    pulsePhase: number,
+    isFirstDuplicate: boolean
   ): void {
     const dx = x2 - x1
     const dy = y2 - y1
@@ -987,10 +1052,15 @@ export class GameRenderer {
     const offset = 40
 
     this.drawAnimatedGuideLine({
-      startX: x1 + nx * offset, startY: y1 + ny * offset,
-      endX: x2 - nx * offset, endY: y2 - ny * offset,
-      color, pulsePhase, emphasized: isFirstDuplicate,
-      bidirectional: true, midIcon: true,
+      startX: x1 + nx * offset,
+      startY: y1 + ny * offset,
+      endX: x2 - nx * offset,
+      endY: y2 - ny * offset,
+      color,
+      pulsePhase,
+      emphasized: isFirstDuplicate,
+      bidirectional: true,
+      midIcon: true,
     })
   }
 
@@ -998,11 +1068,18 @@ export class GameRenderer {
    * Draw a chevron arrow pointing in direction (nx, ny)
    */
   private drawChevronArrow(
-    x: number, y: number, nx: number, ny: number,
-    size: number, color: number, alpha: number
+    x: number,
+    y: number,
+    nx: number,
+    ny: number,
+    size: number,
+    color: number,
+    alpha: number
   ): void {
-    const px = -ny, py = nx
-    const tipX = x + nx * size, tipY = y + ny * size
+    const px = -ny,
+      py = nx
+    const tipX = x + nx * size,
+      tipY = y + ny * size
     const wing1X = x - nx * size * 0.3 + px * size * 0.5
     const wing1Y = y - ny * size * 0.3 + py * size * 0.5
     const wing2X = x - nx * size * 0.3 - px * size * 0.5
@@ -1018,8 +1095,13 @@ export class GameRenderer {
    * Draw a hoist guide line from package toward root
    */
   private drawHoistGuideLine(
-    pkgX: number, pkgY: number, rootX: number, rootY: number,
-    color: number, pulsePhase: number, isHovered: boolean
+    pkgX: number,
+    pkgY: number,
+    rootX: number,
+    rootY: number,
+    color: number,
+    pulsePhase: number,
+    isHovered: boolean
   ): void {
     const dx = rootX - pkgX
     const dy = rootY - pkgY
@@ -1030,14 +1112,24 @@ export class GameRenderer {
     const ny = dy / dist
 
     this.drawAnimatedGuideLine({
-      startX: pkgX + nx * 45, startY: pkgY + ny * 45,
-      endX: rootX - nx * 55, endY: rootY - ny * 55,
-      color, pulsePhase, emphasized: isHovered,
-      dashLength: 8, gapLength: 10,
-      baseAlpha: 0.35, emphasisMult: 1.5,
-      lineWidthNormal: 2, lineWidthEmph: 3,
-      arrowSizeNormal: 8, arrowSizeEmph: 12,
-      arrowAnimCycle: 1500, arrowStartT: 0.4, arrowRangeT: 0.4,
+      startX: pkgX + nx * 45,
+      startY: pkgY + ny * 45,
+      endX: rootX - nx * 55,
+      endY: rootY - ny * 55,
+      color,
+      pulsePhase,
+      emphasized: isHovered,
+      dashLength: 8,
+      gapLength: 10,
+      baseAlpha: 0.35,
+      emphasisMult: 1.5,
+      lineWidthNormal: 2,
+      lineWidthEmph: 3,
+      arrowSizeNormal: 8,
+      arrowSizeEmph: 12,
+      arrowAnimCycle: 1500,
+      arrowStartT: 0.4,
+      arrowRangeT: 0.4,
       endIcon: { sizeNormal: 5, sizeEmph: 7 },
     })
   }

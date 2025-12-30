@@ -71,7 +71,9 @@ function updateHudPositions() {
   }
 
   // Efficiency bar (quality metrics)
-  const efficiencyEl = document.querySelector('.quality-bar.efficiency .quality-fill')
+  const efficiencyEl = document.querySelector(
+    '.quality-bar.efficiency .quality-fill'
+  )
   if (efficiencyEl) {
     const rect = efficiencyEl.getBoundingClientRect()
     hudPositions.value.efficiency = {
@@ -81,7 +83,9 @@ function updateHudPositions() {
   }
 
   // Stability bar (quality metrics)
-  const stabilityEl = document.querySelector('.quality-bar.stability .quality-fill')
+  const stabilityEl = document.querySelector(
+    '.quality-bar.stability .quality-fill'
+  )
   if (stabilityEl) {
     const rect = stabilityEl.getBoundingClientRect()
     hudPositions.value.stability = {
@@ -163,7 +167,12 @@ function spawnParticle(type: ParticleType, fromX: number, fromY: number) {
 }
 
 // Spawn multiple particles for big events (burst effect)
-function spawnParticleBurst(type: ParticleType, fromX: number, fromY: number, count: number = 3) {
+function spawnParticleBurst(
+  type: ParticleType,
+  fromX: number,
+  fromY: number,
+  count: number = 3
+) {
   for (let i = 0; i < count; i++) {
     // Stagger spawns and add slight position variance
     setTimeout(() => {
@@ -439,7 +448,8 @@ onUnmounted(() => {
 }
 
 @keyframes particle-warn-shake {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateX(0);
   }
   25% {

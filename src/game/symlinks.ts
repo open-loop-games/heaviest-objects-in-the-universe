@@ -18,7 +18,9 @@ import { triggerOrganizeBoost, markPackageRelocated } from './physics'
 // Set by packages.ts on initialization - takes full scope path for arbitrary depth
 let _recalculateStateAtPath: ((scopePath: string[]) => void) | null = null
 
-export function setRecalculateCallback(fn: (scopePath: string[]) => void): void {
+export function setRecalculateCallback(
+  fn: (scopePath: string[]) => void
+): void {
   _recalculateStateAtPath = fn
 }
 

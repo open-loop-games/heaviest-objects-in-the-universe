@@ -1332,18 +1332,22 @@ export function pickDirectInstallIdentity(
 
   // Filter out already-installed packages for variety
   if (exclude && exclude.size > 0) {
-    pool = pool.filter(p => !exclude.has(p.name))
+    pool = pool.filter((p) => !exclude.has(p.name))
   }
 
   // If pool exhausted, allow duplicates rather than crash
   if (pool.length === 0) {
-    pool = [...TIER1_DIRECT_INSTALL, ...TIER2_DIRECT_INSTALL, ...TIER3_DIRECT_INSTALL]
+    pool = [
+      ...TIER1_DIRECT_INSTALL,
+      ...TIER2_DIRECT_INSTALL,
+      ...TIER3_DIRECT_INSTALL,
+    ]
   }
 
   // Higher tiers weight toward heavier packages
   if (ecosystemTier >= 3 && Math.random() < 0.4) {
     const tier3Available = exclude
-      ? TIER3_DIRECT_INSTALL.filter(p => !exclude.has(p.name))
+      ? TIER3_DIRECT_INSTALL.filter((p) => !exclude.has(p.name))
       : TIER3_DIRECT_INSTALL
     if (tier3Available.length > 0) {
       const index = Math.floor(Math.random() * tier3Available.length)
@@ -1353,7 +1357,7 @@ export function pickDirectInstallIdentity(
 
   if (ecosystemTier >= 2 && Math.random() < 0.3) {
     const tier2Available = exclude
-      ? TIER2_DIRECT_INSTALL.filter(p => !exclude.has(p.name))
+      ? TIER2_DIRECT_INSTALL.filter((p) => !exclude.has(p.name))
       : TIER2_DIRECT_INSTALL
     if (tier2Available.length > 0) {
       const index = Math.floor(Math.random() * tier2Available.length)

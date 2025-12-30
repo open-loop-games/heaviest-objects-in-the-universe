@@ -39,7 +39,12 @@ export function hslToHex(h: number, s: number, l: number): number {
 }
 
 // Shape draw function type with variant parameter
-type ShapeDrawFn = (g: Graphics, s: number, color: number, variant: number) => void
+type ShapeDrawFn = (
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+) => void
 
 // ============================================
 // ARCHETYPE-BASED SHAPE POOLS
@@ -173,7 +178,12 @@ export function drawProceduralIcon(
 // ============================================
 
 // Utility shapes
-function drawCircleDot(g: Graphics, s: number, color: number, variant: number): void {
+function drawCircleDot(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.circle(0, 0, s)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -186,7 +196,12 @@ function drawCircleDot(g: Graphics, s: number, color: number, variant: number): 
   }
 }
 
-function drawRing(g: Graphics, s: number, color: number, variant: number): void {
+function drawRing(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.circle(0, 0, s)
   g.stroke({ color, width: 3 })
   if (variant % 2 === 0) {
@@ -198,7 +213,12 @@ function drawRing(g: Graphics, s: number, color: number, variant: number): void 
   }
 }
 
-function drawPill(g: Graphics, s: number, color: number, variant: number): void {
+function drawPill(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.roundRect(-s * 1.2, -s * 0.5, s * 2.4, s, s * 0.5)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -209,21 +229,36 @@ function drawPill(g: Graphics, s: number, color: number, variant: number): void 
   }
 }
 
-function drawDoubleRing(g: Graphics, s: number, color: number, _variant: number): void {
+function drawDoubleRing(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.circle(0, 0, s)
   g.stroke({ color, width: 2 })
   g.circle(0, 0, s * 0.6)
   g.stroke({ color, width: 2 })
 }
 
-function drawCircleWithDot(g: Graphics, s: number, color: number, _variant: number): void {
+function drawCircleWithDot(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.circle(0, 0, s)
   g.stroke({ color, width: 2 })
   g.circle(0, 0, s * 0.3)
   g.fill({ color, alpha: 0.9 })
 }
 
-function drawCapsule(g: Graphics, s: number, color: number, variant: number): void {
+function drawCapsule(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.roundRect(-s * 0.5, -s * 1.2, s, s * 2.4, s * 0.5)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -234,7 +269,12 @@ function drawCapsule(g: Graphics, s: number, color: number, variant: number): vo
   }
 }
 
-function drawEllipse(g: Graphics, s: number, color: number, variant: number): void {
+function drawEllipse(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.ellipse(0, 0, s, s * 0.6)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -244,7 +284,12 @@ function drawEllipse(g: Graphics, s: number, color: number, variant: number): vo
   }
 }
 
-function drawCircleSlash(g: Graphics, s: number, color: number, variant: number): void {
+function drawCircleSlash(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.circle(0, 0, s)
   g.stroke({ color, width: 2 })
   const angle = variant % 2 === 0 ? Math.PI / 4 : -Math.PI / 4
@@ -253,7 +298,12 @@ function drawCircleSlash(g: Graphics, s: number, color: number, variant: number)
   g.stroke({ color, width: 2 })
 }
 
-function drawTargetRing(g: Graphics, s: number, color: number, _variant: number): void {
+function drawTargetRing(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.circle(0, 0, s)
   g.stroke({ color, width: 2 })
   g.circle(0, 0, s * 0.65)
@@ -262,7 +312,12 @@ function drawTargetRing(g: Graphics, s: number, color: number, _variant: number)
   g.fill({ color, alpha: 0.9 })
 }
 
-function drawSplitCircle(g: Graphics, s: number, color: number, variant: number): void {
+function drawSplitCircle(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.circle(0, 0, s)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -276,7 +331,12 @@ function drawSplitCircle(g: Graphics, s: number, color: number, variant: number)
   g.stroke({ color: 0x1a1a2e, width: 2 })
 }
 
-function drawConcentricDots(g: Graphics, s: number, color: number, variant: number): void {
+function drawConcentricDots(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.circle(0, 0, s)
   g.stroke({ color, width: 2 })
   const dotR = s * 0.2
@@ -288,7 +348,12 @@ function drawConcentricDots(g: Graphics, s: number, color: number, variant: numb
   }
 }
 
-function drawOrbit(g: Graphics, s: number, color: number, _variant: number): void {
+function drawOrbit(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.circle(0, 0, s * 0.8)
   g.stroke({ color, width: 2 })
   g.circle(0, 0, s * 0.25)
@@ -298,7 +363,12 @@ function drawOrbit(g: Graphics, s: number, color: number, _variant: number): voi
 }
 
 // Framework shapes
-function drawPentagon(g: Graphics, s: number, color: number, variant: number): void {
+function drawPentagon(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   const points: number[] = []
   for (let i = 0; i < 5; i++) {
     const angle = (i * 2 * Math.PI) / 5 - Math.PI / 2
@@ -318,7 +388,12 @@ function drawPentagon(g: Graphics, s: number, color: number, variant: number): v
   }
 }
 
-function drawHexagonFilled(g: Graphics, s: number, color: number, variant: number): void {
+function drawHexagonFilled(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   const points: number[] = []
   for (let i = 0; i < 6; i++) {
     const angle = (i * Math.PI) / 3 - Math.PI / 2
@@ -347,7 +422,12 @@ function drawHexagonFilled(g: Graphics, s: number, color: number, variant: numbe
   }
 }
 
-function drawOctagon(g: Graphics, s: number, color: number, variant: number): void {
+function drawOctagon(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   const points: number[] = []
   for (let i = 0; i < 8; i++) {
     const angle = (i * Math.PI) / 4 - Math.PI / 8
@@ -362,7 +442,12 @@ function drawOctagon(g: Graphics, s: number, color: number, variant: number): vo
   }
 }
 
-function drawHeptagon(g: Graphics, s: number, color: number, variant: number): void {
+function drawHeptagon(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   const points: number[] = []
   for (let i = 0; i < 7; i++) {
     const angle = (i * 2 * Math.PI) / 7 - Math.PI / 2
@@ -377,7 +462,12 @@ function drawHeptagon(g: Graphics, s: number, color: number, variant: number): v
   }
 }
 
-function drawShieldFilled(g: Graphics, s: number, color: number, variant: number): void {
+function drawShieldFilled(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.moveTo(0, -s)
   g.lineTo(s, -s * 0.4)
   g.lineTo(s * 0.8, s * 0.5)
@@ -394,7 +484,12 @@ function drawShieldFilled(g: Graphics, s: number, color: number, variant: number
   }
 }
 
-function drawHexagonHollow(g: Graphics, s: number, color: number, _variant: number): void {
+function drawHexagonHollow(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   const points: number[] = []
   for (let i = 0; i < 6; i++) {
     const angle = (i * Math.PI) / 3 - Math.PI / 2
@@ -404,7 +499,12 @@ function drawHexagonHollow(g: Graphics, s: number, color: number, _variant: numb
   g.stroke({ color, width: 3 })
 }
 
-function drawPentagonHollow(g: Graphics, s: number, color: number, _variant: number): void {
+function drawPentagonHollow(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   const points: number[] = []
   for (let i = 0; i < 5; i++) {
     const angle = (i * 2 * Math.PI) / 5 - Math.PI / 2
@@ -414,7 +514,12 @@ function drawPentagonHollow(g: Graphics, s: number, color: number, _variant: num
   g.stroke({ color, width: 3 })
 }
 
-function drawNestedHex(g: Graphics, s: number, color: number, _variant: number): void {
+function drawNestedHex(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   for (const scale of [1, 0.6]) {
     const points: number[] = []
     for (let i = 0; i < 6; i++) {
@@ -426,7 +531,12 @@ function drawNestedHex(g: Graphics, s: number, color: number, _variant: number):
   }
 }
 
-function drawHexWithDot(g: Graphics, s: number, color: number, _variant: number): void {
+function drawHexWithDot(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   const points: number[] = []
   for (let i = 0; i < 6; i++) {
     const angle = (i * Math.PI) / 3 - Math.PI / 2
@@ -438,20 +548,39 @@ function drawHexWithDot(g: Graphics, s: number, color: number, _variant: number)
   g.fill({ color, alpha: 0.9 })
 }
 
-function drawChevron(g: Graphics, s: number, color: number, _variant: number): void {
-  g.poly([
-    -s, s * 0.3,
-    0, -s,
-    s, s * 0.3,
-    s * 0.6, s * 0.3,
-    0, -s * 0.4,
-    -s * 0.6, s * 0.3
-  ], true)
+function drawChevron(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
+  g.poly(
+    [
+      -s,
+      s * 0.3,
+      0,
+      -s,
+      s,
+      s * 0.3,
+      s * 0.6,
+      s * 0.3,
+      0,
+      -s * 0.4,
+      -s * 0.6,
+      s * 0.3,
+    ],
+    true
+  )
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
 }
 
-function drawBadge(g: Graphics, s: number, color: number, variant: number): void {
+function drawBadge(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.roundRect(-s * 0.9, -s * 0.7, s * 1.8, s * 1.4, s * 0.3)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -461,7 +590,12 @@ function drawBadge(g: Graphics, s: number, color: number, variant: number): void
   }
 }
 
-function drawCrest(g: Graphics, s: number, color: number, _variant: number): void {
+function drawCrest(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.moveTo(0, -s)
   g.lineTo(s * 0.9, -s * 0.6)
   g.lineTo(s * 0.9, s * 0.2)
@@ -474,7 +608,12 @@ function drawCrest(g: Graphics, s: number, color: number, _variant: number): voi
 }
 
 // Tooling shapes
-function drawDiamond(g: Graphics, s: number, color: number, variant: number): void {
+function drawDiamond(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.poly([0, -s, s, 0, 0, s, -s, 0], true)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -484,7 +623,12 @@ function drawDiamond(g: Graphics, s: number, color: number, variant: number): vo
   }
 }
 
-function drawSquareFilled(g: Graphics, s: number, color: number, variant: number): void {
+function drawSquareFilled(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.rect(-s * 0.85, -s * 0.85, s * 1.7, s * 1.7)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -500,12 +644,42 @@ function drawSquareFilled(g: Graphics, s: number, color: number, variant: number
   }
 }
 
-function drawCross(g: Graphics, s: number, color: number, variant: number): void {
+function drawCross(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   const w = s * 0.35
-  g.poly([
-    -w, -s, w, -s, w, -w, s, -w, s, w, w, w,
-    w, s, -w, s, -w, w, -s, w, -s, -w, -w, -w,
-  ], true)
+  g.poly(
+    [
+      -w,
+      -s,
+      w,
+      -s,
+      w,
+      -w,
+      s,
+      -w,
+      s,
+      w,
+      w,
+      w,
+      w,
+      s,
+      -w,
+      s,
+      -w,
+      w,
+      -s,
+      w,
+      -s,
+      -w,
+      -w,
+      -w,
+    ],
+    true
+  )
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
   if (variant % 2 === 1) {
@@ -514,7 +688,12 @@ function drawCross(g: Graphics, s: number, color: number, variant: number): void
   }
 }
 
-function drawGear(g: Graphics, s: number, color: number, _variant: number): void {
+function drawGear(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   const teeth = 8
   const outerR = s
   const innerR = s * 0.7
@@ -536,22 +715,35 @@ function drawGear(g: Graphics, s: number, color: number, _variant: number): void
   g.fill({ color: 0x1a1a2e, alpha: 1 })
 }
 
-function drawArrowUp(g: Graphics, s: number, color: number, _variant: number): void {
+function drawArrowUp(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   const w = s * 0.4
-  g.poly([
-    0, -s, s * 0.7, 0, w, 0, w, s, -w, s, -w, 0, -s * 0.7, 0,
-  ], true)
+  g.poly([0, -s, s * 0.7, 0, w, 0, w, s, -w, s, -w, 0, -s * 0.7, 0], true)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
 }
 
-function drawBowtie(g: Graphics, s: number, color: number, _variant: number): void {
+function drawBowtie(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.poly([-s, -s * 0.7, 0, 0, -s, s * 0.7, s, s * 0.7, 0, 0, s, -s * 0.7], true)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
 }
 
-function drawWrench(g: Graphics, s: number, color: number, _variant: number): void {
+function drawWrench(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.arc(0, -s * 0.4, s * 0.5, Math.PI, 0, false)
   g.lineTo(s * 0.2, s * 0.8)
   g.lineTo(-s * 0.2, s * 0.8)
@@ -562,20 +754,39 @@ function drawWrench(g: Graphics, s: number, color: number, _variant: number): vo
   g.fill({ color: 0x1a1a2e, alpha: 0.8 })
 }
 
-function drawBolt(g: Graphics, s: number, color: number, _variant: number): void {
-  g.poly([
-    s * 0.2, -s,
-    -s * 0.3, -s * 0.1,
-    s * 0.1, -s * 0.1,
-    -s * 0.2, s,
-    s * 0.3, s * 0.1,
-    -s * 0.1, s * 0.1
-  ], true)
+function drawBolt(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
+  g.poly(
+    [
+      s * 0.2,
+      -s,
+      -s * 0.3,
+      -s * 0.1,
+      s * 0.1,
+      -s * 0.1,
+      -s * 0.2,
+      s,
+      s * 0.3,
+      s * 0.1,
+      -s * 0.1,
+      s * 0.1,
+    ],
+    true
+  )
   g.fill({ color, alpha: 0.9 })
   g.stroke({ color, width: 2 })
 }
 
-function drawCog(g: Graphics, s: number, color: number, _variant: number): void {
+function drawCog(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   const teeth = 6
   const outerR = s
   const innerR = s * 0.65
@@ -593,7 +804,12 @@ function drawCog(g: Graphics, s: number, color: number, _variant: number): void 
   g.stroke({ color, width: 1.5 })
 }
 
-function drawSquareStack(g: Graphics, s: number, color: number, _variant: number): void {
+function drawSquareStack(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.rect(-s * 0.7, -s * 0.7, s * 1.1, s * 1.1)
   g.fill({ color, alpha: 0.6 })
   g.stroke({ color, width: 2 })
@@ -602,12 +818,22 @@ function drawSquareStack(g: Graphics, s: number, color: number, _variant: number
   g.stroke({ color, width: 2 })
 }
 
-function drawDiamondHollow(g: Graphics, s: number, color: number, _variant: number): void {
+function drawDiamondHollow(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.poly([0, -s, s, 0, 0, s, -s, 0], true)
   g.stroke({ color, width: 3 })
 }
 
-function drawPlusSquare(g: Graphics, s: number, color: number, _variant: number): void {
+function drawPlusSquare(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.rect(-s * 0.85, -s * 0.85, s * 1.7, s * 1.7)
   g.stroke({ color, width: 2 })
   g.moveTo(0, -s * 0.5)
@@ -618,7 +844,12 @@ function drawPlusSquare(g: Graphics, s: number, color: number, _variant: number)
 }
 
 // Legacy shapes
-function drawTriangle(g: Graphics, s: number, color: number, variant: number): void {
+function drawTriangle(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.poly([0, -s, s * 0.87, s * 0.5, -s * 0.87, s * 0.5], true)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -631,19 +862,34 @@ function drawTriangle(g: Graphics, s: number, color: number, variant: number): v
   }
 }
 
-function drawTriangleDown(g: Graphics, s: number, color: number, _variant: number): void {
+function drawTriangleDown(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.poly([0, s, s * 0.87, -s * 0.5, -s * 0.87, -s * 0.5], true)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
 }
 
-function drawHourglass(g: Graphics, s: number, color: number, _variant: number): void {
+function drawHourglass(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.poly([-s * 0.7, -s, s * 0.7, -s, 0, 0, s * 0.7, s, -s * 0.7, s, 0, 0], true)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
 }
 
-function drawOctagonStop(g: Graphics, s: number, color: number, _variant: number): void {
+function drawOctagonStop(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   const points: number[] = []
   for (let i = 0; i < 8; i++) {
     const angle = (i * Math.PI) / 4
@@ -654,7 +900,12 @@ function drawOctagonStop(g: Graphics, s: number, color: number, _variant: number
   g.stroke({ color, width: 2 })
 }
 
-function drawWarningTriangle(g: Graphics, s: number, color: number, _variant: number): void {
+function drawWarningTriangle(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.poly([0, -s, s * 0.87, s * 0.5, -s * 0.87, s * 0.5], true)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -664,12 +915,22 @@ function drawWarningTriangle(g: Graphics, s: number, color: number, _variant: nu
   g.fill({ color: 0x1a1a2e, alpha: 0.9 })
 }
 
-function drawBrokenCircle(g: Graphics, s: number, color: number, _variant: number): void {
+function drawBrokenCircle(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.arc(0, 0, s, Math.PI * 0.2, Math.PI * 1.8, false)
   g.stroke({ color, width: 3 })
 }
 
-function drawDeprecated(g: Graphics, s: number, color: number, _variant: number): void {
+function drawDeprecated(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.circle(0, 0, s)
   g.stroke({ color, width: 2 })
   g.moveTo(-s * 0.6, -s * 0.6)
@@ -679,7 +940,12 @@ function drawDeprecated(g: Graphics, s: number, color: number, _variant: number)
   g.stroke({ color, width: 2 })
 }
 
-function drawCrackedSquare(g: Graphics, s: number, color: number, _variant: number): void {
+function drawCrackedSquare(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.rect(-s * 0.85, -s * 0.85, s * 1.7, s * 1.7)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -690,7 +956,12 @@ function drawCrackedSquare(g: Graphics, s: number, color: number, _variant: numb
 }
 
 // Runtime shapes
-function drawRoundedSquare(g: Graphics, s: number, color: number, variant: number): void {
+function drawRoundedSquare(
+  g: Graphics,
+  s: number,
+  color: number,
+  variant: number
+): void {
   g.roundRect(-s * 0.8, -s * 0.8, s * 1.6, s * 1.6, s * 0.3)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -700,7 +971,12 @@ function drawRoundedSquare(g: Graphics, s: number, color: number, variant: numbe
   }
 }
 
-function drawCube(g: Graphics, s: number, color: number, _variant: number): void {
+function drawCube(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.moveTo(0, -s)
   g.lineTo(s * 0.87, -s * 0.5)
   g.lineTo(s * 0.87, s * 0.5)
@@ -711,7 +987,12 @@ function drawCube(g: Graphics, s: number, color: number, _variant: number): void
   g.stroke({ color, width: 1.5 })
 }
 
-function drawStack(g: Graphics, s: number, color: number, _variant: number): void {
+function drawStack(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   for (let i = 0; i < 3; i++) {
     const y = -s * 0.6 + i * s * 0.5
     g.roundRect(-s * 0.7, y, s * 1.4, s * 0.4, s * 0.1)
@@ -720,7 +1001,12 @@ function drawStack(g: Graphics, s: number, color: number, _variant: number): voi
   }
 }
 
-function drawModule(g: Graphics, s: number, color: number, _variant: number): void {
+function drawModule(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.roundRect(-s * 0.8, -s * 0.6, s * 1.6, s * 1.2, s * 0.15)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -729,7 +1015,12 @@ function drawModule(g: Graphics, s: number, color: number, _variant: number): vo
   g.stroke({ color, width: 2 })
 }
 
-function drawContainer(g: Graphics, s: number, color: number, _variant: number): void {
+function drawContainer(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.rect(-s * 0.8, -s * 0.3, s * 1.6, s * 1.1)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -738,7 +1029,12 @@ function drawContainer(g: Graphics, s: number, color: number, _variant: number):
   g.stroke({ color, width: 2 })
 }
 
-function drawProcess(g: Graphics, s: number, color: number, _variant: number): void {
+function drawProcess(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.roundRect(-s * 0.85, -s * 0.6, s * 1.7, s * 1.2, s * 0.2)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -746,7 +1042,12 @@ function drawProcess(g: Graphics, s: number, color: number, _variant: number): v
   g.fill({ color: 0x1a1a2e, alpha: 0.7 })
 }
 
-function drawChip(g: Graphics, s: number, color: number, _variant: number): void {
+function drawChip(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.rect(-s * 0.6, -s * 0.6, s * 1.2, s * 1.2)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })
@@ -757,7 +1058,12 @@ function drawChip(g: Graphics, s: number, color: number, _variant: number): void
   }
 }
 
-function drawTerminal(g: Graphics, s: number, color: number, _variant: number): void {
+function drawTerminal(
+  g: Graphics,
+  s: number,
+  color: number,
+  _variant: number
+): void {
   g.roundRect(-s * 0.9, -s * 0.7, s * 1.8, s * 1.4, s * 0.15)
   g.fill({ color, alpha: 0.8 })
   g.stroke({ color, width: 2 })

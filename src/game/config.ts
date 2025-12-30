@@ -84,8 +84,8 @@ export const DEFAULT_CONFIG: GameConfig = {
 }
 
 // Starting values - tweak these for early game balance
-export const STARTING_BANDWIDTH = 150
-export const STARTING_MAX_BANDWIDTH = 1000
+const STARTING_BANDWIDTH = 150
+const STARTING_MAX_BANDWIDTH = 1000
 
 // Save version - increment to force reset on incompatible changes
 export const SAVE_VERSION = 2

@@ -105,13 +105,16 @@ function assignTopLevelAnchors(
   if (childSizes.length === 0) return
 
   // Calculate ring assignments
-  const rings: typeof childSizes[] = []
+  const rings: (typeof childSizes)[] = []
   let currentRing: typeof childSizes = []
   let ringIndex = 0
   let currentRadius = RADIAL_CONFIG.baseRadius
 
   // Calculate capacity for first ring
-  let ringCapacity = getCapacityForRing(currentRadius, RADIAL_CONFIG.topLevelSpacing)
+  let ringCapacity = getCapacityForRing(
+    currentRadius,
+    RADIAL_CONFIG.topLevelSpacing
+  )
 
   for (const child of childSizes) {
     if (currentRing.length >= ringCapacity) {
@@ -119,8 +122,12 @@ function assignTopLevelAnchors(
       rings.push(currentRing)
       currentRing = []
       ringIndex++
-      currentRadius = RADIAL_CONFIG.baseRadius + ringIndex * RADIAL_CONFIG.ringGap
-      ringCapacity = getCapacityForRing(currentRadius, RADIAL_CONFIG.topLevelSpacing)
+      currentRadius =
+        RADIAL_CONFIG.baseRadius + ringIndex * RADIAL_CONFIG.ringGap
+      ringCapacity = getCapacityForRing(
+        currentRadius,
+        RADIAL_CONFIG.topLevelSpacing
+      )
     }
     currentRing.push(child)
   }

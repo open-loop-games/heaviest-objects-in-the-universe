@@ -1,7 +1,7 @@
 // Hoisted dependency rendering
 // Renders the small orbit nodes around root that represent hoisted/shared dependencies
 
-import { Graphics, Container, type Application } from 'pixi.js'
+import { Graphics, Container } from 'pixi.js'
 import type { HoistedDep } from '../game/types'
 import { prefersReducedMotion } from './accessibility'
 import { drawProceduralIcon } from './icons'
@@ -22,7 +22,6 @@ interface HoistAnimation {
 }
 
 export class HoistedRenderer {
-  private app: Application
   private parentContainer: Container
   private hoistedContainers: Map<string, HoistedContainer> = new Map()
   private hoistAnimations: Map<string, HoistAnimation> = new Map()
@@ -30,8 +29,7 @@ export class HoistedRenderer {
   private ephemeralLinesGraphics: Graphics | null = null
   private hoveredHoistedId: string | null = null
 
-  constructor(app: Application, parentContainer: Container) {
-    this.app = app
+  constructor(parentContainer: Container) {
     this.parentContainer = parentContainer
   }
 
@@ -94,7 +92,8 @@ export class HoistedRenderer {
       currentY = anim.fromY + (anim.toY - anim.fromY) * animProgress
 
       // Scale up during animation (pop effect)
-      animScale = 0.3 + 0.7 * animProgress + 0.2 * Math.sin(animProgress * Math.PI)
+      animScale =
+        0.3 + 0.7 * animProgress + 0.2 * Math.sin(animProgress * Math.PI)
 
       // Clean up completed animation
       if (t >= 1) {
@@ -254,7 +253,10 @@ export class HoistedRenderer {
 
       // Small glow at source end
       this.ephemeralLinesGraphics.circle(source.x, source.y, 6)
-      this.ephemeralLinesGraphics.fill({ color: lineColor, alpha: lineAlpha * 0.5 })
+      this.ephemeralLinesGraphics.fill({
+        color: lineColor,
+        alpha: lineAlpha * 0.5,
+      })
     }
   }
 
@@ -351,12 +353,20 @@ export class HoistedRenderer {
 
     // Outer detection zone (faint ring)
     this.dropZoneGraphics.circle(0, 0, outerRadius)
-    this.dropZoneGraphics.stroke({ color: 0x8b5cf6, width: 2, alpha: baseAlpha * 0.5 })
+    this.dropZoneGraphics.stroke({
+      color: 0x8b5cf6,
+      width: 2,
+      alpha: baseAlpha * 0.5,
+    })
 
     // Inner target ring (where dep will land)
     const innerAlpha = baseAlpha + pulse * 0.2
     this.dropZoneGraphics.circle(0, 0, innerRadius)
-    this.dropZoneGraphics.stroke({ color: 0x8b5cf6, width: 3, alpha: innerAlpha })
+    this.dropZoneGraphics.stroke({
+      color: 0x8b5cf6,
+      width: 3,
+      alpha: innerAlpha,
+    })
 
     // Pulsing fill for inner zone
     this.dropZoneGraphics.circle(0, 0, innerRadius)
@@ -374,7 +384,11 @@ export class HoistedRenderer {
       // Arrow line
       this.dropZoneGraphics.moveTo(outerX, outerY)
       this.dropZoneGraphics.lineTo(innerX, innerY)
-      this.dropZoneGraphics.stroke({ color: 0x8b5cf6, width: 2, alpha: baseAlpha })
+      this.dropZoneGraphics.stroke({
+        color: 0x8b5cf6,
+        width: 2,
+        alpha: baseAlpha,
+      })
 
       // Arrow head
       const headAngle = angle + Math.PI
@@ -387,7 +401,11 @@ export class HoistedRenderer {
       this.dropZoneGraphics.lineTo(headX1, headY1)
       this.dropZoneGraphics.moveTo(innerX, innerY)
       this.dropZoneGraphics.lineTo(headX2, headY2)
-      this.dropZoneGraphics.stroke({ color: 0x8b5cf6, width: 2, alpha: baseAlpha })
+      this.dropZoneGraphics.stroke({
+        color: 0x8b5cf6,
+        width: 2,
+        alpha: baseAlpha,
+      })
     }
   }
 

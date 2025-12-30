@@ -328,4 +328,3 @@ export function hardReset(): void {
   // Reset all state to initial
   Object.assign(gameState, createInitialState())
 }
-

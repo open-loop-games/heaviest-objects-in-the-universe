@@ -3,7 +3,10 @@
 
 import { Graphics } from 'pixi.js'
 
-export const MEME_ICONS: Record<string, (g: Graphics, s: number, color: number) => void> = {
+export const MEME_ICONS: Record<
+  string,
+  (g: Graphics, s: number, color: number) => void
+> = {
   // left-pad: The 11-liner that broke npm - a padded rectangle
   'left-pad': (g, s, color) => {
     // Main content block (right side)
@@ -63,7 +66,7 @@ export const MEME_ICONS: Record<string, (g: Graphics, s: number, color: number) 
   },
 
   // zod: "KNEEL BEFORE ZOD!" - General Zod kneeling silhouette
-  'zod': (g, s, color) => {
+  zod: (g, s, color) => {
     // Head
     g.circle(0, -s * 0.65, s * 0.25)
     g.fill({ color, alpha: 0.9 })

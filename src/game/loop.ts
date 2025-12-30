@@ -66,17 +66,6 @@ export function setCameraTarget(x: number, y: number, zoom?: number): void {
 }
 
 /**
- * Instantly set camera position (no transition)
- */
-export function setCameraInstant(x: number, y: number): void {
-  cameraTargetX = x
-  cameraTargetY = y
-  gameState.camera.x = x
-  gameState.camera.y = y
-  cameraTransitioning = false
-}
-
-/**
  * Update camera position toward target
  */
 function updateCameraTransition(deltaTime: number): void {
@@ -277,11 +266,4 @@ export function stopGameLoop(): void {
     cancelAnimationFrame(animationFrameId)
     animationFrameId = null
   }
-}
-
-/**
- * Check if game loop is running
- */
-export function isGameRunning(): boolean {
-  return isRunning
 }

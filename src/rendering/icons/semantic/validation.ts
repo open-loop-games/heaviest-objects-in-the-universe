@@ -2,9 +2,12 @@
 import { Graphics } from 'pixi.js'
 import { drawShieldOutline, drawCheckmarkShape } from '../primitives'
 
-export const VALIDATION_ICONS: Record<string, (g: Graphics, s: number, color: number) => void> = {
+export const VALIDATION_ICONS: Record<
+  string,
+  (g: Graphics, s: number, color: number) => void
+> = {
   // yup: Thumbs up gesture - validation approved!
-  'yup': (g, s, color) => {
+  yup: (g, s, color) => {
     // Thumb (pointing up)
     g.roundRect(-s * 0.15, -s * 0.9, s * 0.3, s * 0.7, s * 0.1)
     g.fill({ color, alpha: 0.9 })
@@ -28,7 +31,7 @@ export const VALIDATION_ICONS: Record<string, (g: Graphics, s: number, color: nu
   },
 
   // joi: Smiley face - the JOI of validation
-  'joi': (g, s, color) => {
+  joi: (g, s, color) => {
     // Face circle
     g.circle(0, 0, s * 0.9)
     g.fill({ color, alpha: 0.8 })
@@ -45,13 +48,13 @@ export const VALIDATION_ICONS: Record<string, (g: Graphics, s: number, color: nu
   },
 
   // ajv: Shield with checkmark - Another JSON Validator
-  'ajv': (g, s, color) => {
+  ajv: (g, s, color) => {
     drawShieldOutline(g, s, color, true)
     drawCheckmarkShape(g, s * 0.6, 0x1a1a2e, 3)
   },
 
   // superstruct: Stacked blocks (structure)
-  'superstruct': (g, s, color) => {
+  superstruct: (g, s, color) => {
     // Three stacked rectangles
     g.roundRect(-s * 0.6, -s * 0.8, s * 1.2, s * 0.45, s * 0.08)
     g.fill({ color, alpha: 0.9 })

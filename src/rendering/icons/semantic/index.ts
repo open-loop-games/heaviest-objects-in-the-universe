@@ -12,7 +12,10 @@ import { LEGACY_ICONS } from './legacy'
 import { UTILITY_ICONS } from './utility'
 
 // Combined registry of all semantic icons
-export const SEMANTIC_ICONS: Record<string, (g: Graphics, s: number, color: number) => void> = {
+export const SEMANTIC_ICONS: Record<
+  string,
+  (g: Graphics, s: number, color: number) => void
+> = {
   ...MEME_ICONS,
   ...VALIDATION_ICONS,
   ...CLI_ICONS,

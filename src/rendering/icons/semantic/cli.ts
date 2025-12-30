@@ -2,9 +2,12 @@
 import { Graphics } from 'pixi.js'
 import { drawBubbleOutline, drawQuestionMarkShape } from '../primitives'
 
-export const CLI_ICONS: Record<string, (g: Graphics, s: number, color: number) => void> = {
+export const CLI_ICONS: Record<
+  string,
+  (g: Graphics, s: number, color: number) => void
+> = {
   // commander: Military chevrons/stripes
-  'commander': (g, s, color) => {
+  commander: (g, s, color) => {
     for (let i = 0; i < 3; i++) {
       const y = -s * 0.5 + i * s * 0.45
       g.moveTo(-s * 0.7, y)
@@ -15,7 +18,7 @@ export const CLI_ICONS: Record<string, (g: Graphics, s: number, color: number) =
   },
 
   // yargs: Pirate flag / Jolly Roger (yarrrgs!)
-  'yargs': (g, s, color) => {
+  yargs: (g, s, color) => {
     // Flag pole
     g.rect(-s * 0.8, -s, s * 0.1, s * 2)
     g.fill({ color, alpha: 0.7 })
@@ -38,18 +41,18 @@ export const CLI_ICONS: Record<string, (g: Graphics, s: number, color: number) =
   },
 
   // inquirer/prompts: Question mark in speech bubble
-  'inquirer': (g, s, color) => {
+  inquirer: (g, s, color) => {
     drawBubbleOutline(g, s, color)
     drawQuestionMarkShape(g, s * 0.5, color)
   },
 
-  'prompts': (g, s, color) => {
+  prompts: (g, s, color) => {
     drawBubbleOutline(g, s, color)
     drawQuestionMarkShape(g, s * 0.5, color)
   },
 
   // ora: Spinning circle/loading indicator
-  'ora': (g, s, color) => {
+  ora: (g, s, color) => {
     // Partial circle (spinner)
     g.arc(0, 0, s * 0.7, 0, Math.PI * 1.5, false)
     g.stroke({ color, width: 3 })
@@ -68,7 +71,7 @@ export const CLI_ICONS: Record<string, (g: Graphics, s: number, color: number) =
   },
 
   // dotenv: Dots in a pattern (environment variables)
-  'dotenv': (g, s, color) => {
+  dotenv: (g, s, color) => {
     // Envelope/file shape
     g.roundRect(-s * 0.8, -s * 0.6, s * 1.6, s * 1.2, s * 0.1)
     g.stroke({ color, width: 2 })
@@ -89,7 +92,7 @@ export const CLI_ICONS: Record<string, (g: Graphics, s: number, color: number) =
   },
 
   // nanoid: Tiny unique snowflake (nano + unique id)
-  'nanoid': (g, s, color) => {
+  nanoid: (g, s, color) => {
     // Small central hexagon
     const innerPoints: number[] = []
     for (let i = 0; i < 6; i++) {
@@ -107,14 +110,20 @@ export const CLI_ICONS: Record<string, (g: Graphics, s: number, color: number) =
       const perpAngle = angle + Math.PI / 2
       const midX = Math.cos(angle) * s * 0.55
       const midY = Math.sin(angle) * s * 0.55
-      g.moveTo(midX + Math.cos(perpAngle) * s * 0.15, midY + Math.sin(perpAngle) * s * 0.15)
-      g.lineTo(midX - Math.cos(perpAngle) * s * 0.15, midY - Math.sin(perpAngle) * s * 0.15)
+      g.moveTo(
+        midX + Math.cos(perpAngle) * s * 0.15,
+        midY + Math.sin(perpAngle) * s * 0.15
+      )
+      g.lineTo(
+        midX - Math.cos(perpAngle) * s * 0.15,
+        midY - Math.sin(perpAngle) * s * 0.15
+      )
     }
     g.stroke({ color, width: 1.5 })
   },
 
   // minimist: Minimal dashes (argument parsing)
-  'minimist': (g, s, color) => {
+  minimist: (g, s, color) => {
     // Two dashes (like --flag)
     g.moveTo(-s * 0.7, -s * 0.2)
     g.lineTo(-s * 0.1, -s * 0.2)

@@ -197,7 +197,10 @@ export class EffectsRenderer {
         const particleSize = p.size * (1 - progress * 0.5)
 
         this.autoCompleteGraphics.circle(px, py, particleSize)
-        this.autoCompleteGraphics.fill({ color: effect.color, alpha: particleAlpha })
+        this.autoCompleteGraphics.fill({
+          color: effect.color,
+          alpha: particleAlpha,
+        })
       }
 
       // Draw central flash (bright at start, fades quickly)
@@ -226,7 +229,10 @@ export class EffectsRenderer {
       const ringCount = 3
       for (let i = 0; i < ringCount; i++) {
         const ringDelay = i * 0.1
-        const ringProgress = Math.max(0, (progress - ringDelay) / (1 - ringDelay))
+        const ringProgress = Math.max(
+          0,
+          (progress - ringDelay) / (1 - ringDelay)
+        )
         if (ringProgress <= 0 || ringProgress >= 1) continue
 
         const easedProgress = 1 - Math.pow(1 - ringProgress, 2)

@@ -130,7 +130,6 @@ const isPreviewingEfficiency = computed(
   () => previewedUpgradeId.value === 'efficiency'
 )
 const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
-
 </script>
 
 <template>
@@ -163,7 +162,8 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
         :class="{
           filled: seg.filled,
           partial: seg.partial > 0 && !seg.filled,
-          'is-cost': seg.isCost && !isPreviewingEfficiency && !seg.isActionPreview,
+          'is-cost':
+            seg.isCost && !isPreviewingEfficiency && !seg.isActionPreview,
           unaffordable: seg.isCost && !canAffordInstall,
           'action-preview': seg.isActionPreview,
           'action-affordable': seg.isActionPreview && seg.actionAffordable,
@@ -362,7 +362,8 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
 }
 
 @keyframes action-preview-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.5;
   }
   50% {

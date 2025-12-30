@@ -44,12 +44,18 @@ export function drawLightningShape(
 ): void {
   g.poly(
     [
-      s * 0.1, -s,
-      -s * 0.5, s * 0.1,
-      s * 0.1, s * 0.1,
-      -s * 0.1, s,
-      s * 0.5, -s * 0.1,
-      -s * 0.1, -s * 0.1,
+      s * 0.1,
+      -s,
+      -s * 0.5,
+      s * 0.1,
+      s * 0.1,
+      s * 0.1,
+      -s * 0.1,
+      s,
+      s * 0.5,
+      -s * 0.1,
+      -s * 0.1,
+      -s * 0.1,
     ],
     true
   )
@@ -159,11 +165,7 @@ export function drawShieldOutline(
 /**
  * Draw crossed arrows - for bidirectional/CORS packages
  */
-export function drawCrossedArrows(
-  g: Graphics,
-  s: number,
-  color: number
-): void {
+export function drawCrossedArrows(g: Graphics, s: number, color: number): void {
   // Arrow 1: top-left to bottom-right
   g.moveTo(-s * 0.7, -s * 0.7)
   g.lineTo(s * 0.7, s * 0.7)
@@ -184,30 +186,18 @@ export function drawCrossedArrows(
 /**
  * Draw a speech/thought bubble outline
  */
-export function drawBubbleOutline(
-  g: Graphics,
-  s: number,
-  color: number
-): void {
+export function drawBubbleOutline(g: Graphics, s: number, color: number): void {
   g.roundRect(-s * 0.8, -s * 0.7, s * 1.6, s * 1.1, s * 0.25)
   g.stroke({ color, width: 2 })
   // Tail
-  g.poly([
-    -s * 0.2, s * 0.4,
-    0, s * 0.9,
-    s * 0.2, s * 0.4,
-  ], true)
+  g.poly([-s * 0.2, s * 0.4, 0, s * 0.9, s * 0.2, s * 0.4], true)
   g.fill({ color, alpha: 0.8 })
 }
 
 /**
  * Draw a simple arrow pointing right
  */
-export function drawArrowShape(
-  g: Graphics,
-  s: number,
-  color: number
-): void {
+export function drawArrowShape(g: Graphics, s: number, color: number): void {
   // Arrow body
   g.roundRect(-s * 0.8, -s * 0.2, s * 1.2, s * 0.4, s * 0.1)
   g.fill({ color, alpha: 0.8 })

@@ -2,9 +2,12 @@
 import { Graphics } from 'pixi.js'
 import { drawShieldOutline, drawLightningShape } from '../primitives'
 
-export const UTILITY_ICONS: Record<string, (g: Graphics, s: number, color: number) => void> = {
+export const UTILITY_ICONS: Record<
+  string,
+  (g: Graphics, s: number, color: number) => void
+> = {
   // chalk: Crayon with color tip
-  'chalk': (g, s, color) => {
+  chalk: (g, s, color) => {
     // Crayon body (rectangle)
     g.roundRect(-s * 0.3, -s * 0.3, s * 1.2, s * 0.6, s * 0.1)
     g.fill({ color, alpha: 0.7 })
@@ -15,7 +18,7 @@ export const UTILITY_ICONS: Record<string, (g: Graphics, s: number, color: numbe
   },
 
   // debug: Bug silhouette
-  'debug': (g, s, color) => {
+  debug: (g, s, color) => {
     // Bug body (oval)
     g.ellipse(0, s * 0.1, s * 0.5, s * 0.6)
     g.fill({ color, alpha: 0.8 })
@@ -40,7 +43,7 @@ export const UTILITY_ICONS: Record<string, (g: Graphics, s: number, color: numbe
   },
 
   // semver: Three stacked dots (major.minor.patch)
-  'semver': (g, s, color) => {
+  semver: (g, s, color) => {
     const dotR = s * 0.25
     g.circle(0, -s * 0.6, dotR)
     g.circle(0, 0, dotR)
@@ -55,7 +58,7 @@ export const UTILITY_ICONS: Record<string, (g: Graphics, s: number, color: numbe
   },
 
   // uuid: Snowflake pattern (each one unique)
-  'uuid': (g, s, color) => {
+  uuid: (g, s, color) => {
     for (let i = 0; i < 6; i++) {
       const angle = (i * Math.PI) / 3
       g.moveTo(0, 0)
@@ -65,9 +68,15 @@ export const UTILITY_ICONS: Record<string, (g: Graphics, s: number, color: numbe
       const by = Math.sin(angle) * s * 0.6
       const perpAngle = angle + Math.PI / 2
       g.moveTo(bx, by)
-      g.lineTo(bx + Math.cos(perpAngle) * s * 0.25, by + Math.sin(perpAngle) * s * 0.25)
+      g.lineTo(
+        bx + Math.cos(perpAngle) * s * 0.25,
+        by + Math.sin(perpAngle) * s * 0.25
+      )
       g.moveTo(bx, by)
-      g.lineTo(bx - Math.cos(perpAngle) * s * 0.25, by - Math.sin(perpAngle) * s * 0.25)
+      g.lineTo(
+        bx - Math.cos(perpAngle) * s * 0.25,
+        by - Math.sin(perpAngle) * s * 0.25
+      )
     }
     g.stroke({ color, width: 1.5 })
     g.circle(0, 0, s * 0.15)
@@ -75,7 +84,7 @@ export const UTILITY_ICONS: Record<string, (g: Graphics, s: number, color: numbe
   },
 
   // ms: Stopwatch / timer
-  'ms': (g, s, color) => {
+  ms: (g, s, color) => {
     // Clock face
     g.circle(0, s * 0.1, s * 0.8)
     g.stroke({ color, width: 2 })
@@ -91,7 +100,7 @@ export const UTILITY_ICONS: Record<string, (g: Graphics, s: number, color: numbe
   },
 
   // prettier: Aligned code bars
-  'prettier': (g, s, color) => {
+  prettier: (g, s, color) => {
     const barH = s * 0.18
     const gap = s * 0.35
     g.roundRect(-s * 0.8, -gap * 1.5, s * 1.4, barH, barH / 2)
@@ -102,7 +111,7 @@ export const UTILITY_ICONS: Record<string, (g: Graphics, s: number, color: numbe
   },
 
   // esbuild: Lightning bolt (speed)
-  'esbuild': (g, s, color) => {
+  esbuild: (g, s, color) => {
     drawLightningShape(g, s, color, true)
   },
 
@@ -128,7 +137,7 @@ export const UTILITY_ICONS: Record<string, (g: Graphics, s: number, color: numbe
   },
 
   // inherits: Nested squares (inheritance chain)
-  'inherits': (g, s, color) => {
+  inherits: (g, s, color) => {
     g.rect(-s * 0.9, -s * 0.9, s * 1.8, s * 1.8)
     g.stroke({ color, width: 2 })
     g.rect(-s * 0.55, -s * 0.55, s * 1.1, s * 1.1)
@@ -176,7 +185,7 @@ export const UTILITY_ICONS: Record<string, (g: Graphics, s: number, color: numbe
   },
 
   // lodash: Underscore with extra (low-dash)
-  'lodash': (g, s, color) => {
+  lodash: (g, s, color) => {
     // Two underscores (double dash)
     g.moveTo(-s * 0.8, s * 0.2)
     g.lineTo(s * 0.8, s * 0.2)
@@ -189,7 +198,7 @@ export const UTILITY_ICONS: Record<string, (g: Graphics, s: number, color: numbe
   },
 
   // ramda: Lambda symbol
-  'ramda': (g, s, color) => {
+  ramda: (g, s, color) => {
     // Lambda λ shape
     g.moveTo(-s * 0.6, s * 0.8)
     g.lineTo(0, -s * 0.8)

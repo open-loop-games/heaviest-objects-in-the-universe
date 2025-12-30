@@ -2,9 +2,12 @@
 import { Graphics } from 'pixi.js'
 import { drawDatabaseCylinder } from '../primitives'
 
-export const DATABASE_ICONS: Record<string, (g: Graphics, s: number, color: number) => void> = {
+export const DATABASE_ICONS: Record<
+  string,
+  (g: Graphics, s: number, color: number) => void
+> = {
   // mongoose: Mongoose animal silhouette
-  'mongoose': (g, s, color) => {
+  mongoose: (g, s, color) => {
     // Body (elongated oval)
     g.ellipse(0, s * 0.1, s * 0.7, s * 0.35)
     g.fill({ color, alpha: 0.8 })
@@ -40,7 +43,7 @@ export const DATABASE_ICONS: Record<string, (g: Graphics, s: number, color: numb
   },
 
   // knex: Database with query lines
-  'knex': (g, s, color) => {
+  knex: (g, s, color) => {
     drawDatabaseCylinder(g, s * 0.8, color)
 
     // Query lines coming out
@@ -54,7 +57,7 @@ export const DATABASE_ICONS: Record<string, (g: Graphics, s: number, color: numb
   },
 
   // typeorm: Type symbol + database
-  'typeorm': (g, s, color) => {
+  typeorm: (g, s, color) => {
     // Simplified database cylinder
     g.ellipse(0, -s * 0.3, s * 0.5, s * 0.2)
     g.fill({ color, alpha: 0.7 })
@@ -73,7 +76,7 @@ export const DATABASE_ICONS: Record<string, (g: Graphics, s: number, color: numb
   },
 
   // pg / postgres: Elephant simplified
-  'pg': (g, s, color) => {
+  pg: (g, s, color) => {
     // Elephant head shape
     g.ellipse(0, 0, s * 0.7, s * 0.6)
     g.fill({ color, alpha: 0.8 })
@@ -92,7 +95,7 @@ export const DATABASE_ICONS: Record<string, (g: Graphics, s: number, color: numb
   },
 
   // redis: Diamond/gem shape
-  'redis': (g, s, color) => {
+  redis: (g, s, color) => {
     // Stacked diamond shape
     g.poly([0, -s * 0.9, s * 0.8, 0, 0, s * 0.9, -s * 0.8, 0], true)
     g.fill({ color, alpha: 0.8 })

@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { gameState, computed_gravity, computed_ecosystemTier } from '../game/state'
+import {
+  gameState,
+  computed_gravity,
+  computed_ecosystemTier,
+} from '../game/state'
 import { isInPackageScope } from '../game/scope'
 
 // Extracted HUD sub-components
@@ -44,7 +48,9 @@ const showAutomation = computed(() => computed_ecosystemTier.value >= 2)
 const inPackageScope = computed(() => isInPackageScope())
 
 // Gravity progress
-const gravityPercent = computed(() => Math.min(100, computed_gravity.value * 100))
+const gravityPercent = computed(() =>
+  Math.min(100, computed_gravity.value * 100)
+)
 
 // Prestige progress
 const prestigeProgress = computed(() => Math.min(1, computed_gravity.value))

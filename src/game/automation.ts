@@ -28,7 +28,7 @@ import type { Wire, Package } from './types'
 // Interval between auto-resolves by tier (ms)
 // Index 0 unused, Index 1-5 = Tiers 1-5
 // Tier 1 = no automation, Tier 2 = 3s, Tier 3 = 2s, Tier 4 = 1s, Tier 5 = 0.5s
-export const RESOLVE_INTERVALS = [
+const RESOLVE_INTERVALS = [
   Infinity, // unused (index 0)
   Infinity, // Tier 1: no automation
   3000, // Tier 2: 3s
@@ -40,7 +40,7 @@ export const RESOLVE_INTERVALS = [
 // Interval between auto-dedups by tier (ms)
 // Index 0 unused, Index 1-5 = Tiers 1-5
 // Tier 1-2 = no automation, Tier 3 = 3s, Tier 4 = 2s, Tier 5 = 1s
-export const DEDUP_INTERVALS = [
+const DEDUP_INTERVALS = [
   Infinity, // unused (index 0)
   Infinity, // Tier 1: no automation
   Infinity, // Tier 2: no automation
@@ -52,7 +52,7 @@ export const DEDUP_INTERVALS = [
 // Interval between auto-hoists by tier (ms)
 // Index 0 unused, Index 1-5 = Tiers 1-5
 // Tier 1-2 = no automation, Tier 3 = 4s, Tier 4 = 2.5s, Tier 5 = 1.5s
-export const HOIST_INTERVALS = [
+const HOIST_INTERVALS = [
   Infinity, // unused (index 0)
   Infinity, // Tier 1: no automation
   Infinity, // Tier 2: no automation
@@ -62,7 +62,7 @@ export const HOIST_INTERVALS = [
 ] as const
 
 // Duration of "processing" animation before completion (ms)
-export const PROCESS_DURATION = 400
+const PROCESS_DURATION = 400
 
 // ============================================
 // CONFLICT FINDING (ALL SCOPES)
@@ -369,7 +369,7 @@ let onAutoResolveComplete:
 let onAutoDedupComplete:
   | ((scopePath: string[], position: { x: number; y: number }) => void)
   | null = null
-let onAutoHoistComplete:
+const onAutoHoistComplete:
   | ((depName: string, position: { x: number; y: number }) => void)
   | null = null
 
@@ -383,12 +383,6 @@ export function setAutoDedupCallback(
   callback: (scopePath: string[], position: { x: number; y: number }) => void
 ): void {
   onAutoDedupComplete = callback
-}
-
-export function setAutoHoistCallback(
-  callback: (depName: string, position: { x: number; y: number }) => void
-): void {
-  onAutoHoistComplete = callback
 }
 
 /**
@@ -511,7 +505,10 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
         if (packages) {
           const targetPkg = packages.get(targetId)
           if (targetPkg) {
-            effectPosition = { x: targetPkg.position.x, y: targetPkg.position.y }
+            effectPosition = {
+              x: targetPkg.position.x,
+              y: targetPkg.position.y,
+            }
           }
         }
 
@@ -557,7 +554,10 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
       const sharedDeps = findSharedDeps()
       if (sharedDeps.size > 0) {
         // Get first shared dep
-        const [depName, sources] = sharedDeps.entries().next().value as [string, string[]]
+        const [depName, sources] = sharedDeps.entries().next().value as [
+          string,
+          string[],
+        ]
         if (depName && sources && sources.length >= 2) {
           // Start processing
           auto.hoistActive = true
@@ -570,7 +570,11 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
     }
 
     // Check if current hoist should complete
-    if (auto.hoistActive && auto.hoistTargetDepName && auto.hoistTargetSources) {
+    if (
+      auto.hoistActive &&
+      auto.hoistTargetDepName &&
+      auto.hoistTargetSources
+    ) {
       if (now - auto.processStartTime >= PROCESS_DURATION) {
         const depName = auto.hoistTargetDepName
         const sources = auto.hoistTargetSources
@@ -630,20 +634,13 @@ export function isAutomationProcessing(): boolean {
 /**
  * Get the type of automation currently processing
  */
-export function getAutomationProcessingType(): 'resolve' | 'dedup' | 'hoist' | null {
+export function getAutomationProcessingType():
+  | 'resolve'
+  | 'dedup'
+  | 'hoist'
+  | null {
   if (gameState.automation.resolveActive) return 'resolve'
   if (gameState.automation.dedupActive) return 'dedup'
   if (gameState.automation.hoistActive) return 'hoist'
   return null
-}
-
-/**
- * Get progress of current automation process (0-1)
- */
-export function getAutomationProgress(): number {
-  const auto = gameState.automation
-  if (!auto.resolveActive && !auto.dedupActive) return 0
-
-  const elapsed = Date.now() - auto.processStartTime
-  return Math.min(1, elapsed / PROCESS_DURATION)
 }

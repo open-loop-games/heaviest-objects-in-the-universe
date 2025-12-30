@@ -80,7 +80,7 @@ export class NodeRenderer {
     this.nodesLayer.addChild(this.queuedDepsGraphics)
 
     // Hoisted dep renderer (handles orbit deps around root)
-    this.hoistedRenderer = new HoistedRenderer(app, this.nodesLayer)
+    this.hoistedRenderer = new HoistedRenderer(this.nodesLayer)
   }
 
   /**
@@ -122,7 +122,9 @@ export class NodeRenderer {
     // Check if icon is ready (handles semantic, devicon, and procedural)
     const iconReady = packageName
       ? isIconReady(packageName, iconKey || undefined)
-      : (iconKey ? isIconReady('', iconKey) : true)
+      : iconKey
+        ? isIconReady('', iconKey)
+        : true
 
     // Update icon if cache key changed or icon just became ready
     if (
@@ -470,7 +472,8 @@ export class NodeRenderer {
 
     // Outer halo ring (static size for reduced motion, less expansion when unaffordable)
     const expansionScale = canAfford ? 3 : 1.5
-    const haloRadius = radius + 8 + (reducedMotion ? 1.5 : effectivePhase * expansionScale)
+    const haloRadius =
+      radius + 8 + (reducedMotion ? 1.5 : effectivePhase * expansionScale)
     graphics.circle(0, 0, haloRadius)
     graphics.stroke({ color: haloColor, width: 3, alpha: alpha + 0.1 })
 
@@ -742,14 +745,17 @@ export class NodeRenderer {
    * Update rendering of queued deps that are awaiting bandwidth
    * Renders faded outlines with progress rings showing BW accumulation
    */
-  updateQueuedDeps(pendingSpawns: PendingSpawn[], currentBandwidth: number): void {
+  updateQueuedDeps(
+    pendingSpawns: PendingSpawn[],
+    currentBandwidth: number
+  ): void {
     this.queuedDepsGraphics.clear()
 
     const reducedMotion = prefersReducedMotion()
     const now = Date.now()
 
     // Only render spawns that are awaiting bandwidth
-    const awaitingSpawns = pendingSpawns.filter(s => s.awaitingBandwidth)
+    const awaitingSpawns = pendingSpawns.filter((s) => s.awaitingBandwidth)
 
     for (const spawn of awaitingSpawns) {
       const x = spawn.position.x
@@ -767,14 +773,22 @@ export class NodeRenderer {
 
         // Background ring (full circle, dim)
         this.queuedDepsGraphics.circle(x, y, ringRadius)
-        this.queuedDepsGraphics.stroke({ color: 0x3a3a4a, width: 3, alpha: 0.3 })
+        this.queuedDepsGraphics.stroke({
+          color: 0x3a3a4a,
+          width: 3,
+          alpha: 0.3,
+        })
 
         // Progress arc
         const startAngle = -Math.PI / 2 // Start at top
         const endAngle = startAngle + progress * Math.PI * 2
 
         this.queuedDepsGraphics.arc(x, y, ringRadius, startAngle, endAngle)
-        this.queuedDepsGraphics.stroke({ color: 0x5a7aff, width: 3, alpha: 0.8 })
+        this.queuedDepsGraphics.stroke({
+          color: 0x5a7aff,
+          width: 3,
+          alpha: 0.8,
+        })
       }
 
       // Pulsing effect when close to affordable (optional, skip if reduced motion)

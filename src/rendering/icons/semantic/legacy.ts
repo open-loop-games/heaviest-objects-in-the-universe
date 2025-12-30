@@ -1,9 +1,12 @@
 // Legacy/deprecated package icons - the old guard
 import { Graphics } from 'pixi.js'
 
-export const LEGACY_ICONS: Record<string, (g: Graphics, s: number, color: number) => void> = {
+export const LEGACY_ICONS: Record<
+  string,
+  (g: Graphics, s: number, color: number) => void
+> = {
   // moment: Cracked clock (showing age)
-  'moment': (g, s, color) => {
+  moment: (g, s, color) => {
     // Clock face
     g.circle(0, 0, s)
     g.stroke({ color, width: 2 })
@@ -39,7 +42,7 @@ export const LEGACY_ICONS: Record<string, (g: Graphics, s: number, color: number
   },
 
   // request: Arrows out and back (deprecated - X through)
-  'request': (g, s, color) => {
+  request: (g, s, color) => {
     // Outgoing arrow
     g.moveTo(-s * 0.8, -s * 0.3)
     g.lineTo(s * 0.3, -s * 0.3)
@@ -58,7 +61,7 @@ export const LEGACY_ICONS: Record<string, (g: Graphics, s: number, color: number
   },
 
   // underscore: Literal underscore character
-  'underscore': (g, s, color) => {
+  underscore: (g, s, color) => {
     // The iconic underscore _
     g.moveTo(-s * 0.8, s * 0.3)
     g.lineTo(s * 0.8, s * 0.3)
@@ -70,7 +73,7 @@ export const LEGACY_ICONS: Record<string, (g: Graphics, s: number, color: number
   },
 
   // bluebird: Bird wing silhouette
-  'bluebird': (g, s, _color) => {
+  bluebird: (g, s, _color) => {
     // Use blue tint regardless of hash color
     const blue = 0x4dabf7
     // Bird body
@@ -90,7 +93,7 @@ export const LEGACY_ICONS: Record<string, (g: Graphics, s: number, color: number
   },
 
   // async: Parallel flow arrows
-  'async': (g, s, color) => {
+  async: (g, s, color) => {
     const y1 = -s * 0.5
     const y2 = 0
     const y3 = s * 0.5
@@ -110,7 +113,7 @@ export const LEGACY_ICONS: Record<string, (g: Graphics, s: number, color: number
   },
 
   // q: The Q promise library - stylized Q
-  'q': (g, s, color) => {
+  q: (g, s, color) => {
     // Circle of Q
     g.circle(0, -s * 0.1, s * 0.6)
     g.stroke({ color, width: 3 })
@@ -121,7 +124,7 @@ export const LEGACY_ICONS: Record<string, (g: Graphics, s: number, color: number
   },
 
   // coffee-script: Coffee cup
-  'coffeescript': (g, s, color) => {
+  coffeescript: (g, s, color) => {
     // Cup body
     g.roundRect(-s * 0.5, -s * 0.3, s * 0.9, s * 1, s * 0.15)
     g.fill({ color, alpha: 0.8 })
@@ -138,7 +141,7 @@ export const LEGACY_ICONS: Record<string, (g: Graphics, s: number, color: number
   },
 
   // grunt: Boar/grunt face (simplified)
-  'grunt': (g, s, color) => {
+  grunt: (g, s, color) => {
     // Head
     g.ellipse(0, 0, s * 0.8, s * 0.7)
     g.fill({ color, alpha: 0.8 })

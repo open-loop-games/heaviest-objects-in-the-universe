@@ -323,11 +323,7 @@ export function spawnDependencies(packageId: string): Package[] {
 // ============================================
 
 // Import cascade and scope systems
-import {
-  startCascade,
-  isCascadeActive,
-  setCascadeEndCallback,
-} from './cascade'
+import { startCascade, isCascadeActive, setCascadeEndCallback } from './cascade'
 import { getScopeDepth } from './scope'
 
 /**
