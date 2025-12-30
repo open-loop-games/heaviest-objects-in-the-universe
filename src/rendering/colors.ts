@@ -28,10 +28,6 @@ export const Colors = {
   accentPurple: 0xff5aff,
   accentGold: 0xffff5a,
 
-  // Legacy aliases (kept for compatibility)
-  shapeCircle: 0x5aff5a,
-  shapeTriangle: 0xffaa5a,
-
   // Wires
   wireDefault: 0x4a4a6a,
   wireFlow: 0x7a7aff,
@@ -52,6 +48,11 @@ export const Colors = {
   // Automation effects
   autoResolve: 0x5aff8a, // Green-ish for conflict resolution
   autoDedup: 0x5affff, // Cyan for deduplication
+
+  // Depth rewards
+  goldenGlow: 0xffd700, // Pure gold for golden packages
+  goldenFill: 0x4a3a1a, // Warm gold-brown fill
+  cacheFragment: 0x7a5aff, // Purple for cache fragments
 
   // Text (for HUD overlay)
   textPrimary: 0xeeeeff,

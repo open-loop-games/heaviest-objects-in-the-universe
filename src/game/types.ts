@@ -41,6 +41,10 @@ export interface Package {
   isGhost: boolean
   ghostTargetId: string | null // Package ID where real node lives, or hoisted dep ID
   ghostTargetScope: 'hoisted' | string | null // 'hoisted' for root ring, or package ID for scope
+
+  // Depth rewards
+  isGolden: boolean // Golden package (4x weight, only spawns at depth 3+)
+  hasCacheFragment: boolean // Contains collectible cache fragment
 }
 
 export interface Wire {
@@ -48,7 +52,6 @@ export interface Wire {
   fromId: string
   toId: string
   wireType: WireType
-  isSymlink: boolean // Kept for backwards compat, derived from wireType
   flowProgress: number // 0-1 for data flow animation
   conflicted: boolean // True if wire connects incompatible packages
   conflictTime: number // Timestamp when conflict started (for animations)
@@ -59,6 +62,7 @@ export interface GameResources {
   maxBandwidth: number
   bandwidthRegen: number
   weight: number
+  cacheFragments: number // Collected this run, converted to tokens on prestige
 }
 
 export interface MetaResources {
@@ -72,7 +76,6 @@ export interface Upgrades {
   efficiencyLevel: number // Combined: speed + cost reduction
   compressionLevel: number // Weight reduction (P3+)
   resolveSpeedLevel: number // Auto-resolve speed (Tier 2+)
-  dedupSpeedLevel: number // Auto-dedup speed (Tier 3+)
   hoistSpeedLevel: number // Auto-hoist speed (Tier 3+)
 }
 
@@ -82,6 +85,9 @@ export interface GameStats {
   totalSymlinksCreated: number
   maxWeightReached: number
   currentEfficiency: number
+  // Depth rewards
+  goldenPackagesFound: number
+  cacheFragmentsCollected: number
 }
 
 // Cascade system for staggered spawning
@@ -120,22 +126,17 @@ export interface OnboardingState {
   efficiencySeen: boolean // Efficiency indicator has been shown
 }
 
-// Automation state for auto-resolve, auto-dedup, and auto-hoist
+// Automation state for auto-resolve and auto-hoist
+// Note: Auto-dedup removed - merging stays manual for gameplay
 export interface AutomationState {
   // Toggle states (user-controllable)
   resolveEnabled: boolean // Auto-resolve toggle
-  dedupEnabled: boolean // Auto-dedup toggle
   hoistEnabled: boolean // Auto-hoist toggle
 
   // Auto-resolve (unlocks at tier 2)
   resolveActive: boolean // Currently processing a resolve
   resolveTargetWireId: string | null // Wire being auto-resolved
   resolveTargetScope: string[] | null // Scope path where wire lives
-
-  // Auto-dedup (unlocks at tier 3)
-  dedupActive: boolean // Currently processing a dedup
-  dedupTargetPair: [string, string] | null // Package IDs being merged
-  dedupTargetScope: string[] | null // Scope path where packages live
 
   // Auto-hoist (unlocks at tier 3)
   hoistActive: boolean // Currently processing a hoist
@@ -145,7 +146,6 @@ export interface AutomationState {
   // Timing
   processStartTime: number // When current process started (for animation)
   lastResolveTime: number // Last time auto-resolve fired
-  lastDedupTime: number // Last time auto-dedup fired
   lastHoistTime: number // Last time auto-hoist fired
 }
 
@@ -182,14 +182,14 @@ export interface GameState {
   hoistedDeps: Map<string, HoistedDep>
 
   // Scope system
-  currentScope: 'root' | string // 'root' or package ID (legacy, derived from scopeStack)
+  currentScope: 'root' | string // 'root' or package ID (derived from scopeStack)
   scopeStack: string[] // [] = root, [pkgId] = layer 1, [pkgId, internalId] = layer 2
   tutorialGating: boolean // true until first prestige - gates package installs
 
   // Cascade system (staggered spawning)
   cascade: CascadeState
 
-  // Automation system (auto-resolve, auto-dedup)
+  // Automation system (auto-resolve, auto-hoist)
   automation: AutomationState
 
   // Stats
@@ -201,10 +201,6 @@ export interface GameState {
     y: number
     zoom: number
   }
-
-  // Time tracking
-  lastTick: number
-  tickCount: number
 }
 
 export interface GameConfig {

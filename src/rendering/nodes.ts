@@ -33,6 +33,9 @@ export interface NodeEffects {
   ghostTargetScope?: string | null // Package ID where real node lives
   // Hoistable indicator (has shared deps that can be hoisted)
   isHoistable?: boolean
+  // Depth rewards
+  isGolden?: boolean // Golden package glow
+  hasCacheFragment?: boolean // Cache fragment indicator
 }
 
 /**
@@ -256,6 +259,12 @@ export class NodeRenderer {
       alpha: borderAlpha,
     })
 
+    // Golden package interior tint (depth 3+ reward)
+    // Drawn after main fill so it overlays as a tint effect
+    if (effects?.isGolden) {
+      this.drawGoldenGlow(graphics, radius)
+    }
+
     // Portal rings for top-level packages (drawn on top of main circle)
     if (effects?.internalState) {
       this.drawPortalRings(graphics, radius, effects.internalState)
@@ -280,7 +289,7 @@ export class NodeRenderer {
       this.drawProgressRing(
         graphics,
         pkg.conflictProgress,
-        Colors.shapeCircle,
+        Colors.accentGreen,
         radius
       )
     }
@@ -296,6 +305,11 @@ export class NodeRenderer {
     // Hoistable indicator - purple badge with upward arrow at top of node
     if (effects?.isHoistable) {
       this.drawHoistableIndicator(graphics, radius)
+    }
+
+    // Cache fragment indicator - purple diamond pip at bottom
+    if (effects?.hasCacheFragment) {
+      this.drawCacheFragmentIndicator(graphics, radius)
     }
 
     // Click hint for root (pulsing arrow or indicator)
@@ -564,6 +578,74 @@ export class NodeRenderer {
     graphics.lineTo(0, arrowY - arrowSize)
     graphics.lineTo(arrowSize - 1, arrowY - 1)
     graphics.stroke({ color, width: 2, alpha: 1 })
+  }
+
+  /**
+   * Draw golden package interior tint
+   * For rare packages that spawn at depth 3+ (4x weight)
+   * Uses interior fill instead of outer ring to avoid confusion with halos
+   */
+  private drawGoldenGlow(graphics: Graphics, radius: number): void {
+    const reducedMotion = prefersReducedMotion()
+    const time = Date.now() * 0.003
+    const pulse = reducedMotion ? 0.5 : (Math.sin(time) + 1) / 2
+
+    // Golden interior fill (radial gradient effect via layered circles)
+    // Outer layer - subtle golden tint on the node interior
+    graphics.circle(0, 0, radius - 2)
+    graphics.fill({ color: Colors.goldenGlow, alpha: 0.15 + pulse * 0.1 })
+
+    // Inner core - brighter golden center
+    graphics.circle(0, 0, radius * 0.5)
+    graphics.fill({ color: Colors.goldenGlow, alpha: 0.2 + pulse * 0.15 })
+
+    // Tiny sparkle at center (pulsing highlight)
+    const sparkleAlpha = 0.4 + pulse * 0.4
+    graphics.circle(0, 0, 3 + pulse * 2)
+    graphics.fill({ color: 0xffffff, alpha: sparkleAlpha * 0.5 })
+  }
+
+  /**
+   * Draw cache fragment indicator - purple diamond pip at 9 o'clock (left side)
+   * Click to collect bonus cache tokens on prestige
+   */
+  private drawCacheFragmentIndicator(graphics: Graphics, radius: number): void {
+    const reducedMotion = prefersReducedMotion()
+    const time = Date.now() * 0.004
+    const pulse = reducedMotion ? 0.5 : (Math.sin(time * 1.5) + 1) / 2
+
+    const color = Colors.cacheFragment
+    const badgeRadius = 8
+    const badgeX = -radius - 6 // Position to the left of node (9 o'clock)
+    const badgeY = 0
+
+    // Badge background circle with pulsing glow
+    const glowAlpha = 0.3 + pulse * 0.25
+    graphics.circle(badgeX, badgeY, badgeRadius + 3)
+    graphics.fill({ color, alpha: glowAlpha })
+
+    // Badge circle background
+    graphics.circle(badgeX, badgeY, badgeRadius)
+    graphics.fill({ color: 0x1a1a2e })
+    graphics.stroke({ color, width: 2, alpha: 0.9 })
+
+    // Diamond shape inside badge
+    const size = 4
+    graphics.moveTo(badgeX, badgeY - size)
+    graphics.lineTo(badgeX + size, badgeY)
+    graphics.lineTo(badgeX, badgeY + size)
+    graphics.lineTo(badgeX - size, badgeY)
+    graphics.closePath()
+    graphics.fill({ color, alpha: 1 })
+
+    // Inner diamond highlight
+    const innerSize = 2
+    graphics.moveTo(badgeX, badgeY - innerSize)
+    graphics.lineTo(badgeX + innerSize, badgeY)
+    graphics.lineTo(badgeX, badgeY + innerSize)
+    graphics.lineTo(badgeX - innerSize, badgeY)
+    graphics.closePath()
+    graphics.fill({ color: 0xffffff, alpha: 0.5 })
   }
 
   /**
