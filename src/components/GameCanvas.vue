@@ -36,7 +36,6 @@ import {
   initIdCounterFromState,
   enterPackageScope,
   recalculateStateAtPath,
-  setStableCelebrationCallback,
 } from '../game/packages'
 import { setSpawnEffectCallback, setCritEffectCallback } from '../game/cascade'
 import { getUpgradePath, findIdentityByName } from '../game/registry'
@@ -206,24 +205,6 @@ onMounted(async () => {
         previousPackageStates.clear()
       }
     )
-
-    // Set up stable celebration callback
-    setStableCelebrationCallback((packageId) => {
-      const pkg = gameState.packages.get(packageId)
-      if (!pkg) return
-
-      const effects = renderer.getEffectsRenderer()
-      // Particle burst at package location (green for stable)
-      effects.spawnBurst(pkg.position.x, pkg.position.y, Colors.borderReady)
-      // Extra celebration ripple
-      effects.spawnRipple(pkg.position.x, pkg.position.y, 0x4ade80)
-
-      // If we're inside this package, also spawn particles at center
-      if (gameState.currentScope === packageId) {
-        effects.spawnBurst(0, 0, 0x4ade80)
-        effects.spawnRipple(0, 0, 0x4ade80)
-      }
-    })
 
     // Set up cascade spawn effect callback (for staggered spawning)
     setSpawnEffectCallback((position, isConflict) => {
@@ -581,7 +562,7 @@ function handlePrune() {
     // Remove the wire itself (in case it wasn't caught by the subtree removal)
     scopePkg.internalWires.delete(wire.id)
 
-    // Recalculate internal state using full scope path
+    // Recalculate internal state
     recalculateStateAtPath([...gameState.scopeStack])
   } else {
     // Pruning at root scope (existing behavior)

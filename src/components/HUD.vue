@@ -26,7 +26,7 @@ const showBandwidth = computed(() => gameState.onboarding.firstClickComplete)
 
 const showWeight = computed(() => {
   if (gameState.onboarding.weightSeen) return true
-  if (gameState.packages.size >= 8) {
+  if (gameState.packages.size >= 2) {
     gameState.onboarding.weightSeen = true
     return true
   }
@@ -35,7 +35,7 @@ const showWeight = computed(() => {
 
 const showEfficiency = computed(() => {
   if (gameState.onboarding.efficiencySeen) return true
-  if (gameState.packages.size >= 8) {
+  if (gameState.packages.size >= 2) {
     gameState.onboarding.efficiencySeen = true
     return true
   }

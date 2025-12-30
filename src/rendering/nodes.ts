@@ -7,6 +7,11 @@ import { Colors, getNodeColor, getBorderColor } from './colors'
 import { createPackageIcon, isIconReady } from './icons'
 import { prefersReducedMotion } from './accessibility'
 import { HoistedRenderer } from './hoisted'
+import {
+  getSpaghettification,
+  isCollapseActive,
+  isPackageAbsorbed,
+} from '../game/physics'
 
 const NODE_RADIUS = 25
 const NODE_RADIUS_ROOT = 38 // Largest for root (package.json)
@@ -36,6 +41,8 @@ export interface NodeEffects {
   // Depth rewards
   isGolden?: boolean // Golden package glow
   hasCacheFragment?: boolean // Cache fragment indicator
+  // Celebration scale (for stable pop effect)
+  celebrationScale?: number
 }
 
 /**
@@ -160,6 +167,13 @@ export class NodeRenderer {
       nodeData.lastIconKey = iconCacheKey
     }
 
+    // Skip rendering if absorbed during collapse
+    if (isCollapseActive() && isPackageAbsorbed(pkg.id)) {
+      nodeData.container.visible = false
+      return
+    }
+    nodeData.container.visible = true
+
     // Draw the shape (circle, border, effects)
     this.drawNode(nodeData.shape, pkg, effects)
 
@@ -168,6 +182,20 @@ export class NodeRenderer {
     const shakeY = effects?.shake.y || 0
     nodeData.container.x = pkg.position.x + shakeX
     nodeData.container.y = pkg.position.y + shakeY
+
+    // Apply spaghettification during collapse
+    if (isCollapseActive()) {
+      const { stretch, width, angle } = getSpaghettification(pkg)
+      // Rotate to point toward black hole, apply asymmetric scale
+      nodeData.container.rotation = angle
+      nodeData.container.scale.set(stretch, width)
+    } else {
+      // Reset transforms when not collapsing
+      nodeData.container.rotation = 0
+      // Apply celebration scale (pop effect when scope becomes stable)
+      const scale = effects?.celebrationScale ?? 1
+      nodeData.container.scale.set(scale, scale)
+    }
 
     // Apply dimming for first conflict treatment
     const dimAmount = effects?.dimAmount || 0

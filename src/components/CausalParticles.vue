@@ -199,13 +199,16 @@ function animate() {
       arr[writeIdx++] = p
     }
   }
+  // Check if particles were removed before truncating
+  const particlesRemoved = writeIdx < arr.length
+
   // Truncate array if particles were removed
-  if (writeIdx < arr.length) {
+  if (particlesRemoved) {
     arr.length = writeIdx
   }
 
-  // Trigger Vue update only if we have particles to render
-  if (arr.length > 0) {
+  // Trigger Vue update if we have particles OR if we just removed some
+  if (arr.length > 0 || particlesRemoved) {
     triggerRef(particles)
   }
 

@@ -449,6 +449,11 @@ export class GameRenderer {
       // Hoistable indicator (only for top-level packages with shared deps)
       const isHoistable = isTopLevel && hoistablePackageIds.has(pkg.id)
 
+      // Celebration scale only applies inside scopes
+      const celebrationScale = inScope
+        ? this.effectsRenderer.getCelebrationScale()
+        : 1
+
       this.nodeRenderer.updateNode(pkg, {
         pulseIntensity,
         shake: shakeOffset,
@@ -461,6 +466,11 @@ export class GameRenderer {
         isGhost,
         ghostTargetScope,
         isHoistable,
+        // Depth rewards
+        isGolden: pkg.isGolden,
+        hasCacheFragment: pkg.hasCacheFragment,
+        // Celebration
+        celebrationScale,
       })
     }
 
@@ -854,6 +864,9 @@ export class GameRenderer {
         internalState: null,
         isGhost: pkg.isGhost || false,
         ghostTargetScope: pkg.ghostTargetScope || null,
+        // Depth rewards
+        isGolden: pkg.isGolden,
+        hasCacheFragment: pkg.hasCacheFragment,
       })
     }
 
