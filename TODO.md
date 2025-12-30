@@ -27,48 +27,92 @@ Refocusing on clear, robust mechanics with low overlap. See `docs/CONCEPT.md` fo
 
 ---
 
-## Fractal Scope System (Inception Theme)
+## Fractal Scope System (Inception Theme) ✓ COMPLETE
 
-See `docs/FRACTAL_SCOPE_DESIGN.md` for full design spec.
+See `docs/archived/FRACTAL_REWORK.md` for the design spec.
 
-**Core concept:** Click into packages to resolve internal dependency chaos. Two-world model (Root Scope / Package Scope).
+### Fractal Rework Implementation (All Phases Complete)
+- [x] **Phase 1: Compressed Package State**
+- [x] **Phase 2: Staggered Cascade** (queue-based spawning, particle effects)
+- [x] **Phase 3: Layer 2 Depth** (scope stack, compressed internal deps)
+- [x] **Phase 4: Full Layering** (background/midground containers, blur, zoom-in centering)
+- [x] **Phase 5: Depth Indicator Totem** (nested circles UI, back button arrows)
+- [x] **Phase 6: Stability Propagation** (compressed deps block parent stability)
+- [x] **Phase 7: Hoisting System** (drag-to-hoist, orbit ring, ghost marking, ephemeral lines)
+- [x] **Phase 8: Polish** (cascade timing, camera easing, animations)
 
-### Design (Complete)
-- [x] Navigation model: Click-to-enter, ← back button
-- [x] Internal tree spawning and state tracking
-- [x] Cross-package conflicts (sibling wires, "Resolve Inside")
-- [x] Cross-package symlinks (ghost nodes)
-- [x] Tutorial flow (starter-kit → Package 2 → Package 3 → prestige)
+### Previous Implementation (Complete)
+- [x] Core scope navigation (enter/exit, back button)
+- [x] Internal state tracking (pristine/unstable/stable)
+- [x] Curated starter-kit package
+- [x] Cross-package conflicts and symlinks
+- [x] Ghost nodes and weight transfer
 
-### Implementation
-- [x] **Phase 1: Core Scope Navigation**
-  - [x] Add `currentScope` to game state
-  - [x] Enter/exit scope transitions
-  - [x] Render internal trees when in package scope
-  - [x] Back button (←) UI in upper left
-- [x] **Phase 2: Internal State**
-  - [x] `internalPackages` and `internalWires` on Package type
-  - [x] `internalState`: pristine/unstable/stable
-  - [x] Internal conflict/duplicate counting
-  - [x] Package glow based on internal state (blue/red/green)
-- [x] **Phase 3: Curated Starter Package**
-  - [x] `starter-kit` with deterministic deps (lodash, moment, date-fns, debug)
-  - [x] Guaranteed moment⚡date-fns conflict
-  - [x] Tutorial gating (first run only)
-- [x] **Phase 4: Cross-Package Systems**
-  - [x] Sibling conflict wires at root scope
-  - [x] "Resolve Inside" action on sibling wires
-  - [x] Cross-package duplicate detection (matching halos on packages)
-- [x] **Phase 5: Ghost Nodes & Symlink**
-  - [x] Drag package onto package at root scope
-  - [x] Ghost node visual (dashed, transparent, ⤳ icon)
-  - [x] Weight transfer to larger package
-  - [x] Ghost reference indicator when inside
-- [x] **Phase 6: Polish**
-  - [x] Stable celebration (particles + glow shift)
-  - [x] Back button glow when stable
-  - [x] Smooth scope transitions
-  - [x] Stability bonus in prestige formula
+---
+
+## Prestige Progression System (NEW)
+
+See `docs/PRESTIGE_PROGRESSION.md` for full design spec.
+
+### Phase 1: Tier System ✓
+- [x] Add `getEcosystemTier()` function (derived from cache tokens)
+- [x] Add tier thresholds constant `TIER_THRESHOLDS = [0, 10, 30, 75, 150]`
+- [x] Update prestige to recalculate tier after adding tokens
+
+### Phase 2: Dynamic Compression ✓
+- [x] Add `getCompressionChance(depth)` with softcap (50%) / hardcap (60%)
+- [x] Add depth tapering (100% → 75% → 50% → 25% → 0%)
+- [x] Replace `COMPRESSED_CHANCE` and `MAX_COMPRESSED_DEPTH` constants
+
+### Phase 3: Automation State ✓
+- [x] Add `AutomationState` interface to types
+- [x] Add `automation` field to `GameState`
+- [x] Reset automation state on prestige
+
+### Phase 4: Automation Logic ✓
+- [x] Create `automation.ts` module
+- [x] Implement `findFirstConflictedWire()` (scope-aware)
+- [x] Implement `findFirstDuplicatePair()` (scope-aware)
+- [x] Implement auto-resolve timer (tier 2+: 3s → 2s → 1s → 0.5s)
+- [x] Implement auto-dedup timer (tier 3+: 3s → 2s → 1s)
+- [x] Integrate into game loop
+
+### Phase 5: Automation Visuals - HUD ✓
+- [x] Add gear icon ⚙ (visible at tier 2+)
+- [x] Spinning animation while processing
+- [x] Completion flash effect
+
+### Phase 6: Automation Visuals - World ✓
+- [x] Add `spawnAutoCompleteEffect()` to effects renderer
+- [x] Green burst for resolve, cyan burst for dedup
+
+### Phase 7: Polish ✓
+- [x] Tier indicator in HUD (●●●○○ pips)
+- [x] Tier-up celebration effect (shake, flash, glow)
+- [ ] Tune tier thresholds via playtest (see tuning notes below)
+
+### Tuning Parameters (for Playtest)
+
+All tunable constants are in `src/game/config.ts`:
+
+| Parameter | Current Value | Purpose |
+|-----------|---------------|---------|
+| `TIER_THRESHOLDS` | [0, 9, 21, 42, 63] | Cache tokens needed for each tier |
+| `BASE_COMPRESSION_CHANCE` | 0.2 (20%) | Base chance for package to be compressed |
+| `COMPRESSION_PER_TOKEN` | 0.01 (+1%) | Additional compression per cache token |
+| `COMPRESSION_SOFTCAP` | 0.4 (40%) | Compression cap before diminishing returns |
+| `COMPRESSION_HARDCAP` | 0.5 (50%) | Maximum compression chance |
+| `DEPTH_COMPRESSION_MULT` | [1.0, 0.75, 0.5, 0.25, 0.0] | Multiplier per depth level |
+
+Automation timing in `src/game/automation.ts`:
+
+| Tier | Auto-Resolve Interval | Auto-Dedup Interval |
+|------|----------------------|---------------------|
+| 1 | — | — |
+| 2 | 3000ms | — |
+| 3 | 2000ms | 3000ms |
+| 4 | 1000ms | 2000ms |
+| 5 | 500ms | 1000ms |
 
 ---
 
@@ -190,4 +234,4 @@ See `docs/FRACTAL_SCOPE_DESIGN.md` for full design spec.
 
 ---
 
-*Last updated: 2025-12-29*
+*Last updated: 2025-12-29 (Fractal Rework complete)*
