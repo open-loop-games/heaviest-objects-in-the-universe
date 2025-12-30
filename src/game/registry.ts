@@ -717,6 +717,7 @@ const RUNTIME_PACKAGES: PackageIdentity[] = [
 ]
 
 // Leaf packages - zero dependencies, stabilizers
+// Meme packages - infamous for trivial implementations
 const LEAF_PACKAGES: PackageIdentity[] = [
   {
     name: 'is-odd',

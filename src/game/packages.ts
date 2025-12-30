@@ -8,7 +8,7 @@ import {
   enterScopeAtPath,
   getPackageAtPath,
 } from './scope'
-import { addPackage, addWire, spendBandwidth, addWeight } from './mutations'
+import { addPackage, addWire, spendBandwidth } from './mutations'
 import { generateId, generateWireId } from './id-generator'
 import { type Package, type Wire, type InternalState } from './types'
 import { rollDependencyCount, rollPackageSize } from './formulas'
@@ -17,9 +17,7 @@ import {
   pickRandomIdentity,
   pickDirectInstallIdentity,
   checkIncompatibilityWithPackages,
-  areIncompatible,
   STARTER_KIT_IDENTITY,
-  STARTER_KIT_INTERNAL_DEPS,
   type PackageIdentity,
 } from './registry'
 import { setRecalculateCallback } from './symlinks'
@@ -83,6 +81,9 @@ export function createRootPackage(): Package | null {
     isGhost: false,
     ghostTargetId: null,
     ghostTargetScope: null,
+    // Depth rewards (root doesn't get rewards)
+    isGolden: false,
+    hasCacheFragment: false,
   }
 
   gameState.rootId = id
@@ -180,6 +181,9 @@ export function installPackage(parentId: string): Package | null {
     isGhost: false,
     ghostTargetId: null,
     ghostTargetScope: null,
+    // Depth rewards (top-level doesn't get rewards - depth 1)
+    isGolden: false,
+    hasCacheFragment: false,
   }
 
   // Add wire connecting parent to child
@@ -188,7 +192,6 @@ export function installPackage(parentId: string): Package | null {
     fromId: parentId,
     toId: id,
     wireType: 'dependency',
-    isSymlink: false,
     flowProgress: 0,
     conflicted: false,
     conflictTime: 0,
@@ -282,6 +285,9 @@ export function spawnDependencies(packageId: string): Package[] {
       isGhost: false,
       ghostTargetId: null,
       ghostTargetScope: null,
+      // Depth rewards (root-level spawn - no rewards)
+      isGolden: false,
+      hasCacheFragment: false,
     }
 
     // Check for incompatibility conflict with ancestors
@@ -296,7 +302,6 @@ export function spawnDependencies(packageId: string): Package[] {
       fromId: packageId,
       toId: id,
       wireType: 'dependency',
-      isSymlink: false,
       flowProgress: 0,
       conflicted: isConflicted,
       conflictTime: isConflicted ? Date.now() : 0,
@@ -364,14 +369,6 @@ export function enterPackageScope(packageId: string): boolean {
 }
 
 /**
- * Enter a compressed internal dep's scope (legacy wrapper)
- * Now just calls the unified enterPackageScope
- */
-export function enterInternalPackageScope(internalPkgId: string): boolean {
-  return enterPackageScope(internalPkgId)
-}
-
-/**
  * Check if a cascade is currently in progress
  */
 export { isCascadeActive }
@@ -391,208 +388,6 @@ export function exitPackageScope(): void {
   }
 
   exitScope()
-}
-
-/**
- * Spawn internal dependencies for a top-level package
- */
-export function spawnInternalDependencies(packageId: string): void {
-  const pkg = gameState.packages.get(packageId)
-  if (!pkg) return
-
-  if (!pkg.internalPackages || !pkg.internalWires) return
-  if (pkg.internalPackages.size > 0) return
-
-  const isStarterKit = pkg.identity?.name === 'starter-kit'
-
-  const depIdentities: PackageIdentity[] = isStarterKit
-    ? [...STARTER_KIT_INTERNAL_DEPS]
-    : []
-
-  if (!isStarterKit) {
-    let count: number
-    if (pkg.identity && pkg.identity.baseDeps > 0) {
-      const variance = Math.floor(Math.random() * 5) - 2
-      count = Math.max(6, pkg.identity.baseDeps + variance)
-    } else {
-      count = 6 + Math.floor(Math.random() * 7)
-    }
-    count = Math.min(count, 12)
-    count = Math.max(count, 6)
-
-    for (let i = 0; i < count; i++) {
-      depIdentities.push(pickRandomIdentity())
-    }
-  }
-
-  const count = depIdentities.length
-
-  // Spawn internal packages in a circle
-  for (let i = 0; i < count; i++) {
-    const baseAngle = (Math.PI * 2 * i) / count - Math.PI / 2
-    const angle = baseAngle + (Math.random() - 0.5) * 0.2
-    const distance = 80 + Math.random() * 40
-
-    const id = generateId()
-    const identity = depIdentities[i]!
-    const size = getIdentitySize(identity)
-
-    const innerPkg: Package = {
-      id,
-      parentId: packageId,
-      position: {
-        x: Math.cos(angle) * distance,
-        y: Math.sin(angle) * distance,
-      },
-      velocity: {
-        vx: Math.cos(angle) * 2,
-        vy: Math.sin(angle) * 2,
-      },
-      state: 'installing',
-      size,
-      depth: 1,
-      children: [],
-      installProgress: 0.8 + Math.random() * 0.2,
-      conflictProgress: 0,
-      identity,
-      internalPackages: null,
-      internalWires: null,
-      internalState: null,
-      isGhost: false,
-      ghostTargetId: null,
-      ghostTargetScope: null,
-    }
-
-    const isConflicted = checkInternalIncompatibility(
-      identity,
-      pkg.internalPackages
-    )
-
-    const wire: Wire = {
-      id: generateWireId(),
-      fromId: packageId,
-      toId: id,
-      wireType: 'dependency',
-      isSymlink: false,
-      flowProgress: 0,
-      conflicted: isConflicted,
-      conflictTime: isConflicted ? Date.now() : 0,
-    }
-
-    if (isConflicted) {
-      innerPkg.state = 'conflict'
-    }
-
-    pkg.internalPackages.set(id, innerPkg)
-    pkg.internalWires.set(wire.id, wire)
-
-    pkg.size += size
-    addWeight(size)
-  }
-
-  // SECOND PASS: Spawn sub-deps for some internal packages
-  const internalPkgIds = Array.from(pkg.internalPackages.keys())
-
-  for (const parentInternalId of internalPkgIds) {
-    if (Math.random() > 0.4) continue
-
-    const parentInternalPkg = pkg.internalPackages.get(parentInternalId)
-    if (!parentInternalPkg) continue
-    if (parentInternalPkg.depth >= 2) continue
-
-    const subDepCount = 1 + Math.floor(Math.random() * 2)
-    for (let j = 0; j < subDepCount; j++) {
-      const parentAngle = Math.atan2(
-        parentInternalPkg.position.y,
-        parentInternalPkg.position.x
-      )
-      const subAngle = parentAngle + (Math.random() - 0.5) * 0.5
-      const subDistance =
-        Math.sqrt(
-          parentInternalPkg.position.x ** 2 + parentInternalPkg.position.y ** 2
-        ) +
-        50 +
-        Math.random() * 30
-
-      const subId = generateId()
-      const subIdentity = pickRandomIdentity()
-      const subSize = getIdentitySize(subIdentity, 5)
-
-      const subPkg: Package = {
-        id: subId,
-        parentId: parentInternalId,
-        position: {
-          x: Math.cos(subAngle) * subDistance,
-          y: Math.sin(subAngle) * subDistance,
-        },
-        velocity: {
-          vx: Math.cos(subAngle) * 1.5,
-          vy: Math.sin(subAngle) * 1.5,
-        },
-        state: 'installing',
-        size: subSize,
-        depth: 2,
-        children: [],
-        installProgress: 0.9 + Math.random() * 0.1,
-        conflictProgress: 0,
-        identity: subIdentity,
-        internalPackages: null,
-        internalWires: null,
-        internalState: null,
-        isGhost: false,
-        ghostTargetId: null,
-        ghostTargetScope: null,
-      }
-
-      const subConflicted = checkInternalIncompatibility(
-        subIdentity,
-        pkg.internalPackages
-      )
-
-      const subWire: Wire = {
-        id: generateWireId(),
-        fromId: parentInternalId,
-        toId: subId,
-        wireType: 'dependency',
-        isSymlink: false,
-        flowProgress: 0,
-        conflicted: subConflicted,
-        conflictTime: subConflicted ? Date.now() : 0,
-      }
-
-      if (subConflicted) {
-        subPkg.state = 'conflict'
-      }
-
-      parentInternalPkg.children.push(subId)
-      pkg.internalPackages.set(subId, subPkg)
-      pkg.internalWires.set(subWire.id, subWire)
-
-      pkg.size += subSize
-      addWeight(subSize)
-    }
-  }
-
-  recalculateInternalState(packageId)
-}
-
-/**
- * Check if a package identity conflicts with any existing internal packages
- */
-function checkInternalIncompatibility(
-  identity: ReturnType<typeof pickRandomIdentity> | undefined,
-  internalPackages: Map<string, Package>
-): boolean {
-  if (!identity) return false
-
-  for (const innerPkg of internalPackages.values()) {
-    if (innerPkg.identity) {
-      if (areIncompatible(identity.name, innerPkg.identity.name)) {
-        return true
-      }
-    }
-  }
-  return false
 }
 
 // Callback for stable celebration
@@ -679,13 +474,6 @@ export function recalculateStateAtPath(scopePath: string[]): void {
   if (scopePath.length > 1 && previousState !== newState) {
     recalculateStateAtPath(scopePath.slice(0, -1))
   }
-}
-
-/**
- * Legacy wrapper for top-level package state recalculation
- */
-export function recalculateInternalState(packageId: string): void {
-  recalculateStateAtPath([packageId])
 }
 
 /**

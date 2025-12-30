@@ -13,6 +13,7 @@ import {
 } from './scope'
 import type { Package } from './types'
 import { triggerOrganizeBoost, markPackageRelocated } from './physics'
+import { updateCrossPackageDuplicates } from './cross-package'
 
 // Callback to avoid circular dependency
 // Set by packages.ts on initialization - takes full scope path for arbitrary depth
@@ -360,6 +361,10 @@ export function performSymlinkMerge(
       recalcFn([...gameState.scopeStack])
     }
   }
+
+  // Immediately refresh duplicate groups to clear stale halos
+  updateDuplicateGroups()
+  updateCrossPackageDuplicates()
 
   return weightSaved
 }

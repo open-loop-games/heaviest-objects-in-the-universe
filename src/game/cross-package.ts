@@ -132,7 +132,6 @@ export function updateCrossPackageConflicts(): void {
                 fromId: pkgA.id,
                 toId: pkgB.id,
                 wireType: 'sibling',
-                isSymlink: false,
                 flowProgress: 0,
                 conflicted: true,
                 conflictTime: Date.now(),

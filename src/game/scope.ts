@@ -56,7 +56,7 @@ export function enterScope(packageId: string): boolean {
   if (!isAtRoot()) return false
 
   gameState.scopeStack.push(packageId)
-  gameState.currentScope = packageId // Keep legacy field in sync
+  gameState.currentScope = packageId
   return true
 }
 
@@ -81,7 +81,7 @@ export function exitScope(): void {
 
   gameState.scopeStack.pop()
 
-  // Update legacy currentScope field
+  // Keep currentScope in sync
   if (gameState.scopeStack.length === 0) {
     gameState.currentScope = 'root'
   } else {
@@ -107,6 +107,14 @@ export function exitToRoot(): void {
  */
 export function getCurrentScopePackages(): Map<string, Package> {
   return getPackagesAtPath(gameState.scopeStack)
+}
+
+/**
+ * Get package count for current scope (for per-scope cost scaling)
+ * Each scope has its own cost curve - entering a scope resets the scaling
+ */
+export function getScopePackageCount(): number {
+  return getCurrentScopePackages().size
 }
 
 /**

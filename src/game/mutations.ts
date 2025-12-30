@@ -1,7 +1,11 @@
 // State mutation helpers
 
 import type { Package, Wire } from './types'
-import { createInitialState, CONFLICT_RESOLVE_COST } from './config'
+import {
+  createInitialState,
+  CONFLICT_RESOLVE_COST,
+  FRAGMENT_TO_TOKEN_RATIO,
+} from './config'
 import { calculateEfficiency, calculatePrestigeReward } from './formulas'
 import {
   gameState,
@@ -93,7 +97,7 @@ export function removePackageWithSubtree(id: string): void {
 
 export function addWire(wire: Wire): void {
   gameState.wires.set(wire.id, wire)
-  if (wire.isSymlink) {
+  if (wire.wireType === 'symlink') {
     gameState.stats.totalSymlinksCreated++
   }
 }
@@ -137,17 +141,18 @@ export function resolveConflict(packageId: string): void {
 }
 
 /**
- * Check if we can afford to resolve a conflict
+ * Get the cost to resolve a conflict (scales with tier)
+ * Base cost 15, multiplied by tier to match increased regen at higher tiers
  */
-export function canAffordConflictResolve(): boolean {
-  return gameState.resources.bandwidth >= CONFLICT_RESOLVE_COST
+export function getConflictResolveCost(): number {
+  return CONFLICT_RESOLVE_COST * gameState.meta.ecosystemTier
 }
 
 /**
- * Get the cost to resolve a conflict
+ * Check if we can afford to resolve a conflict
  */
-export function getConflictResolveCost(): number {
-  return CONFLICT_RESOLVE_COST
+export function canAffordConflictResolve(): boolean {
+  return gameState.resources.bandwidth >= getConflictResolveCost()
 }
 
 /**
@@ -167,8 +172,8 @@ export function resolveWireConflict(wireId: string): boolean {
   const wire = wires.get(wireId)
   if (!wire || !wire.conflicted) return false
 
-  // Deduct bandwidth cost
-  gameState.resources.bandwidth -= CONFLICT_RESOLVE_COST
+  // Deduct bandwidth cost (tier-scaled)
+  gameState.resources.bandwidth -= getConflictResolveCost()
 
   // Mark wire as resolved
   wire.conflicted = false
@@ -181,6 +186,30 @@ export function resolveWireConflict(wireId: string): boolean {
     targetPkg.conflictProgress = 0
     gameState.stats.totalConflictsResolved++
   }
+
+  return true
+}
+
+// ============================================
+// CACHE FRAGMENT COLLECTION
+// ============================================
+
+/**
+ * Collect a cache fragment from a package
+ * @param packageId The package to collect from
+ * @returns true if collection succeeded
+ */
+export function collectCacheFragment(packageId: string): boolean {
+  const packages = getCurrentScopePackages()
+  const pkg = packages.get(packageId)
+
+  if (!pkg || !pkg.hasCacheFragment) {
+    return false
+  }
+
+  pkg.hasCacheFragment = false
+  gameState.resources.cacheFragments++
+  gameState.stats.cacheFragmentsCollected++
 
   return true
 }
@@ -210,8 +239,13 @@ export function performPrestige(): void {
     gameState.onboarding.firstPrestigeComplete = true
   }
 
-  // Add meta rewards
-  gameState.meta.cacheTokens += reward
+  // Convert fragments to bonus tokens
+  const fragmentBonus = Math.floor(
+    gameState.resources.cacheFragments / FRAGMENT_TO_TOKEN_RATIO
+  )
+
+  // Add meta rewards (base reward + fragment bonus)
+  gameState.meta.cacheTokens += reward + fragmentBonus
   gameState.meta.totalPrestiges++
 
   // Sync ecosystem tier (derived from cache tokens)
@@ -235,24 +269,20 @@ export function performPrestige(): void {
 
   // Reset automation system (toggles reset to off each run)
   gameState.automation.resolveEnabled = false
-  gameState.automation.dedupEnabled = false
   gameState.automation.hoistEnabled = false
   gameState.automation.resolveActive = false
   gameState.automation.resolveTargetWireId = null
   gameState.automation.resolveTargetScope = null
-  gameState.automation.dedupActive = false
-  gameState.automation.dedupTargetPair = null
-  gameState.automation.dedupTargetScope = null
   gameState.automation.hoistActive = false
   gameState.automation.hoistTargetDepName = null
   gameState.automation.hoistTargetSources = null
   gameState.automation.processStartTime = 0
   gameState.automation.lastResolveTime = 0
-  gameState.automation.lastDedupTime = 0
   gameState.automation.lastHoistTime = 0
 
   gameState.resources.bandwidth = 100 * gameState.meta.ecosystemTier
   gameState.resources.weight = 0
+  gameState.resources.cacheFragments = 0
 
   // Keep upgrades but reset level-specific progress
   gameState.stats.currentEfficiency = 1
@@ -302,6 +332,7 @@ export function softReset(): void {
   // Reset resources to base values (scaled by tier)
   gameState.resources.bandwidth = 100 * gameState.meta.ecosystemTier
   gameState.resources.weight = 0
+  gameState.resources.cacheFragments = 0
 
   // Reset run stats but keep lifetime stats structure
   gameState.stats.currentEfficiency = 1
