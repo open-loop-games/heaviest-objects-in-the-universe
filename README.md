@@ -10,6 +10,9 @@ An incremental game about recursive npm dependencies, where your `node_modules` 
 
 ## Play
 
+**[Play Now](https://namahanna.github.io/heaviest-objects-in-the-universe/)**
+
+Or run locally:
 ```bash
 pnpm install
 pnpm dev
@@ -17,9 +20,17 @@ pnpm dev
 
 ## The Game
 
-You are a dependency resolver. Click to install packages. Each package explodes into dependencies. Dependencies explode into more dependencies. The tree grows fractally. Weight accumulates. Eventually, gravity wins - collapse into a singularity and prestige into a new ecosystem.
+You are a dependency resolver. Your job: tame the chaos of nested node_modules.
 
-**Core fantasy:** Taming chaos through optimization. Watch a messy dependency tree snap into an efficient, deduplicated web.
+**The Loop:**
+1. Click the root to spawn a package
+2. Each package contains its own `node_modules` - click to dive inside
+3. Dependencies cascade, conflicts erupt, duplicates multiply
+4. Resolve conflicts (prune or upgrade), merge duplicates (symlink)
+5. Stabilize the scope, exit with satisfaction
+6. Go deeper. Unlock automation. Prestige into a black hole.
+
+**Core fantasy:** Watch a messy dependency tree snap into an efficient, deduplicated web. Then collapse it all and start again, stronger.
 
 ## Stack
 
@@ -38,6 +49,6 @@ pnpm lint         # ESLint
 ## Docs
 
 - [Game Design](docs/GAME_DESIGN.md) - Full mechanics and progression
-- [Visual Design](docs/VISUAL_DESIGN.md) - No-text communication system
-- [Conflict/Symlink](docs/CONFLICT_SYMLINK_REDESIGN.md) - Wire-based conflicts, halo-based symlinks
-- [Original Concept](docs/CONCEPT.md) - Initial brainstorm (historical)
+- [Prestige & Progression](docs/PRESTIGE_PROGRESSION.md) - Tier system, cache tokens
+- [Original Concept](docs/CONCEPT.md) - Initial brainstorm
+- [Archived Designs](docs/archived/) - Legacy design docs

@@ -29,16 +29,24 @@ pnpm lint         # ESLint
 src/
 ├── components/
 │   ├── GameCanvas.vue    # Pixi.js canvas + input handling
-│   └── HUD.vue           # Resource bars, tools (uses unicode symbols)
+│   └── hud/              # HUD components (resource bars, navigation, automation)
 ├── game/
 │   ├── state.ts          # Reactive game state (Vue refs)
-│   ├── loop.ts           # Game tick, physics, spawning
-│   ├── packages.ts       # Package/dependency tree management
-│   ├── formulas.ts       # Cost scaling, production rates
-│   └── types.ts          # Core interfaces
+│   ├── types.ts          # Core interfaces (Package, Wire, GameState)
+│   ├── loop.ts           # Game tick, physics updates
+│   ├── packages.ts       # Package creation, dependency spawning
+│   ├── cascade.ts        # Staggered spawn system with depth rewards
+│   ├── scope.ts          # Scope navigation (dive into packages)
+│   ├── automation.ts     # Auto-resolve, auto-hoist (tier-gated)
+│   ├── hoisting.ts       # Deduplication to root level
+│   ├── symlinks.ts       # Duplicate detection + merge logic
+│   ├── registry.ts       # Real npm package identities + archetypes
+│   ├── upgrades.ts       # Cache token upgrades + tier system
+│   ├── config.ts         # Game constants, initial state factory
+│   └── persistence.ts    # Save/load (localStorage)
 └── rendering/
     ├── renderer.ts       # Pixi.js setup, camera, world container
-    ├── nodes.ts          # Package node visuals (shapes, states)
+    ├── nodes.ts          # Package node visuals (shapes, states, effects)
     ├── wires.ts          # Dependency line rendering
     └── colors.ts         # Color palette, state mappings
 ```
@@ -46,16 +54,17 @@ src/
 ### Key Patterns
 
 **State:** Vue reactivity for resources; `Map<string, Package>` for graph
+**Scopes:** Top-level packages contain their own `internalPackages` + `internalWires` maps
 **Rendering:** Layered Pixi containers (wires behind nodes)
 **Physics:** Force-directed layout with repulsion/attraction
-**Game Loop:** `requestAnimationFrame` → physics → spawning → rendering
+**Game Loop:** `requestAnimationFrame` → physics → cascade spawning → automation → rendering
 
 ## Design Documents
 
-- `docs/GAME_DESIGN.md` - Full game design doc (mechanics, progression, balance)
-- `docs/VISUAL_DESIGN.md` - Complete visual language and teaching systems
-- `docs/CONFLICT_SYMLINK_REDESIGN.md` - Wire-based conflicts, halo-based symlinks (implemented)
-- `docs/RESEARCH_NPM_HEAVY_PACKAGES.md` - Real npm data, icon sources
+- `docs/GAME_DESIGN.md` - Full mechanics, progression, balance
+- `docs/PRESTIGE_PROGRESSION.md` - Tier system, cache tokens, unlocks
+- `docs/CONCEPT.md` - Original concept
+- `docs/archived/` - Legacy design docs (may be outdated)
 - `TODO.md` - Incomplete work tracking
 
 ## No-Text Communication (STRICT)
@@ -63,40 +72,55 @@ src/
 **Jam rule:** "Anything you can type out is text; symbols are fine."
 
 This means **NO numbers, NO letters** anywhere in the game UI. Only:
-- Unicode symbols (↓ ◆ ● ★ ⚡ ⟲)
+- Unicode symbols (↓ ◆ ★ ⚡ ⟲ ← ✓)
 - Geometric shapes (rendered graphics)
 - Progress bars, fill levels, dot counters
 - Colors and animations
 
 | Element | Meaning |
 |---------|---------|
-| **Package icons** | Identity (Devicon for real packages, archetype shapes for fallback) |
+| **Package icons** | Identity (Devicon for real packages, archetype fallbacks) |
 | **Border color** | State (blue=installing, green=ready, red=conflict, cyan=optimized) |
-| **Fill color** | Health/heat level |
+| **Fill color** | Package type/archetype |
 | **Progress ring** | Installation/resolution progress |
-| **Wire style** | Solid=dependency, double=symlink, crackling red=conflict |
-| **Glows** | Affordability (green=can click, blue=almost, red=needs attention) |
-| **Halos** | Duplicate detection (matching colors pulse in sync) |
+| **Wire style** | Solid=dependency, dashed=symlink, red crackling=conflict |
+| **Portal rings** | Top-level packages have internal scopes (pristine/unstable/stable) |
+| **Glows/Halos** | Duplicate detection, affordability hints |
+| **Golden glow** | Depth 3+ reward package (4x weight) |
 | **Bar fill** | Resource amount (NOT numeric display) |
 
-See `docs/VISUAL_DESIGN.md` for full visual language spec.
-
-## Game Mechanics Quick Reference
+## Game Mechanics
 
 **Resources:**
-- Bandwidth (↓) - spent to install, regenerates
+- Bandwidth (↓) - spent to install, regenerates over time
 - Weight (◆) - total node_modules size, triggers prestige
-- Heat (●) - system strain, causes conflicts
+- Cache Fragments - depth rewards, convert to tokens on prestige
+- Cache Tokens - meta-currency, persistent across prestiges
 
 **Core Loop:**
-1. Click node → spend bandwidth → create package
-2. Package bursts → spawns 1-5 dependencies
-3. Chain reaction → tree grows fractally
-4. Conflicts spawn (incompatible archetypes) → click wire to Prune or Upgrade
-5. Duplicates appear → drag to merge (symlink)
-6. Weight accumulates → gravity increases → prestige
+1. Click root → spawn top-level package (has internal scope)
+2. Click top-level package → enter scope, trigger cascade
+3. Cascade spawns dependencies with staggered timing + depth rewards
+4. Conflicts appear on wires → click wire to Prune or Upgrade
+5. Duplicates detected → drag to merge (symlink) or auto-hoist
+6. Stabilize scope → exit with satisfaction
+7. Weight accumulates → prestige at 100k → gain cache tokens
 
-**Prestige:** At 100k weight, collapse into black hole, gain cache tokens, restart with multipliers.
+**Scope System:**
+- Top-level packages are "compressed" - they contain internal node_modules
+- Click to dive in, back button to exit
+- Internal state: pristine → unstable (has conflicts/dupes) → stable (resolved)
+- Depth totem shows current scope level (max depth = tier)
+
+**Progression (Tiers 1-5):**
+- Tier 1: Base game, depth 1 only
+- Tier 2: Depth 2 unlocked, auto-resolve available
+- Tier 3: Depth 3+, auto-hoist, golden packages spawn
+- Tier 4-5: Deeper nesting, faster automation
+
+**Automation (Tier 2+):**
+- Auto-resolve: Automatically resolves conflicts when enabled
+- Auto-hoist: Automatically hoists duplicate deps to root
 
 ## Code Conventions
 
@@ -109,23 +133,20 @@ See `docs/VISUAL_DESIGN.md` for full visual language spec.
 
 **Working:**
 - Canvas with pan/zoom
-- Package installation + dependency spawning
-- Force-directed physics
-- Wire-based conflict system (Prune/Upgrade actions)
-- Symlink data layer + duplicate detection
-- Prestige system
-
-**Partial:**
-- HUD (has resource bars, needs full no-text compliance)
-- Symlink UI (drag-to-merge interaction incomplete)
-- Upgrade system (types defined, no shop UI)
-- Edge indicators (off-screen event arrows)
+- Package installation + cascade spawning
+- Scope system (dive into packages, navigate back)
+- Force-directed physics (per-scope)
+- Wire-based conflict system (Prune/Upgrade)
+- Duplicate detection + symlink merge UI
+- Hoisting (manual + auto)
+- Automation system (auto-resolve, auto-hoist)
+- Tier/progression system
+- Prestige (black hole animation, cache tokens)
+- Depth rewards (golden packages, cache fragments)
+- Save/load (localStorage)
+- Package icons (Devicon integration)
+- HUD with integrated upgrades
+- Resource bars, scope navigation, automation toggles
 
 **Not Started:**
-- Real package icons (Devicon integration)
-- Vulnerability spread mechanic
-- Sound effects
-- Particle effects
-- Save/load
-
-See `TODO.md` for full tracking.
+- Particle effects (beyond basic ripples)
