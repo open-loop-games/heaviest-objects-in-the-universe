@@ -63,38 +63,41 @@ const showPrestigeArea = computed(() => {
 
 <template>
   <div class="hud">
-    <!-- Top left: Scope navigation (back button + depth totem) -->
-    <Transition name="scope-nav">
-      <ScopeNavigation v-if="inPackageScope" />
-    </Transition>
-
     <!-- Top right: Save & Settings (absolutely positioned) -->
     <div class="hud-settings">
       <SettingsPanel />
     </div>
 
-    <!-- Left stack: Unified resource panel -->
-    <div
-      v-if="showBandwidth"
-      class="hud-panel"
-      :class="{ 'prestige-ready': prestigeProgress >= 1 }"
-    >
-      <!-- Bandwidth Row -->
-      <BandwidthRow />
+    <!-- Left stack: Resource panel + Scope navigation -->
+    <div class="hud-left-stack">
+      <!-- Unified resource panel -->
+      <div
+        v-if="showBandwidth"
+        class="hud-panel"
+        :class="{ 'prestige-ready': prestigeProgress >= 1 }"
+      >
+        <!-- Bandwidth Row -->
+        <BandwidthRow />
 
-      <!-- Weight Row -->
-      <Transition name="fade">
-        <WeightRow v-if="showWeight" />
-      </Transition>
+        <!-- Weight Row -->
+        <Transition name="fade">
+          <WeightRow v-if="showWeight" />
+        </Transition>
 
-      <!-- Quality Metrics -->
-      <Transition name="fade">
-        <QualityMetrics v-if="showEfficiency" />
-      </Transition>
+        <!-- Quality Metrics -->
+        <Transition name="fade">
+          <QualityMetrics v-if="showEfficiency" />
+        </Transition>
 
-      <!-- Automation Row -->
-      <Transition name="fade">
-        <AutomationRow v-if="showAutomation" />
+        <!-- Automation Row -->
+        <Transition name="fade">
+          <AutomationRow v-if="showAutomation" />
+        </Transition>
+      </div>
+
+      <!-- Scope Navigation (back button + depth totem) - below resource panel -->
+      <Transition name="scope-nav">
+        <ScopeNavigation v-if="inPackageScope" />
       </Transition>
     </div>
 
@@ -125,10 +128,16 @@ const showPrestigeArea = computed(() => {
   right: 24px;
 }
 
-.hud-panel {
+.hud-left-stack {
   position: absolute;
   top: 24px;
   left: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hud-panel {
   display: flex;
   flex-direction: column;
   gap: 10px;

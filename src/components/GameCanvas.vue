@@ -169,6 +169,9 @@ onMounted(async () => {
   if (canvasRef.value) {
     await renderer.init(canvasRef.value)
 
+    // Set initial prestige target position
+    updatePrestigeTarget()
+
     // Try to load saved game
     const loaded = loadFromLocalStorage()
 
@@ -1135,6 +1138,18 @@ function updateHoldProgress() {
 
 function handleResize() {
   renderer.resize()
+  // Update prestige target position (bottom-left corner where prestige panel is)
+  updatePrestigeTarget()
+}
+
+function updatePrestigeTarget() {
+  // Prestige panel is positioned at bottom: 24px, left: 24px
+  // The singularity button is centered in the orbit container
+  // Approximate position: left edge + orbit container offset
+  const screenHeight = window.innerHeight
+  const targetX = 24 + 100 // left padding + half of orbit container width
+  const targetY = screenHeight - 24 - 50 // bottom padding + half of orbit container height
+  renderer.setPrestigeTarget(targetX, targetY)
 }
 </script>
 

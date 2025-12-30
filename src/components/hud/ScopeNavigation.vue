@@ -42,10 +42,13 @@ watch(currentDepth, () => {
   }, 500)
 })
 
-// Depth levels for rendering (0, 1, 2 from bottom to top)
+// Max depth supported by the totem
+const MAX_DEPTH = 5
+
+// Depth levels for rendering (0 to MAX_DEPTH from bottom to top)
 const depthLevels = computed(() => {
   const levels = []
-  for (let i = 2; i >= 0; i--) {
+  for (let i = MAX_DEPTH; i >= 0; i--) {
     levels.push({
       level: i,
       filled: i <= currentDepth.value && currentDepth.value > 0,
@@ -110,7 +113,7 @@ onUnmounted(() => {
       <span class="stable-check" v-if="isScopeStable">✓</span>
     </button>
 
-    <!-- Depth Totem (under back button) -->
+    <!-- Depth Totem (horizontal) -->
     <div
       class="depth-totem"
       :class="{
@@ -118,15 +121,15 @@ onUnmounted(() => {
         pulse: depthJustChanged,
       }"
     >
-      <!-- Vertical connecting line -->
+      <!-- Horizontal connecting line -->
       <div
         class="totem-line"
-        :style="{ height: currentDepth * 16 + 'px' }"
+        :style="{ width: currentDepth * 16 + 'px' }"
       ></div>
 
-      <!-- Depth circles (from top to bottom: layer 2, layer 1, root) -->
+      <!-- Depth circles (from left to right: root, layer 1, layer 2, ...) -->
       <div
-        v-for="level in depthLevels"
+        v-for="level in depthLevels.slice().reverse()"
         :key="level.level"
         class="totem-circle"
         :class="{
@@ -144,7 +147,7 @@ onUnmounted(() => {
 <style scoped>
 .hud-top-left {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: flex-start;
   gap: 12px;
   pointer-events: auto;
@@ -247,10 +250,10 @@ onUnmounted(() => {
 
 .depth-totem {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   gap: 4px;
-  padding: 12px 8px;
+  padding: 8px 12px;
   background: rgba(30, 30, 50, 0.8);
   border: 2px solid var(--hud-border-dark);
   border-radius: 12px;
@@ -273,11 +276,12 @@ onUnmounted(() => {
 /* Connecting line between circles */
 .totem-line {
   position: absolute;
-  width: 2px;
-  background: linear-gradient(to bottom, #7a7aff, #4a4a6a);
+  height: 2px;
+  background: linear-gradient(to right, #4a4a6a, #7a7aff);
+  left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  transition: height 0.3s ease;
+  transition: width 0.3s ease;
   z-index: 0;
 }
 

@@ -41,7 +41,7 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     maxLevel: 15,
     baseCost: 40,
     costMultiplier: 1.6,
-    unlockAt: 5,
+    unlockAt: 3,
   },
   efficiency: {
     id: 'efficiency',

@@ -672,6 +672,7 @@ const LEGACY_PACKAGES: PackageIdentity[] = [
 ]
 
 // Runtime packages - node polyfills, core utilities
+// Only 'node' gets the nodejs icon; others use procedural for visual distinction
 const RUNTIME_PACKAGES: PackageIdentity[] = [
   {
     name: 'node',
@@ -683,7 +684,7 @@ const RUNTIME_PACKAGES: PackageIdentity[] = [
   },
   {
     name: 'fs-extra',
-    iconKey: 'nodejs',
+    iconKey: 'npm', // Procedural fallback - unique shape/color
     archetype: 'runtime',
     baseDeps: 2,
     weight: 30,
@@ -691,7 +692,7 @@ const RUNTIME_PACKAGES: PackageIdentity[] = [
   },
   {
     name: 'path',
-    iconKey: 'nodejs',
+    iconKey: 'npm', // Procedural fallback - unique shape/color
     archetype: 'runtime',
     baseDeps: 0,
     weight: 5,
@@ -699,7 +700,7 @@ const RUNTIME_PACKAGES: PackageIdentity[] = [
   },
   {
     name: 'buffer',
-    iconKey: 'nodejs',
+    iconKey: 'npm', // Procedural fallback - unique shape/color
     archetype: 'runtime',
     baseDeps: 1,
     weight: 40,
@@ -707,7 +708,7 @@ const RUNTIME_PACKAGES: PackageIdentity[] = [
   },
   {
     name: 'process',
-    iconKey: 'nodejs',
+    iconKey: 'npm', // Procedural fallback - unique shape/color
     archetype: 'runtime',
     baseDeps: 0,
     weight: 10,
@@ -996,7 +997,7 @@ const TIER1_DIRECT_INSTALL: PackageIdentity[] = [
   },
   {
     name: 'fs-extra',
-    iconKey: 'nodejs',
+    iconKey: 'npm', // Procedural fallback - unique shape/color
     archetype: 'runtime',
     baseDeps: 3,
     weight: 30,

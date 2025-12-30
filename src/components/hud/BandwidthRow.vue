@@ -102,9 +102,9 @@ const canAfford = computed(() => canPurchaseUpgrade('bandwidth'))
 // Local hover state for upgrade preview
 const isHoveringPips = ref(false)
 
-function handlePipClick(pipIndex: number) {
-  // Pips are 1-indexed in template, levels are 0-indexed
-  if (pipIndex === level.value + 1 && canAfford.value) {
+function handlePipsClick() {
+  // Clicking anywhere on the pips container purchases the upgrade if affordable
+  if (canAfford.value) {
     purchaseUpgrade('bandwidth')
   }
 }
@@ -189,6 +189,7 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
       class="upgrade-pips-container"
       @mouseenter="handlePipsEnter"
       @mouseleave="handlePipsLeave"
+      @click="handlePipsClick"
     >
       <div class="upgrade-pips">
         <span
@@ -200,7 +201,6 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
             affordable: i === level + 1 && canAfford,
             'next-level': i === level + 1,
           }"
-          @click="handlePipClick(i)"
         />
       </div>
       <div class="upgrade-pips">
@@ -213,7 +213,6 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
             affordable: i + 8 === level + 1 && canAfford,
             'next-level': i + 8 === level + 1,
           }"
-          @click="handlePipClick(i + 8)"
         />
       </div>
     </div>
@@ -397,6 +396,7 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
   padding: 4px;
   border-radius: 6px;
   transition: background var(--hud-t-fast) ease;
+  cursor: pointer;
 }
 
 .upgrade-pips-container:hover {
@@ -414,7 +414,6 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
   height: 8px;
   background: #2a2a3a;
   border-radius: 50%;
-  cursor: pointer;
   transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
