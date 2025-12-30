@@ -90,18 +90,8 @@ export function loadGame(saveString: string): boolean {
     // Restore wires
     data.wires = new Map(data.wires)
 
-    // Restore hoistedDeps (or create empty Map if not present in save)
-    if (data.hoistedDeps && Array.isArray(data.hoistedDeps)) {
-      data.hoistedDeps = new Map(data.hoistedDeps)
-      // Migration: add ringIndex if missing (old saves)
-      for (const [, dep] of data.hoistedDeps) {
-        if (dep.ringIndex === undefined) {
-          dep.ringIndex = 0
-        }
-      }
-    } else {
-      data.hoistedDeps = new Map()
-    }
+    // Restore hoistedDeps
+    data.hoistedDeps = new Map(data.hoistedDeps)
 
     // Remove version from data before assigning (not part of GameState)
     delete data.version

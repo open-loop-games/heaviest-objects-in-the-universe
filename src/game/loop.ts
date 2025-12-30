@@ -163,8 +163,8 @@ function tick(): void {
     updateEfficiency()
   }
 
-  // Update automation (auto-resolve, auto-dedup)
-  updateAutomation(now)
+  // Update automation (auto-resolve, auto-dedup, auto-hoist)
+  updateAutomation(now, deltaTime)
 
   // Call registered callbacks
   for (const callback of tickCallbacks) {

@@ -1,7 +1,7 @@
 // State mutation helpers
 
 import type { Package, Wire } from './types'
-import { createInitialState } from './config'
+import { createInitialState, CONFLICT_RESOLVE_COST } from './config'
 import { calculateEfficiency, calculatePrestigeReward } from './formulas'
 import {
   gameState,
@@ -11,6 +11,26 @@ import {
 } from './state'
 import { getCurrentScopePackages, getCurrentScopeWires } from './scope'
 import { saveToLocalStorage, clearSavedGame } from './persistence'
+import { getCompressionMultiplier } from './upgrades'
+
+// ============================================
+// WEIGHT HELPERS
+// ============================================
+
+/**
+ * Add weight with compression multiplier applied
+ * @param baseWeight The base weight to add
+ * @returns The actual weight added (after compression)
+ */
+export function addWeight(baseWeight: number): number {
+  const compressedWeight = baseWeight * getCompressionMultiplier()
+  gameState.resources.weight += compressedWeight
+  gameState.stats.maxWeightReached = Math.max(
+    gameState.stats.maxWeightReached,
+    gameState.resources.weight
+  )
+  return compressedWeight
+}
 
 // ============================================
 // PACKAGE MUTATIONS
@@ -18,12 +38,8 @@ import { saveToLocalStorage, clearSavedGame } from './persistence'
 
 export function addPackage(pkg: Package): void {
   gameState.packages.set(pkg.id, pkg)
-  gameState.resources.weight += pkg.size
+  addWeight(pkg.size)
   gameState.stats.totalPackagesInstalled++
-  gameState.stats.maxWeightReached = Math.max(
-    gameState.stats.maxWeightReached,
-    gameState.resources.weight
-  )
 }
 
 export function removePackage(id: string): void {
@@ -121,15 +137,38 @@ export function resolveConflict(packageId: string): void {
 }
 
 /**
+ * Check if we can afford to resolve a conflict
+ */
+export function canAffordConflictResolve(): boolean {
+  return gameState.resources.bandwidth >= CONFLICT_RESOLVE_COST
+}
+
+/**
+ * Get the cost to resolve a conflict
+ */
+export function getConflictResolveCost(): number {
+  return CONFLICT_RESOLVE_COST
+}
+
+/**
  * Resolve a conflict on a wire
  * SCOPE-AWARE: Works for both outer wires and internal wires
+ * Returns false if wire doesn't exist, isn't conflicted, or can't afford
  */
 export function resolveWireConflict(wireId: string): boolean {
+  // Check affordability first
+  if (!canAffordConflictResolve()) {
+    return false
+  }
+
   const wires = getCurrentScopeWires()
   const packages = getCurrentScopePackages()
 
   const wire = wires.get(wireId)
   if (!wire || !wire.conflicted) return false
+
+  // Deduct bandwidth cost
+  gameState.resources.bandwidth -= CONFLICT_RESOLVE_COST
 
   // Mark wire as resolved
   wire.conflicted = false
@@ -194,16 +233,23 @@ export function performPrestige(): void {
   gameState.cascade.scopePackageId = null
   gameState.cascade.pendingSpawns = []
 
-  // Reset automation system
+  // Reset automation system (toggles reset to off each run)
+  gameState.automation.resolveEnabled = false
+  gameState.automation.dedupEnabled = false
+  gameState.automation.hoistEnabled = false
   gameState.automation.resolveActive = false
   gameState.automation.resolveTargetWireId = null
   gameState.automation.resolveTargetScope = null
   gameState.automation.dedupActive = false
   gameState.automation.dedupTargetPair = null
   gameState.automation.dedupTargetScope = null
+  gameState.automation.hoistActive = false
+  gameState.automation.hoistTargetDepName = null
+  gameState.automation.hoistTargetSources = null
   gameState.automation.processStartTime = 0
   gameState.automation.lastResolveTime = 0
   gameState.automation.lastDedupTime = 0
+  gameState.automation.lastHoistTime = 0
 
   gameState.resources.bandwidth = 100 * gameState.meta.ecosystemTier
   gameState.resources.weight = 0
@@ -283,9 +329,3 @@ export function hardReset(): void {
   Object.assign(gameState, createInitialState())
 }
 
-/**
- * @deprecated Use softReset() or hardReset() instead
- */
-export function resetGame(): void {
-  hardReset()
-}

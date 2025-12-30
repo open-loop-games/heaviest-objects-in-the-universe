@@ -3,6 +3,7 @@
 
 import { gameState } from './state'
 import { generateId } from './id-generator'
+import { addWeight } from './mutations'
 import type { HoistedDep } from './types'
 import type { PackageIdentity } from './registry'
 
@@ -10,7 +11,6 @@ import type { PackageIdentity } from './registry'
 const BASE_RING_RADIUS = 60 // Inner ring radius at full size
 const RING_GAP = 25 // Gap between inner and outer ring
 const MAX_PER_RING_FULL_SIZE = 8 // Max items on inner ring before scaling
-const HOISTED_DEP_SIZE = 18 // Visual radius of hoisted dep circle
 
 /**
  * Get layout info for current hoisted deps count
@@ -268,8 +268,8 @@ export function hoistDep(depName: string): string | null {
     }
   }
 
-  // Add hoisted weight (deduplicated)
-  gameState.resources.weight += hoistedDep.weight
+  // Add hoisted weight (deduplicated, with compression)
+  addWeight(hoistedDep.weight)
 
   return hoistedId
 }

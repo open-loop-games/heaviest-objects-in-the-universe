@@ -3,6 +3,8 @@
 // Supports arbitrary depth using scope paths
 
 import { gameState, getCompressionChance, getMaxCompressedDepth } from './state'
+import { DEP_SPAWN_COST, MAX_PENDING_DEPS } from './config'
+import { addWeight } from './mutations'
 import { generateId, generateWireId } from './id-generator'
 import {
   type Package,
@@ -111,9 +113,13 @@ export function startCascade(scopePath: string[]): void {
       const variance = depth === 1 ? 8 : 4
       count = baseCount + Math.floor(Math.random() * variance)
     }
-    // 5% chance to crit and double the count
-    if (Math.random() < 0.05) {
+    // Check for guaranteed crit from inner scope merges, otherwise 5% random crit
+    const hasGuaranteedCrit = gameState.cascade.guaranteedCrits > 0
+    if (hasGuaranteedCrit || Math.random() < 0.05) {
       count *= 2
+      if (hasGuaranteedCrit) {
+        gameState.cascade.guaranteedCrits--
+      }
       if (onCritEffect) {
         onCritEffect(count)
       }
@@ -171,6 +177,8 @@ export function startCascade(scopePath: string[]): void {
       depth: 1, // Depth within this scope
       parentInternalId: null,
       isSubDep: false,
+      awaitingBandwidth: false,
+      queuedAt: 0,
     })
   }
 
@@ -265,8 +273,8 @@ function spawnNextFromQueue(): void {
   // Get spawn index before shifting (for compressed check)
   const spawnIndex = targetPackages.size
 
-  // Get next spawn from queue
-  const spawn = cascade.pendingSpawns.shift()
+  // Peek at next spawn (don't remove yet)
+  const spawn = cascade.pendingSpawns[0]
   if (!spawn) {
     // Queue empty - check for sub-deps to add
     if (cascadeData.subDepQueue && cascadeData.subDepQueue.length > 0) {
@@ -304,6 +312,8 @@ function spawnNextFromQueue(): void {
           depth: 2,
           parentInternalId: parentId,
           isSubDep: true,
+          awaitingBandwidth: false,
+          queuedAt: 0,
         })
       }
 
@@ -316,6 +326,31 @@ function spawnNextFromQueue(): void {
 
     endCascade()
     return
+  }
+
+  // Check bandwidth affordability
+  if (gameState.resources.bandwidth < DEP_SPAWN_COST) {
+    // Can't afford - mark as awaiting bandwidth
+    if (!spawn.awaitingBandwidth) {
+      spawn.awaitingBandwidth = true
+      spawn.queuedAt = Date.now()
+    }
+    // Don't spawn, wait for bandwidth to regenerate
+    return
+  }
+
+  // Can afford - remove from queue and deduct bandwidth
+  cascade.pendingSpawns.shift()
+  gameState.resources.bandwidth -= DEP_SPAWN_COST
+
+  // Clear awaiting flag if it was set
+  spawn.awaitingBandwidth = false
+  spawn.queuedAt = 0
+
+  // Enforce queue cap
+  if (cascade.pendingSpawns.length > MAX_PENDING_DEPS) {
+    // Drop oldest items beyond cap
+    cascade.pendingSpawns.length = MAX_PENDING_DEPS
   }
 
   // Check if this dep should be compressed
@@ -384,9 +419,9 @@ function spawnNextFromQueue(): void {
   targetPackages.set(id, innerPkg)
   targetWires.set(wire.id, wire)
 
-  // Update weight
+  // Update weight (with compression applied to global weight)
   targetPkg.size += spawn.size
-  gameState.resources.weight += spawn.size
+  addWeight(spawn.size)
 
   // Trigger particle effect
   if (onSpawnEffect) {
@@ -443,6 +478,31 @@ export function cancelCascade(): void {
   if (gameState.cascade.active) {
     endCascade()
   }
+}
+
+/**
+ * Get pending spawns that are waiting for bandwidth (for rendering)
+ * Returns spawns that have awaitingBandwidth=true
+ */
+export function getPendingSpawnsAwaitingBandwidth(): PendingSpawn[] {
+  if (!gameState.cascade.active) return []
+  return gameState.cascade.pendingSpawns.filter((s) => s.awaitingBandwidth)
+}
+
+/**
+ * Get all pending spawns (for rendering queue indicators)
+ */
+export function getAllPendingSpawns(): PendingSpawn[] {
+  if (!gameState.cascade.active) return []
+  return [...gameState.cascade.pendingSpawns]
+}
+
+/**
+ * Get the current cascade scope path
+ */
+export function getCascadeScopePath(): string[] {
+  const cascadeData = gameState.cascade as unknown as CascadeData
+  return cascadeData.scopePath ? [...cascadeData.scopePath] : []
 }
 
 // Legacy exports for backwards compatibility

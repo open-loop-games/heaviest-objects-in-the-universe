@@ -217,6 +217,70 @@ const HUB_PACKAGES: PackageIdentity[] = [
     weight: 40,
     isHub: true,
   },
+  {
+    name: 'socket.io',
+    iconKey: 'socketio',
+    archetype: 'utility',
+    baseDeps: 2,
+    weight: 45,
+    isHub: true,
+  },
+  {
+    name: 'chart.js',
+    iconKey: 'chartjs',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 60,
+    isHub: false,
+  },
+  {
+    name: 'zod',
+    iconKey: 'npm', // Uses semantic icon (General Zod!)
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 15,
+    isHub: true,
+  },
+  {
+    name: 'yup',
+    iconKey: 'npm', // Uses semantic icon (thumbs up)
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 12,
+    isHub: true,
+  },
+  {
+    name: 'joi',
+    iconKey: 'npm', // Uses semantic icon (smiley)
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 20,
+    isHub: true,
+  },
+  {
+    name: 'dotenv',
+    iconKey: 'npm', // Uses semantic icon (dots)
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 5,
+    isHub: true,
+  },
+  {
+    name: 'cors',
+    iconKey: 'npm', // Uses semantic icon (crossed arrows)
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 8,
+    isHub: true,
+  },
+  {
+    name: 'helmet',
+    iconKey: 'npm', // Uses semantic icon (viking helmet)
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 10,
+    isHub: true,
+  },
 ]
 
 // Framework packages - heavy, spawn many dependencies
@@ -231,7 +295,7 @@ const FRAMEWORK_PACKAGES: PackageIdentity[] = [
   },
   {
     name: 'react-dom',
-    iconKey: 'react',
+    iconKey: 'react', // Uses variant system for visual distinction
     archetype: 'framework',
     baseDeps: 3,
     weight: 140,
@@ -325,6 +389,38 @@ const FRAMEWORK_PACKAGES: PackageIdentity[] = [
     weight: 400,
     isHub: false,
   },
+  {
+    name: 'astro',
+    iconKey: 'astro',
+    archetype: 'framework',
+    baseDeps: 6,
+    weight: 120,
+    isHub: false,
+  },
+  {
+    name: 'ionic',
+    iconKey: 'ionic',
+    archetype: 'framework',
+    baseDeps: 8,
+    weight: 180,
+    isHub: false,
+  },
+  {
+    name: 'ember',
+    iconKey: 'ember',
+    archetype: 'framework',
+    baseDeps: 10,
+    weight: 220,
+    isHub: false,
+  },
+  {
+    name: 'backbone',
+    iconKey: 'backbonejs',
+    archetype: 'framework',
+    baseDeps: 2,
+    weight: 70,
+    isHub: false,
+  },
 ]
 
 // Tooling packages - build tools, bundlers, transformers
@@ -347,7 +443,7 @@ const TOOLING_PACKAGES: PackageIdentity[] = [
   },
   {
     name: 'esbuild',
-    iconKey: 'npm',
+    iconKey: 'npm', // No devicon, uses procedural
     archetype: 'tooling',
     baseDeps: 0,
     weight: 40,
@@ -403,7 +499,7 @@ const TOOLING_PACKAGES: PackageIdentity[] = [
   },
   {
     name: 'prettier',
-    iconKey: 'npm',
+    iconKey: 'npm', // No devicon, uses procedural
     archetype: 'tooling',
     baseDeps: 0,
     weight: 60,
@@ -471,6 +567,62 @@ const TOOLING_PACKAGES: PackageIdentity[] = [
     archetype: 'tooling',
     baseDeps: 20,
     weight: 400,
+    isHub: false,
+  },
+  {
+    name: 'cypress',
+    iconKey: 'cypressio',
+    archetype: 'tooling',
+    baseDeps: 8,
+    weight: 180,
+    isHub: false,
+  },
+  {
+    name: 'puppeteer',
+    iconKey: 'puppeteer',
+    archetype: 'tooling',
+    baseDeps: 4,
+    weight: 120,
+    isHub: false,
+  },
+  {
+    name: 'prisma',
+    iconKey: 'prisma',
+    archetype: 'tooling',
+    baseDeps: 5,
+    weight: 100,
+    isHub: false,
+  },
+  {
+    name: 'sequelize',
+    iconKey: 'sequelize',
+    archetype: 'tooling',
+    baseDeps: 6,
+    weight: 90,
+    isHub: false,
+  },
+  {
+    name: 'docker',
+    iconKey: 'docker',
+    archetype: 'tooling',
+    baseDeps: 0,
+    weight: 200,
+    isHub: false,
+  },
+  {
+    name: 'kubernetes',
+    iconKey: 'kubernetes',
+    archetype: 'tooling',
+    baseDeps: 3,
+    weight: 250,
+    isHub: false,
+  },
+  {
+    name: 'bun',
+    iconKey: 'bun',
+    archetype: 'tooling',
+    baseDeps: 0,
+    weight: 60,
     isHub: false,
   },
 ]
@@ -645,6 +797,102 @@ const LEAF_PACKAGES: PackageIdentity[] = [
     weight: 4,
     isHub: false,
   },
+  {
+    name: 'nanoid',
+    iconKey: 'npm', // Uses semantic icon (snowflake)
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 3,
+    isHub: false,
+  },
+  {
+    name: 'commander',
+    iconKey: 'npm', // Uses semantic icon (chevrons)
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 8,
+    isHub: false,
+  },
+  {
+    name: 'yargs',
+    iconKey: 'npm', // Uses semantic icon (pirate flag)
+    archetype: 'utility',
+    baseDeps: 2,
+    weight: 15,
+    isHub: false,
+  },
+  {
+    name: 'inquirer',
+    iconKey: 'npm', // Uses semantic icon (question bubble)
+    archetype: 'utility',
+    baseDeps: 3,
+    weight: 20,
+    isHub: false,
+  },
+  {
+    name: 'ora',
+    iconKey: 'npm', // Uses semantic icon (spinner)
+    archetype: 'utility',
+    baseDeps: 2,
+    weight: 8,
+    isHub: false,
+  },
+  {
+    name: 'bcrypt',
+    iconKey: 'npm', // Uses semantic icon (padlock)
+    archetype: 'utility',
+    baseDeps: 1,
+    weight: 25,
+    isHub: false,
+  },
+  {
+    name: 'passport',
+    iconKey: 'npm', // Uses semantic icon (ID card)
+    archetype: 'utility',
+    baseDeps: 2,
+    weight: 15,
+    isHub: false,
+  },
+  {
+    name: 'jsonwebtoken',
+    iconKey: 'npm', // Uses semantic icon (JWT parts)
+    archetype: 'utility',
+    baseDeps: 1,
+    weight: 10,
+    isHub: false,
+  },
+  {
+    name: 'mongoose',
+    iconKey: 'npm', // Uses semantic icon (mongoose animal)
+    archetype: 'utility',
+    baseDeps: 3,
+    weight: 80,
+    isHub: false,
+  },
+  {
+    name: 'got',
+    iconKey: 'npm', // Uses semantic icon (arrow)
+    archetype: 'utility',
+    baseDeps: 2,
+    weight: 20,
+    isHub: false,
+  },
+  {
+    name: 'node-fetch',
+    iconKey: 'npm', // Uses semantic icon (cloud download)
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 8,
+    isHub: false,
+  },
+  {
+    name: 'ajv',
+    iconKey: 'npm', // Uses semantic icon (shield checkmark)
+    archetype: 'utility',
+    baseDeps: 2,
+    weight: 25,
+    isHub: false,
+  },
 ]
 
 // ============================================
@@ -680,6 +928,14 @@ const TIER1_DIRECT_INSTALL: PackageIdentity[] = [
     weight: 50,
     isHub: false,
   },
+  {
+    name: 'backbone',
+    iconKey: 'backbonejs',
+    archetype: 'framework',
+    baseDeps: 2,
+    weight: 70,
+    isHub: false,
+  },
   // Light tooling
   {
     name: 'postcss',
@@ -702,6 +958,14 @@ const TIER1_DIRECT_INSTALL: PackageIdentity[] = [
     iconKey: 'npm',
     archetype: 'tooling',
     baseDeps: 2,
+    weight: 60,
+    isHub: false,
+  },
+  {
+    name: 'bun',
+    iconKey: 'bun',
+    archetype: 'tooling',
+    baseDeps: 0,
     weight: 60,
     isHub: false,
   },
@@ -738,6 +1002,14 @@ const TIER1_DIRECT_INSTALL: PackageIdentity[] = [
     weight: 30,
     isHub: false,
   },
+  {
+    name: 'socket.io',
+    iconKey: 'socketio',
+    archetype: 'utility',
+    baseDeps: 3,
+    weight: 45,
+    isHub: true,
+  },
 ]
 
 // Tier 2: Standard frameworks - real cascades (baseDeps 4-8)
@@ -749,14 +1021,6 @@ const TIER2_DIRECT_INSTALL: PackageIdentity[] = [
     archetype: 'framework',
     baseDeps: 4,
     weight: 130,
-    isHub: false,
-  },
-  {
-    name: 'react-dom',
-    iconKey: 'react',
-    archetype: 'framework',
-    baseDeps: 5,
-    weight: 140,
     isHub: false,
   },
   {
@@ -773,6 +1037,22 @@ const TIER2_DIRECT_INSTALL: PackageIdentity[] = [
     archetype: 'framework',
     baseDeps: 6,
     weight: 200,
+    isHub: false,
+  },
+  {
+    name: 'astro',
+    iconKey: 'astro',
+    archetype: 'framework',
+    baseDeps: 6,
+    weight: 120,
+    isHub: false,
+  },
+  {
+    name: 'ionic',
+    iconKey: 'ionic',
+    archetype: 'framework',
+    baseDeps: 6,
+    weight: 180,
     isHub: false,
   },
   // Standard tooling
@@ -814,6 +1094,22 @@ const TIER2_DIRECT_INSTALL: PackageIdentity[] = [
     archetype: 'tooling',
     baseDeps: 5,
     weight: 80,
+    isHub: false,
+  },
+  {
+    name: 'prisma',
+    iconKey: 'prisma',
+    archetype: 'tooling',
+    baseDeps: 5,
+    weight: 100,
+    isHub: false,
+  },
+  {
+    name: 'sequelize',
+    iconKey: 'sequelize',
+    archetype: 'tooling',
+    baseDeps: 6,
+    weight: 90,
     isHub: false,
   },
   {
@@ -918,6 +1214,30 @@ const TIER3_DIRECT_INSTALL: PackageIdentity[] = [
     weight: 150,
     isHub: false,
   },
+  {
+    name: 'cypress',
+    iconKey: 'cypressio',
+    archetype: 'tooling',
+    baseDeps: 10,
+    weight: 180,
+    isHub: false,
+  },
+  {
+    name: 'ember',
+    iconKey: 'ember',
+    archetype: 'framework',
+    baseDeps: 12,
+    weight: 220,
+    isHub: false,
+  },
+  {
+    name: 'docker',
+    iconKey: 'docker',
+    archetype: 'tooling',
+    baseDeps: 8,
+    weight: 200,
+    isHub: false,
+  },
 ]
 
 // Combined registry
@@ -990,9 +1310,13 @@ export function pickRandomIdentity(): PackageIdentity {
  * Tier 1: Light (express, postcss, axios) - baseDeps 2-4
  * Tier 2: Standard (react, vite, eslint) - baseDeps 4-8
  * Tier 3+: Heavy (webpack, jest, gatsby) - baseDeps 8-20
+ *
+ * @param ecosystemTier Current tier (affects available packages)
+ * @param exclude Optional set of package names already installed (for uniqueness)
  */
 export function pickDirectInstallIdentity(
-  ecosystemTier: number
+  ecosystemTier: number,
+  exclude?: Set<string>
 ): PackageIdentity {
   // Build available pool based on tier
   let pool: PackageIdentity[] = [...TIER1_DIRECT_INSTALL]
@@ -1005,17 +1329,35 @@ export function pickDirectInstallIdentity(
     pool = [...pool, ...TIER3_DIRECT_INSTALL]
   }
 
+  // Filter out already-installed packages for variety
+  if (exclude && exclude.size > 0) {
+    pool = pool.filter(p => !exclude.has(p.name))
+  }
+
+  // If pool exhausted, allow duplicates rather than crash
+  if (pool.length === 0) {
+    pool = [...TIER1_DIRECT_INSTALL, ...TIER2_DIRECT_INSTALL, ...TIER3_DIRECT_INSTALL]
+  }
+
   // Higher tiers weight toward heavier packages
   if (ecosystemTier >= 3 && Math.random() < 0.4) {
-    // 40% chance to force a tier 3 package at tier 3+
-    const index = Math.floor(Math.random() * TIER3_DIRECT_INSTALL.length)
-    return TIER3_DIRECT_INSTALL[index]!
+    const tier3Available = exclude
+      ? TIER3_DIRECT_INSTALL.filter(p => !exclude.has(p.name))
+      : TIER3_DIRECT_INSTALL
+    if (tier3Available.length > 0) {
+      const index = Math.floor(Math.random() * tier3Available.length)
+      return tier3Available[index]!
+    }
   }
 
   if (ecosystemTier >= 2 && Math.random() < 0.3) {
-    // 30% chance to force a tier 2 package at tier 2+
-    const index = Math.floor(Math.random() * TIER2_DIRECT_INSTALL.length)
-    return TIER2_DIRECT_INSTALL[index]!
+    const tier2Available = exclude
+      ? TIER2_DIRECT_INSTALL.filter(p => !exclude.has(p.name))
+      : TIER2_DIRECT_INSTALL
+    if (tier2Available.length > 0) {
+      const index = Math.floor(Math.random() * tier2Available.length)
+      return tier2Available[index]!
+    }
   }
 
   // Otherwise pick from full available pool
@@ -1052,13 +1394,6 @@ export function rollRealisticDependencyCount(
   }
 
   return 0 // Fallback to leaf
-}
-
-/**
- * Get hub packages of a specific version for symlink matching
- */
-export function getHubPackages(): PackageIdentity[] {
-  return PACKAGE_REGISTRY.filter((p) => p.isHub)
 }
 
 /**

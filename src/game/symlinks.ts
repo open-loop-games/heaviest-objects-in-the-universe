@@ -3,6 +3,7 @@
 
 import { toRaw } from 'vue'
 import { gameState } from './state'
+import { SYMLINK_MERGE_COST } from './config'
 import {
   getCurrentScopePackages,
   getCurrentScopeWires,
@@ -161,6 +162,20 @@ export function canSymlink(sourceId: string, targetId: string): boolean {
 }
 
 /**
+ * Check if we can afford to perform a symlink merge
+ */
+export function canAffordSymlinkMerge(): boolean {
+  return gameState.resources.bandwidth >= SYMLINK_MERGE_COST
+}
+
+/**
+ * Get the cost to perform a symlink merge
+ */
+export function getSymlinkMergeCost(): number {
+  return SYMLINK_MERGE_COST
+}
+
+/**
  * Result of a symlink merge operation
  */
 export interface MergeResult {
@@ -202,13 +217,19 @@ function shouldKeep(a: Package, b: Package): boolean {
 /**
  * Perform a symlink merge: keep the more central node, other vanishes cleanly
  * SCOPE-AWARE: Works for both root scope and internal packages
- * Returns the weight saved from the merge
+ * Returns the weight saved from the merge (0 if failed due to affordability or invalid)
  */
 export function performSymlinkMerge(
   sourceId: string,
   targetId: string
 ): number {
+  // Check affordability first
+  if (!canAffordSymlinkMerge()) return 0
+
   if (!canSymlink(sourceId, targetId)) return 0
+
+  // Deduct bandwidth cost upfront
+  gameState.resources.bandwidth -= SYMLINK_MERGE_COST
 
   const packages = getCurrentScopePackages()
   const wires = getCurrentScopeWires()
@@ -328,6 +349,9 @@ export function performSymlinkMerge(
   }
 
   if (inScope) {
+    // Merging duplicates in inner scope grants a guaranteed crit on next pop
+    gameState.cascade.guaranteedCrits++
+
     // Recalculate internal state (might become stable) - use full scope path
     const recalcFn = getRecalculateStateAtPath()
     if (recalcFn) {

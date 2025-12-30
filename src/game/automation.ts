@@ -1,11 +1,24 @@
-// Automation system for auto-resolve and auto-dedup
-// Unlocks at tier 2 (resolve) and tier 3 (dedup)
+// Automation system for auto-resolve, auto-dedup, and auto-hoist
+// Unlocks at tier 2 (resolve) and tier 3 (dedup, hoist)
 
 import { toRaw } from 'vue'
 import { gameState, getEcosystemTier } from './state'
-import { resolveWireConflict } from './mutations'
-import { performSymlinkMerge, getAllDuplicateGroups } from './symlinks'
+import { performSymlinkMerge } from './symlinks'
 import { getPackageAtPath } from './scope'
+import { findSharedDeps, hoistDep } from './hoisting'
+import {
+  AUTO_RESOLVE_DRAIN,
+  AUTO_DEDUP_DRAIN,
+  AUTO_HOIST_DRAIN,
+} from './config'
+import {
+  getResolveDrainMultiplier,
+  getResolveSpeedMultiplier,
+  getDedupDrainMultiplier,
+  getDedupSpeedMultiplier,
+  getHoistDrainMultiplier,
+  getHoistSpeedMultiplier,
+} from './upgrades'
 import type { Wire, Package } from './types'
 
 // ============================================
@@ -34,6 +47,18 @@ export const DEDUP_INTERVALS = [
   3000, // Tier 3: 3s
   2000, // Tier 4: 2s
   1000, // Tier 5: 1s
+] as const
+
+// Interval between auto-hoists by tier (ms)
+// Index 0 unused, Index 1-5 = Tiers 1-5
+// Tier 1-2 = no automation, Tier 3 = 4s, Tier 4 = 2.5s, Tier 5 = 1.5s
+export const HOIST_INTERVALS = [
+  Infinity, // unused (index 0)
+  Infinity, // Tier 1: no automation
+  Infinity, // Tier 2: no automation
+  4000, // Tier 3: 4s (slower than dedup)
+  2500, // Tier 4: 2.5s
+  1500, // Tier 5: 1.5s
 ] as const
 
 // Duration of "processing" animation before completion (ms)
@@ -344,6 +369,9 @@ let onAutoResolveComplete:
 let onAutoDedupComplete:
   | ((scopePath: string[], position: { x: number; y: number }) => void)
   | null = null
+let onAutoHoistComplete:
+  | ((depName: string, position: { x: number; y: number }) => void)
+  | null = null
 
 export function setAutoResolveCallback(
   callback: (scopePath: string[], position: { x: number; y: number }) => void
@@ -357,18 +385,39 @@ export function setAutoDedupCallback(
   onAutoDedupComplete = callback
 }
 
+export function setAutoHoistCallback(
+  callback: (depName: string, position: { x: number; y: number }) => void
+): void {
+  onAutoHoistComplete = callback
+}
+
 /**
  * Main automation update - call this from the game loop
+ * @param now Current timestamp
+ * @param deltaTime Time since last update in seconds (for BW drain)
  */
-export function updateAutomation(now: number): void {
+export function updateAutomation(now: number, deltaTime: number = 0): void {
   const tier = getEcosystemTier(gameState.meta.cacheTokens)
   const auto = gameState.automation
 
   // ============================================
-  // AUTO-RESOLVE (Tier 2+)
+  // AUTO-RESOLVE (Tier 2+, requires toggle enabled)
   // ============================================
-  if (tier >= 2) {
-    const resolveInterval = RESOLVE_INTERVALS[tier] ?? Infinity
+  if (tier >= 2 && auto.resolveEnabled) {
+    // Apply speed upgrade to interval (faster with upgrades)
+    const baseInterval = RESOLVE_INTERVALS[tier] ?? Infinity
+    const resolveInterval = baseInterval / getResolveSpeedMultiplier()
+
+    // If actively processing, drain bandwidth (reduced by upgrade)
+    if (auto.resolveActive) {
+      const drain = AUTO_RESOLVE_DRAIN * deltaTime * getResolveDrainMultiplier()
+      if (gameState.resources.bandwidth >= drain) {
+        gameState.resources.bandwidth -= drain
+      } else {
+        // Not enough BW - pause processing (don't complete)
+        // Will resume when BW regenerates
+      }
+    }
 
     // Check if we should start a new resolve
     if (!auto.resolveActive && now - auto.lastResolveTime >= resolveInterval) {
@@ -413,13 +462,29 @@ export function updateAutomation(now: number): void {
         auto.resolveTargetScope = null
       }
     }
+  } else if (auto.resolveActive) {
+    // Toggle turned off while processing - cancel
+    auto.resolveActive = false
+    auto.resolveTargetWireId = null
+    auto.resolveTargetScope = null
   }
 
   // ============================================
-  // AUTO-DEDUP (Tier 3+)
+  // AUTO-DEDUP (Tier 3+, requires toggle enabled)
   // ============================================
-  if (tier >= 3) {
-    const dedupInterval = DEDUP_INTERVALS[tier] ?? Infinity
+  if (tier >= 3 && auto.dedupEnabled) {
+    // Apply speed upgrade to interval (faster with upgrades)
+    const baseInterval = DEDUP_INTERVALS[tier] ?? Infinity
+    const dedupInterval = baseInterval / getDedupSpeedMultiplier()
+
+    // If actively processing, drain bandwidth (reduced by upgrade)
+    if (auto.dedupActive) {
+      const drain = AUTO_DEDUP_DRAIN * deltaTime * getDedupDrainMultiplier()
+      if (gameState.resources.bandwidth >= drain) {
+        gameState.resources.bandwidth -= drain
+      }
+      // Note: dedup doesn't pause on low BW - it just completes without drain
+    }
 
     // Check if we should start a new dedup
     if (!auto.dedupActive && now - auto.lastDedupTime >= dedupInterval) {
@@ -463,6 +528,87 @@ export function updateAutomation(now: number): void {
         auto.dedupTargetScope = null
       }
     }
+  } else if (auto.dedupActive) {
+    // Toggle turned off while processing - cancel
+    auto.dedupActive = false
+    auto.dedupTargetPair = null
+    auto.dedupTargetScope = null
+  }
+
+  // ============================================
+  // AUTO-HOIST (Tier 3+, requires toggle enabled)
+  // ============================================
+  if (tier >= 3 && auto.hoistEnabled) {
+    // Apply speed upgrade to interval (faster with upgrades)
+    const baseInterval = HOIST_INTERVALS[tier] ?? Infinity
+    const hoistInterval = baseInterval / getHoistSpeedMultiplier()
+
+    // If actively processing, drain bandwidth (reduced by upgrade)
+    if (auto.hoistActive) {
+      const drain = AUTO_HOIST_DRAIN * deltaTime * getHoistDrainMultiplier()
+      if (gameState.resources.bandwidth >= drain) {
+        gameState.resources.bandwidth -= drain
+      }
+    }
+
+    // Check if we should start a new hoist
+    if (!auto.hoistActive && now - auto.lastHoistTime >= hoistInterval) {
+      // Find shared deps that can be hoisted
+      const sharedDeps = findSharedDeps()
+      if (sharedDeps.size > 0) {
+        // Get first shared dep
+        const [depName, sources] = sharedDeps.entries().next().value as [string, string[]]
+        if (depName && sources && sources.length >= 2) {
+          // Start processing
+          auto.hoistActive = true
+          auto.hoistTargetDepName = depName
+          auto.hoistTargetSources = sources
+          auto.processStartTime = now
+        }
+      }
+      auto.lastHoistTime = now
+    }
+
+    // Check if current hoist should complete
+    if (auto.hoistActive && auto.hoistTargetDepName && auto.hoistTargetSources) {
+      if (now - auto.processStartTime >= PROCESS_DURATION) {
+        const depName = auto.hoistTargetDepName
+        const sources = auto.hoistTargetSources
+
+        // Get position for effect (average of source package positions)
+        const effectPosition = { x: 0, y: 0 }
+        let count = 0
+        for (const srcId of sources) {
+          const pkg = gameState.packages.get(srcId)
+          if (pkg) {
+            effectPosition.x += pkg.position.x
+            effectPosition.y += pkg.position.y
+            count++
+          }
+        }
+        if (count > 0) {
+          effectPosition.x /= count
+          effectPosition.y /= count
+        }
+
+        // Complete the hoist
+        const success = hoistDep(depName)
+
+        if (success && onAutoHoistComplete) {
+          onAutoHoistComplete(depName, effectPosition)
+        }
+
+        // Reset state
+        auto.hoistActive = false
+        auto.hoistTargetDepName = null
+        auto.hoistTargetSources = null
+      }
+    }
+  } else if (auto.hoistActive) {
+    // Toggle turned off while processing - cancel
+    auto.hoistActive = false
+    auto.hoistTargetDepName = null
+    auto.hoistTargetSources = null
   }
 }
 
@@ -475,16 +621,19 @@ export function updateAutomation(now: number): void {
  */
 export function isAutomationProcessing(): boolean {
   return (
-    gameState.automation.resolveActive || gameState.automation.dedupActive
+    gameState.automation.resolveActive ||
+    gameState.automation.dedupActive ||
+    gameState.automation.hoistActive
   )
 }
 
 /**
  * Get the type of automation currently processing
  */
-export function getAutomationProcessingType(): 'resolve' | 'dedup' | null {
+export function getAutomationProcessingType(): 'resolve' | 'dedup' | 'hoist' | null {
   if (gameState.automation.resolveActive) return 'resolve'
   if (gameState.automation.dedupActive) return 'dedup'
+  if (gameState.automation.hoistActive) return 'hoist'
   return null
 }
 

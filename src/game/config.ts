@@ -35,6 +35,27 @@ export const COMPRESSION_HARDCAP = 0.5
 export const DEPTH_COMPRESSION_MULT = [1.0, 0.75, 0.5, 0.25, 0.0] as const
 
 // ============================================
+// ACTION COSTS (Bandwidth)
+// ============================================
+
+// Per-dependency spawn cost (queued if unaffordable)
+export const DEP_SPAWN_COST = 5
+
+// Conflict resolution cost (click wire to resolve)
+export const CONFLICT_RESOLVE_COST = 15
+
+// Symlink merge cost (drag-merge action)
+export const SYMLINK_MERGE_COST = 8
+
+// Automation drain per operation
+export const AUTO_RESOLVE_DRAIN = 2
+export const AUTO_DEDUP_DRAIN = 1.5
+export const AUTO_HOIST_DRAIN = 3
+
+// Maximum pending deps in queue
+export const MAX_PENDING_DEPS = 40
+
+// ============================================
 // DEFAULT CONFIG
 // ============================================
 
@@ -88,6 +109,10 @@ export function createInitialState(): GameState {
     upgrades: {
       bandwidthLevel: 0,
       efficiencyLevel: 0,
+      compressionLevel: 0,
+      resolveSpeedLevel: 0,
+      dedupSpeedLevel: 0,
+      hoistSpeedLevel: 0,
     },
     onboarding: {
       introAnimationComplete: false,
@@ -114,18 +139,31 @@ export function createInitialState(): GameState {
       pendingSpawns: [],
       lastSpawnTime: 0,
       spawnInterval: 100, // ms between spawns
+      guaranteedCrits: 0, // Earned from inner scope merges
     },
     // Automation system
     automation: {
+      // Toggle states (default off, user enables)
+      resolveEnabled: false,
+      dedupEnabled: false,
+      hoistEnabled: false,
+      // Auto-resolve
       resolveActive: false,
       resolveTargetWireId: null,
       resolveTargetScope: null,
+      // Auto-dedup
       dedupActive: false,
       dedupTargetPair: null,
       dedupTargetScope: null,
+      // Auto-hoist
+      hoistActive: false,
+      hoistTargetDepName: null,
+      hoistTargetSources: null,
+      // Timing
       processStartTime: 0,
       lastResolveTime: 0,
       lastDedupTime: 0,
+      lastHoistTime: 0,
     },
     stats: {
       totalPackagesInstalled: 0,

@@ -8,7 +8,7 @@ import {
   enterScopeAtPath,
   getPackageAtPath,
 } from './scope'
-import { addPackage, addWire, spendBandwidth } from './mutations'
+import { addPackage, addWire, spendBandwidth, addWeight } from './mutations'
 import { generateId, generateWireId } from './id-generator'
 import { type Package, type Wire, type InternalState } from './types'
 import { rollDependencyCount, rollPackageSize } from './formulas'
@@ -135,10 +135,21 @@ export function installPackage(parentId: string): Package | null {
     parentId === gameState.rootId &&
     parent.children.length === 0
 
-  // Pick a package identity based on ecosystem tier
+  // Gather existing top-level package names to ensure variety
+  const existingTopLevel = new Set<string>()
+  if (parentId === gameState.rootId) {
+    for (const childId of parent.children) {
+      const child = gameState.packages.get(childId)
+      if (child?.identity?.name) {
+        existingTopLevel.add(child.identity.name)
+      }
+    }
+  }
+
+  // Pick a package identity based on ecosystem tier (excluding already-installed at root)
   const identity = isFirstInstall
     ? STARTER_KIT_IDENTITY
-    : pickDirectInstallIdentity(gameState.meta.ecosystemTier)
+    : pickDirectInstallIdentity(gameState.meta.ecosystemTier, existingTopLevel)
 
   // Use deterministic size based on identity (no variance for duplicate consistency)
   const size = getIdentitySize(identity)
@@ -480,7 +491,7 @@ export function spawnInternalDependencies(packageId: string): void {
     pkg.internalWires.set(wire.id, wire)
 
     pkg.size += size
-    gameState.resources.weight += size
+    addWeight(size)
   }
 
   // SECOND PASS: Spawn sub-deps for some internal packages
@@ -562,7 +573,7 @@ export function spawnInternalDependencies(packageId: string): void {
       pkg.internalWires.set(subWire.id, subWire)
 
       pkg.size += subSize
-      gameState.resources.weight += subSize
+      addWeight(subSize)
     }
   }
 

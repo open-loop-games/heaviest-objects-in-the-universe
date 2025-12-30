@@ -70,6 +70,10 @@ export interface MetaResources {
 export interface Upgrades {
   bandwidthLevel: number // Combined: regen + capacity
   efficiencyLevel: number // Combined: speed + cost reduction
+  compressionLevel: number // Weight reduction (P3+)
+  resolveSpeedLevel: number // Auto-resolve speed (Tier 2+)
+  dedupSpeedLevel: number // Auto-dedup speed (Tier 3+)
+  hoistSpeedLevel: number // Auto-hoist speed (Tier 3+)
 }
 
 export interface GameStats {
@@ -90,6 +94,9 @@ export interface PendingSpawn {
   depth: number
   parentInternalId: string | null // For sub-deps, the internal parent ID
   isSubDep: boolean
+  // Bandwidth queue fields
+  awaitingBandwidth: boolean // true if queued due to BW shortage
+  queuedAt: number // timestamp for progress calculation
 }
 
 export interface CascadeState {
@@ -98,6 +105,7 @@ export interface CascadeState {
   pendingSpawns: PendingSpawn[] // Queue of deps to spawn
   lastSpawnTime: number // For timing between spawns
   spawnInterval: number // ms between spawns (100ms default)
+  guaranteedCrits: number // Stacked guaranteed crits from inner dedup merges
 }
 
 // Onboarding milestone tracking for staged HUD reveal
@@ -112,8 +120,13 @@ export interface OnboardingState {
   efficiencySeen: boolean // Efficiency indicator has been shown
 }
 
-// Automation state for auto-resolve and auto-dedup
+// Automation state for auto-resolve, auto-dedup, and auto-hoist
 export interface AutomationState {
+  // Toggle states (user-controllable)
+  resolveEnabled: boolean // Auto-resolve toggle
+  dedupEnabled: boolean // Auto-dedup toggle
+  hoistEnabled: boolean // Auto-hoist toggle
+
   // Auto-resolve (unlocks at tier 2)
   resolveActive: boolean // Currently processing a resolve
   resolveTargetWireId: string | null // Wire being auto-resolved
@@ -124,10 +137,16 @@ export interface AutomationState {
   dedupTargetPair: [string, string] | null // Package IDs being merged
   dedupTargetScope: string[] | null // Scope path where packages live
 
+  // Auto-hoist (unlocks at tier 3)
+  hoistActive: boolean // Currently processing a hoist
+  hoistTargetDepName: string | null // Dependency name being hoisted
+  hoistTargetSources: string[] | null // Source package IDs
+
   // Timing
   processStartTime: number // When current process started (for animation)
   lastResolveTime: number // Last time auto-resolve fired
   lastDedupTime: number // Last time auto-dedup fired
+  lastHoistTime: number // Last time auto-hoist fired
 }
 
 // Hoisted dependency (deduped to root level)

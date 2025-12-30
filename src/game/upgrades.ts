@@ -11,6 +11,8 @@ export interface UpgradeDefinition {
   baseCost: number
   costMultiplier: number
   unlockAt: number // Package count to unlock
+  prestigeRequirement?: number // Only visible after N prestiges
+  tierRequirement?: number // Only visible at tier N+
 }
 
 // Combined effect functions
@@ -22,9 +24,16 @@ const effects = {
   // Efficiency: faster installs and lower costs
   installSpeed: (level: number) => 1 + level * 0.25, // +25% speed per level
   costReduction: (level: number) => Math.pow(0.94, level), // -6% cost per level
+
+  // Compression: reduces weight gain (P3+)
+  weightReduction: (level: number) => Math.pow(0.95, level), // -5% per level
+
+  // Automation speed upgrades
+  drainReduction: (level: number) => Math.pow(0.9, level), // -10% drain per level
+  speedBoost: (level: number) => 1 + level * 0.15, // +15% speed per level
 }
 
-// 2 core upgrades
+// Core and automation upgrades
 export const UPGRADES: Record<string, UpgradeDefinition> = {
   bandwidth: {
     id: 'bandwidth',
@@ -41,6 +50,42 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     baseCost: 60,
     costMultiplier: 1.8,
     unlockAt: 15,
+  },
+  compression: {
+    id: 'compression',
+    icon: '◆↓',
+    maxLevel: 8,
+    baseCost: 100,
+    costMultiplier: 2.0,
+    unlockAt: 0,
+    prestigeRequirement: 3, // Only visible after 3 prestiges
+  },
+  resolveSpeed: {
+    id: 'resolveSpeed',
+    icon: '⚙+',
+    maxLevel: 5,
+    baseCost: 50,
+    costMultiplier: 1.7,
+    unlockAt: 0,
+    tierRequirement: 2,
+  },
+  dedupSpeed: {
+    id: 'dedupSpeed',
+    icon: '⟲+',
+    maxLevel: 5,
+    baseCost: 50,
+    costMultiplier: 1.7,
+    unlockAt: 0,
+    tierRequirement: 3,
+  },
+  hoistSpeed: {
+    id: 'hoistSpeed',
+    icon: '⤴+',
+    maxLevel: 5,
+    baseCost: 60,
+    costMultiplier: 1.8,
+    unlockAt: 0,
+    tierRequirement: 3,
   },
 }
 
@@ -74,6 +119,9 @@ export function getUpgradeCost(upgradeId: string): number {
 export function canPurchaseUpgrade(upgradeId: string): boolean {
   const upgrade = UPGRADES[upgradeId]
   if (!upgrade) return false
+
+  // Must be unlocked (tier/prestige requirements met)
+  if (!isUpgradeUnlocked(upgradeId)) return false
 
   const level = getUpgradeLevel(upgradeId)
   if (level >= upgrade.maxLevel) return false
@@ -127,11 +175,81 @@ export function getEffectiveCostMultiplier(): number {
   return effects.costReduction(effLevel)
 }
 
-// Check if an upgrade is unlocked based on package count
+// ============================================
+// COMPRESSION UPGRADE (P3+)
+// ============================================
+
+// Get weight reduction multiplier from compression upgrade
+export function getCompressionMultiplier(): number {
+  const level = getUpgradeLevel('compression')
+  return effects.weightReduction(level)
+}
+
+// ============================================
+// AUTOMATION SPEED UPGRADES
+// ============================================
+
+// Get drain reduction for auto-resolve
+export function getResolveDrainMultiplier(): number {
+  const level = getUpgradeLevel('resolveSpeed')
+  return effects.drainReduction(level)
+}
+
+// Get speed boost for auto-resolve
+export function getResolveSpeedMultiplier(): number {
+  const level = getUpgradeLevel('resolveSpeed')
+  return effects.speedBoost(level)
+}
+
+// Get drain reduction for auto-dedup
+export function getDedupDrainMultiplier(): number {
+  const level = getUpgradeLevel('dedupSpeed')
+  return effects.drainReduction(level)
+}
+
+// Get speed boost for auto-dedup
+export function getDedupSpeedMultiplier(): number {
+  const level = getUpgradeLevel('dedupSpeed')
+  return effects.speedBoost(level)
+}
+
+// Get drain reduction for auto-hoist
+export function getHoistDrainMultiplier(): number {
+  const level = getUpgradeLevel('hoistSpeed')
+  return effects.drainReduction(level)
+}
+
+// Get speed boost for auto-hoist
+export function getHoistSpeedMultiplier(): number {
+  const level = getUpgradeLevel('hoistSpeed')
+  return effects.speedBoost(level)
+}
+
+// Check if an upgrade is unlocked based on package count, prestige, and tier
 export function isUpgradeUnlocked(upgradeId: string): boolean {
   const upgrade = UPGRADES[upgradeId]
   if (!upgrade) return false
-  return gameState.packages.size >= upgrade.unlockAt
+
+  // Check package count requirement
+  if (gameState.packages.size < upgrade.unlockAt) return false
+
+  // Check prestige requirement (e.g., compression requires P3+)
+  if (
+    upgrade.prestigeRequirement &&
+    gameState.meta.totalPrestiges < upgrade.prestigeRequirement
+  ) {
+    return false
+  }
+
+  // Check tier requirement (e.g., resolveSpeed requires Tier 2+)
+  if (
+    upgrade.tierRequirement &&
+    gameState.meta.ecosystemTier < upgrade.tierRequirement
+  ) {
+    return false
+  }
+
+  return true
 }
 
 // Get list of unlocked upgrades for UI (sorted by unlock order)
