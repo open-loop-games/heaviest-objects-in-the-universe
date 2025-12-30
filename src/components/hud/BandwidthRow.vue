@@ -45,41 +45,39 @@ const actionPreviewPercent = computed(() => {
 
 const isPreviewingAction = computed(() => previewedActionType.value !== null)
 
-// Segmented bar calculation
-const segments = computed(() => {
-  const percent = bandwidthPercent.value
-  const filledSegments = Math.floor(percent * SEGMENTS)
-  const partialFill = (percent * SEGMENTS) % 1
+// Segmented bar calculation - values used for v-memo
+const filledSegments = computed(() =>
+  Math.floor(bandwidthPercent.value * SEGMENTS)
+)
 
-  // Calculate which segments the install cost would consume
-  const costSegments = Math.ceil(costPercent.value * SEGMENTS)
-  const costStartSegment = Math.max(
-    0,
-    filledSegments - costSegments + (partialFill > 0 ? 1 : 0)
-  )
-
-  // Calculate action preview segments (conflict/symlink hover)
-  const previewSegments = Math.ceil(actionPreviewPercent.value * SEGMENTS)
-  const previewStartSegment = Math.max(
-    0,
-    filledSegments - previewSegments + (partialFill > 0 ? 1 : 0)
-  )
-
-  return Array.from({ length: SEGMENTS }, (_, i) => ({
-    index: i,
-    filled: i < filledSegments,
-    partial: i === filledSegments ? partialFill : 0,
-    isCost:
-      i >= costStartSegment && i < filledSegments + (partialFill > 0 ? 1 : 0),
-    isAffordable: i < costStartSegment || i >= filledSegments,
-    // Action preview (show ghost segments for conflict/symlink cost)
-    isActionPreview:
-      isPreviewingAction.value &&
-      i >= previewStartSegment &&
-      i < filledSegments + (partialFill > 0 ? 1 : 0),
-    actionAffordable: gameState.resources.bandwidth >= actionPreviewCost.value,
-  }))
+// Round partial to 2 decimal places to reduce updates
+const partialFill = computed(() => {
+  const raw = (bandwidthPercent.value * SEGMENTS) % 1
+  return Math.round(raw * 100) / 100
 })
+
+const costStartSegment = computed(() => {
+  const costSegments = Math.ceil(costPercent.value * SEGMENTS)
+  return Math.max(
+    0,
+    filledSegments.value - costSegments + (partialFill.value > 0 ? 1 : 0)
+  )
+})
+
+const previewStartSegment = computed(() => {
+  const previewSegments = Math.ceil(actionPreviewPercent.value * SEGMENTS)
+  return Math.max(
+    0,
+    filledSegments.value - previewSegments + (partialFill.value > 0 ? 1 : 0)
+  )
+})
+
+const actionAffordable = computed(
+  () => gameState.resources.bandwidth >= actionPreviewCost.value
+)
+
+// Static segment indices for v-for
+const segmentIndices = Array.from({ length: SEGMENTS }, (_, i) => i)
 
 // ============================================
 // WARNING STATES
@@ -156,24 +154,53 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
     <!-- Segmented bandwidth bar -->
     <div class="resource-bar">
       <div
-        v-for="seg in segments"
-        :key="seg.index"
+        v-for="i in segmentIndices"
+        :key="i"
+        v-memo="[
+          i < filledSegments,
+          i === filledSegments ? partialFill : 0,
+          i >= costStartSegment &&
+            i < filledSegments + (partialFill > 0 ? 1 : 0),
+          isPreviewingAction &&
+            i >= previewStartSegment &&
+            i < filledSegments + (partialFill > 0 ? 1 : 0),
+          canAffordInstall,
+          isPreviewingEfficiency,
+          actionAffordable,
+        ]"
         class="segment"
         :class="{
-          filled: seg.filled,
-          partial: seg.partial > 0 && !seg.filled,
+          filled: i < filledSegments,
+          partial: i === filledSegments && partialFill > 0,
           'is-cost':
-            seg.isCost && !isPreviewingEfficiency && !seg.isActionPreview,
-          unaffordable: seg.isCost && !canAffordInstall,
-          'action-preview': seg.isActionPreview,
-          'action-affordable': seg.isActionPreview && seg.actionAffordable,
-          'action-unaffordable': seg.isActionPreview && !seg.actionAffordable,
+            i >= costStartSegment &&
+            i < filledSegments + (partialFill > 0 ? 1 : 0) &&
+            !isPreviewingEfficiency &&
+            !(isPreviewingAction && i >= previewStartSegment),
+          unaffordable:
+            i >= costStartSegment &&
+            i < filledSegments + (partialFill > 0 ? 1 : 0) &&
+            !canAffordInstall,
+          'action-preview':
+            isPreviewingAction &&
+            i >= previewStartSegment &&
+            i < filledSegments + (partialFill > 0 ? 1 : 0),
+          'action-affordable':
+            isPreviewingAction &&
+            i >= previewStartSegment &&
+            i < filledSegments + (partialFill > 0 ? 1 : 0) &&
+            actionAffordable,
+          'action-unaffordable':
+            isPreviewingAction &&
+            i >= previewStartSegment &&
+            i < filledSegments + (partialFill > 0 ? 1 : 0) &&
+            !actionAffordable,
         }"
       >
         <div
-          v-if="seg.partial > 0 && !seg.filled"
+          v-if="i === filledSegments && partialFill > 0"
           class="segment-fill"
-          :style="{ height: seg.partial * 100 + '%' }"
+          :style="{ height: partialFill * 100 + '%' }"
         ></div>
       </div>
     </div>

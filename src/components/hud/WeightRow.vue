@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { gameState, computed_gravity } from '../../game/state'
 import {
   getUpgradeLevel,
   canPurchaseUpgrade,
   purchaseUpgrade,
+  setPreviewedUpgrade,
   UPGRADES,
 } from '../../game/upgrades'
 
@@ -19,19 +20,20 @@ const prestigeProgress = computed(() => {
   return Math.min(1, computed_gravity.value)
 })
 
-// Segmented weight bar
-const segments = computed(() => {
-  const progress = prestigeProgress.value
-  const filledSegments = Math.floor(progress * SEGMENTS)
-  const partialFill = (progress * SEGMENTS) % 1
+// Segmented weight bar - split into separate computeds for v-memo
+const filledSegments = computed(() =>
+  Math.floor(prestigeProgress.value * SEGMENTS)
+)
 
-  return Array.from({ length: SEGMENTS }, (_, i) => ({
-    index: i,
-    filled: i < filledSegments,
-    partial: i === filledSegments ? partialFill : 0,
-    isLast: i === SEGMENTS - 1,
-  }))
+// Round partial to 2 decimal places to reduce updates
+const partialFill = computed(() => {
+  const raw = (prestigeProgress.value * SEGMENTS) % 1
+  return Math.round(raw * 100) / 100
 })
+
+// Static segment indices for v-for
+const segmentIndices = Array.from({ length: SEGMENTS }, (_, i) => i)
+const LAST_SEGMENT = SEGMENTS - 1
 
 // ============================================
 // MAGNITUDE DOTS (B, K, M, G)
@@ -71,10 +73,23 @@ const compressionLevel = computed(() => getUpgradeLevel('compression'))
 const compressionMaxLevel = computed(() => UPGRADES.compression?.maxLevel ?? 8)
 const canAffordCompression = computed(() => canPurchaseUpgrade('compression'))
 
-function handleCompressionPipClick(pipIndex: number) {
-  if (pipIndex === compressionLevel.value + 1 && canAffordCompression.value) {
+// Local hover state for upgrade preview
+const isHoveringCompression = ref(false)
+
+function handleCompressionClick() {
+  if (canAffordCompression.value) {
     purchaseUpgrade('compression')
   }
+}
+
+function handleCompressionEnter() {
+  isHoveringCompression.value = true
+  setPreviewedUpgrade('compression')
+}
+
+function handleCompressionLeave() {
+  isHoveringCompression.value = false
+  setPreviewedUpgrade(null)
 }
 </script>
 
@@ -94,19 +109,20 @@ function handleCompressionPipClick(pipIndex: number) {
     <!-- Segmented weight bar -->
     <div class="resource-bar">
       <div
-        v-for="seg in segments"
-        :key="seg.index"
+        v-for="i in segmentIndices"
+        :key="i"
+        v-memo="[i < filledSegments, i === filledSegments ? partialFill : 0]"
         class="segment"
         :class="{
-          filled: seg.filled,
-          partial: seg.partial > 0 && !seg.filled,
-          'milestone-segment': seg.isLast,
+          filled: i < filledSegments,
+          partial: i === filledSegments && partialFill > 0,
+          'milestone-segment': i === LAST_SEGMENT,
         }"
       >
         <div
-          v-if="seg.partial > 0 && !seg.filled"
+          v-if="i === filledSegments && partialFill > 0"
           class="segment-fill"
-          :style="{ height: seg.partial * 100 + '%' }"
+          :style="{ height: partialFill * 100 + '%' }"
         ></div>
       </div>
     </div>
@@ -122,17 +138,25 @@ function handleCompressionPipClick(pipIndex: number) {
     </div>
 
     <!-- Compression pips (P3+ only) -->
-    <div v-if="showCompression" class="upgrade-pips compression-pips">
-      <span
-        v-for="i in compressionMaxLevel"
-        :key="i"
-        class="pip compression"
-        :class="{
-          filled: i <= compressionLevel,
-          affordable: i === compressionLevel + 1 && canAffordCompression,
-        }"
-        @click="handleCompressionPipClick(i)"
-      />
+    <div
+      v-if="showCompression"
+      class="upgrade-pips-container compression-container"
+      @mouseenter="handleCompressionEnter"
+      @mouseleave="handleCompressionLeave"
+      @click="handleCompressionClick"
+    >
+      <div class="upgrade-pips compression-pips">
+        <span
+          v-for="i in compressionMaxLevel"
+          :key="i"
+          class="pip compression"
+          :class="{
+            filled: i <= compressionLevel,
+            affordable: i === compressionLevel + 1 && canAffordCompression,
+            'next-level': i === compressionLevel + 1,
+          }"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -244,6 +268,18 @@ function handleCompressionPipClick(pipIndex: number) {
   box-shadow: 0 0 3px rgba(255, 170, 90, 0.6);
 }
 
+/* Upgrade pips container */
+.upgrade-pips-container {
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background var(--hud-t-fast) ease;
+  cursor: pointer;
+}
+
+.upgrade-pips-container:hover {
+  background: rgba(255, 170, 90, 0.1);
+}
+
 /* Compression upgrade pips */
 .upgrade-pips {
   display: flex;
@@ -294,6 +330,11 @@ function handleCompressionPipClick(pipIndex: number) {
 .pip.compression.affordable:hover {
   background: #5a3a2a;
   box-shadow: 0 0 10px #ffaa5a;
+}
+
+.pip.compression.next-level:not(.affordable) {
+  background: #3a3a4a;
+  border: 1px solid #5a5a6a;
 }
 
 @keyframes pip-glow {

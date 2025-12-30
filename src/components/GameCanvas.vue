@@ -21,6 +21,7 @@ import {
   setPrestigeAnimationCallback,
   canAffordConflictResolve,
   getConflictResolveCost,
+  collectCacheFragment,
 } from '../game/mutations'
 import {
   loadFromLocalStorage,
@@ -34,7 +35,6 @@ import {
   findPackageAtPosition,
   initIdCounterFromState,
   enterPackageScope,
-  enterInternalPackageScope,
   recalculateStateAtPath,
   setStableCelebrationCallback,
 } from '../game/packages'
@@ -62,10 +62,7 @@ import {
   getHoistedDepForGhost,
   getHoistedDeps,
 } from '../game/hoisting'
-import {
-  setAutoResolveCallback,
-  setAutoDedupCallback,
-} from '../game/automation'
+import { setAutoResolveCallback } from '../game/automation'
 import type { Package } from '../game/types'
 import { Colors } from '../rendering/colors'
 import type { ParticleType } from './CausalParticles.vue'
@@ -251,11 +248,6 @@ onMounted(async () => {
       effects.spawnAutoCompleteEffect(position.x, position.y, 'resolve')
     })
 
-    setAutoDedupCallback((_scopePath, position) => {
-      const effects = renderer.getEffectsRenderer()
-      effects.spawnAutoCompleteEffect(position.x, position.y, 'dedup')
-    })
-
     // Save on page unload
     window.addEventListener('beforeunload', handleBeforeUnload)
 
@@ -280,7 +272,7 @@ onMounted(async () => {
 
         // Detect conflict -> ready transition (resolution success)
         if (prevState === 'conflict' && pkg.state === 'ready') {
-          effects.spawnBurst(pkg.position.x, pkg.position.y, Colors.shapeCircle)
+          effects.spawnBurst(pkg.position.x, pkg.position.y, Colors.accentGreen)
         }
 
         previousPackageStates.set(pkg.id, pkg.state)
@@ -383,6 +375,14 @@ function handleMouseDown(event: MouseEvent) {
     const rippleY = isClickedScopeRoot ? 0 : clickedPkg.position.y
     effects.spawnRipple(rippleX, rippleY, Colors.borderInstalling)
 
+    // Check for cache fragment collection (priority over other actions)
+    if (clickedPkg.hasCacheFragment) {
+      if (collectCacheFragment(clickedPkg.id)) {
+        effects.spawnRipple(rippleX, rippleY, Colors.cacheFragment)
+        return
+      }
+    }
+
     if (clickedPkg.state === 'conflict') {
       // Check if this conflict is from a wire (scope-aware)
       const scopeWires = getCurrentScopeWires()
@@ -437,7 +437,7 @@ function handleMouseDown(event: MouseEvent) {
 
       // Inside any scope: Check if clicking a compressed internal package to go deeper
       if (isInPackageScope() && isPackageCompressed(clickedPkg)) {
-        if (enterInternalPackageScope(clickedPkg.id)) {
+        if (enterPackageScope(clickedPkg.id)) {
           // Smooth camera transition to center
           setCameraTarget(0, 0)
           return

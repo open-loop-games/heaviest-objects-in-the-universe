@@ -58,8 +58,11 @@ const orbitSpeed = computed(() => {
   return Math.max(0.5, 8 - progress * 7.5)
 })
 
-const orbitCount = computed(() => {
-  // More orbiters as weight grows (3-6 based on progress)
+// Fixed orbiter count (always 6, visibility controlled by CSS)
+const MAX_ORBITERS = 6
+
+// How many orbiters should be visible (3-6 based on progress)
+const visibleOrbiterCount = computed(() => {
   const progress = gravityPercent.value / 100
   return Math.min(6, Math.max(3, Math.floor(3 + progress * 3)))
 })
@@ -250,10 +253,13 @@ onUnmounted(() => {
             '--orbit-speed': orbitSpeed + 's',
           }"
         >
+          <!-- Always render all 6 orbiters to prevent animation reset -->
           <span
-            v-for="i in orbitCount"
+            v-for="i in MAX_ORBITERS"
             :key="i"
+            v-memo="[i > visibleOrbiterCount]"
             class="orbiter"
+            :class="{ hidden: i > visibleOrbiterCount }"
             :style="{ '--orbit-index': i }"
             >◆</span
           >
@@ -265,6 +271,7 @@ onUnmounted(() => {
           <g
             v-for="arc in tierArcPaths"
             :key="arc.tier"
+            v-memo="[arc.progress, arc.complete, arc.dashArray]"
             class="tier-arc-group"
             :class="{
               complete: arc.complete,
@@ -303,19 +310,13 @@ onUnmounted(() => {
               active: arc.progress > 0 && !arc.complete,
               ['tier-' + arc.tier]: true,
               'auto-active':
-                (arc.tier === 2 &&
-                  automationActive &&
-                  automationType === 'resolve') ||
-                (arc.tier === 3 &&
-                  automationActive &&
-                  automationType === 'dedup'),
+                arc.tier === 2 &&
+                automationActive &&
+                automationType === 'resolve',
               'auto-flash':
-                (arc.tier === 2 &&
-                  showAutomationFlash &&
-                  automationType === 'resolve') ||
-                (arc.tier === 3 &&
-                  showAutomationFlash &&
-                  automationType === 'dedup'),
+                arc.tier === 2 &&
+                showAutomationFlash &&
+                automationType === 'resolve',
             }"
             >{{ arc.icon }}</span
           >
@@ -447,6 +448,12 @@ onUnmounted(() => {
   top: 50%;
   transform: rotate(var(--angle)) translateX(var(--orbit-radius))
     rotate(calc(-1 * var(--angle)));
+  transition: opacity 0.3s ease;
+}
+
+.orbiter.hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .orbit-container.collapsed .orbiter {

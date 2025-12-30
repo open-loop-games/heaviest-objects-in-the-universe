@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, shallowRef, triggerRef, onMounted, onUnmounted } from 'vue'
 
 // Particle types for different causal flows
 export type ParticleType =
@@ -25,7 +25,8 @@ interface Particle {
   startTime: number
 }
 
-const particles = ref<Particle[]>([])
+// Use shallowRef to avoid deep reactivity on particle objects
+const particles = shallowRef<Particle[]>([])
 let nextId = 0
 let animationFrameId: number | null = null
 
@@ -183,15 +184,30 @@ function spawnParticleBurst(
   }
 }
 
-// Animation loop
+// Animation loop - mutate in place to avoid array allocation every frame
 function animate() {
   const now = Date.now()
+  const arr = particles.value
 
-  particles.value = particles.value.filter((p) => {
+  // Update progress and remove expired particles in-place
+  let writeIdx = 0
+  for (let i = 0; i < arr.length; i++) {
+    const p = arr[i]!
     const elapsed = now - p.startTime
     p.progress = Math.min(1, elapsed / p.duration)
-    return p.progress < 1
-  })
+    if (p.progress < 1) {
+      arr[writeIdx++] = p
+    }
+  }
+  // Truncate array if particles were removed
+  if (writeIdx < arr.length) {
+    arr.length = writeIdx
+  }
+
+  // Trigger Vue update only if we have particles to render
+  if (arr.length > 0) {
+    triggerRef(particles)
+  }
 
   animationFrameId = requestAnimationFrame(animate)
 }
