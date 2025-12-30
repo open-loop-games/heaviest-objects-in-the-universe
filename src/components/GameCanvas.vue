@@ -7,12 +7,14 @@ import {
   onTick,
   setCameraTarget,
 } from '../game/loop'
-import { gameState } from '../game/state'
+import { gameState, setActionPreview } from '../game/state'
 import { isInPackageScope, getCurrentScopeWires, getCurrentScopeRoot, isPackageCompressed, exitScope } from '../game/scope'
 import {
   removePackageWithSubtree,
   removeWire,
   setPrestigeAnimationCallback,
+  canAffordConflictResolve,
+  getConflictResolveCost,
 } from '../game/mutations'
 import {
   loadFromLocalStorage,
@@ -115,6 +117,11 @@ const selectedWire = computed(() => {
 // Computed: is the selected wire a sibling wire (cross-package conflict)?
 const isSiblingWire = computed(() => {
   return selectedWire.value?.wireType === 'sibling'
+})
+
+// Computed: can afford prune (conflict resolution)
+const canAffordPrune = computed(() => {
+  return canAffordConflictResolve()
 })
 
 // Computed: can afford upgrade
@@ -535,9 +542,13 @@ function removeInternalPackageWithSubtree(
 
 function handlePrune() {
   if (!selectedWire.value) return
+  if (!canAffordPrune.value) return
 
   const wire = selectedWire.value
   const inScope = isInPackageScope()
+
+  // Deduct bandwidth cost for conflict resolution
+  gameState.resources.bandwidth -= getConflictResolveCost()
 
   if (inScope) {
     // Pruning inside a package scope (works at any depth)
@@ -802,11 +813,31 @@ function handleMouseMove(event: MouseEvent) {
   }
 
   // Update cursor based on what we're hovering over
+  // Also set action preview for bandwidth bar cost visualization
   if (canvasRef.value) {
     const hoveredPkg = findPackageAtPosition(
       worldPos,
       35 / gameState.camera.zoom
     )
+
+    // Check for wire hover (for conflict action preview)
+    const wireRenderer = renderer.getWireRenderer()
+    const hoveredWireId = wireRenderer.findWireAtPosition(
+      worldPos.x,
+      worldPos.y,
+      15 / gameState.camera.zoom
+    )
+    let hoveredWire = null
+    if (hoveredWireId) {
+      const wires = getCurrentScopeWires()
+      hoveredWire = wires.get(hoveredWireId)
+      // Also check sibling wires
+      if (!hoveredWire && !isInPackageScope()) {
+        const siblingWires = getSiblingWires()
+        hoveredWire = siblingWires.get(hoveredWireId)
+      }
+    }
+
     if (
       hoveredPkg &&
       hoveredPkg.state === 'ready' &&
@@ -815,6 +846,7 @@ function handleMouseMove(event: MouseEvent) {
       // Duplicate package - show grab cursor to indicate draggable
       canvasRef.value.style.cursor = 'grab'
       renderer.setHoveredHoistable(null)
+      setActionPreview('symlink') // Show symlink cost on bandwidth bar
     } else if (
       hoveredPkg &&
       hoveredPkg.state === 'ready' &&
@@ -825,10 +857,17 @@ function handleMouseMove(event: MouseEvent) {
       // Top-level package with hoistable shared deps - show grab cursor and highlight guide
       canvasRef.value.style.cursor = 'grab'
       renderer.setHoveredHoistable(hoveredPkg.id)
+      setActionPreview(null)
+    } else if (hoveredWire && hoveredWire.conflicted) {
+      // Hovering over conflict wire - show conflict cost on bandwidth bar
+      canvasRef.value.style.cursor = 'pointer'
+      renderer.setHoveredHoistable(null)
+      setActionPreview('conflict')
     } else if (hoveredPkg && hoveredPkg.state === 'conflict') {
       // Conflict - show pointer for resolution
       canvasRef.value.style.cursor = 'pointer'
       renderer.setHoveredHoistable(null)
+      setActionPreview('conflict') // Show conflict cost on bandwidth bar
     } else if (
       hoveredPkg &&
       hoveredPkg.state === 'ready' &&
@@ -837,9 +876,11 @@ function handleMouseMove(event: MouseEvent) {
       // Root node - show pointer for installing
       canvasRef.value.style.cursor = 'pointer'
       renderer.setHoveredHoistable(null)
+      setActionPreview(null)
     } else {
       canvasRef.value.style.cursor = 'default'
       renderer.setHoveredHoistable(null)
+      setActionPreview(null)
     }
   }
 
@@ -1126,6 +1167,8 @@ function handleResize() {
         <template v-else>
           <button
             class="action-btn prune"
+            :class="{ disabled: !canAffordPrune }"
+            :disabled="!canAffordPrune"
             @click="handlePrune"
             title="Prune (remove package)"
           >

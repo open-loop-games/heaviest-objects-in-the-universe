@@ -1,14 +1,10 @@
 // Node rendering with Pixi.js
 
 import { Graphics, Container, type Application } from 'pixi.js'
-import type { Package, HoistedDep } from '../game/types'
+import type { Package, HoistedDep, PendingSpawn } from '../game/types'
+import { DEP_SPAWN_COST } from '../game/config'
 import { Colors, getNodeColor, getBorderColor } from './colors'
-import {
-  createIconGraphics,
-  isIconReady,
-  drawFallbackIcon,
-  drawProceduralIcon,
-} from './icons'
+import { createPackageIcon, isIconReady, drawProceduralIcon } from './icons'
 import { prefersReducedMotion } from './accessibility'
 import { getHoistLayoutInfo } from '../game/hoisting'
 
@@ -25,6 +21,7 @@ export interface NodeEffects {
   duplicateHalo?: {
     color: number
     pulsePhase: number // 0-1, synced across group
+    canAfford: boolean // Whether symlink merge is affordable
   }
   isDragging?: boolean // Node is being dragged for symlink
   isDropTarget?: boolean // Node is a valid drop target
@@ -68,12 +65,18 @@ export class NodeRenderer {
   private app: Application
   private nodesLayer: Container
   private nodeContainers: Map<string, NodeContainer> = new Map()
+  private queuedDepsGraphics: Graphics
 
   constructor(app: Application) {
     this.app = app
     this.nodesLayer = new Container()
     this.nodesLayer.label = 'nodes'
     this.app.stage.addChild(this.nodesLayer)
+
+    // Graphics for rendering queued deps (awaiting bandwidth)
+    this.queuedDepsGraphics = new Graphics()
+    this.queuedDepsGraphics.label = 'queued-deps'
+    this.nodesLayer.addChild(this.queuedDepsGraphics)
   }
 
   /**
@@ -104,17 +107,23 @@ export class NodeRenderer {
     }
 
     const iconKey = pkg.identity?.iconKey || null
+    const packageName = pkg.identity?.name || null
     const radius = getNodeRadius(pkg)
     const iconSize = radius * 1.4
 
-    // For "npm" iconKey, always use procedural icons (don't load the generic npm SVG)
-    const useProceduralIcon = iconKey === 'npm' && pkg.identity?.name
-    const effectiveIconKey = useProceduralIcon ? null : iconKey
+    // Create a cache key that includes both package name and icon key
+    // This ensures we re-render when either changes
+    const iconCacheKey = `${packageName || ''}:${iconKey || ''}`
 
-    // Update icon if iconKey changed or icon just became ready
+    // Check if icon is ready (handles semantic, devicon, and procedural)
+    const iconReady = packageName
+      ? isIconReady(packageName, iconKey || undefined)
+      : (iconKey ? isIconReady('', iconKey) : true)
+
+    // Update icon if cache key changed or icon just became ready
     if (
-      effectiveIconKey !== nodeData.lastIconKey ||
-      (effectiveIconKey && !nodeData.icon && isIconReady(effectiveIconKey))
+      iconCacheKey !== nodeData.lastIconKey ||
+      (!nodeData.icon && iconReady)
     ) {
       // Remove old icon
       if (nodeData.icon) {
@@ -123,9 +132,15 @@ export class NodeRenderer {
         nodeData.icon = null
       }
 
-      // Try to create new icon (skip for npm - use procedural instead)
-      if (effectiveIconKey) {
-        const iconGraphics = createIconGraphics(effectiveIconKey, iconSize)
+      // Create new icon using unified system
+      // Handles: semantic → devicon → procedural fallback
+      if (packageName || iconKey) {
+        const iconGraphics = createPackageIcon(
+          packageName || '',
+          iconKey || undefined,
+          iconSize,
+          pkg.identity?.archetype
+        )
         if (iconGraphics) {
           nodeData.icon = iconGraphics
           nodeData.icon.label = 'icon'
@@ -133,26 +148,11 @@ export class NodeRenderer {
         }
       }
 
-      nodeData.lastIconKey = effectiveIconKey
+      nodeData.lastIconKey = iconCacheKey
     }
 
     // Draw the shape (circle, border, effects)
     this.drawNode(nodeData.shape, pkg, effects)
-
-    // Draw procedural icon for npm packages (unique per package name + archetype)
-    if (useProceduralIcon) {
-      drawProceduralIcon(
-        nodeData.shape,
-        pkg.identity!.name,
-        iconSize,
-        pkg.identity!.archetype
-      )
-    }
-    // Draw fallback icon if no SVG icon loaded for other packages
-    else if (effectiveIconKey && !nodeData.icon) {
-      const iconColor = this.getIconColor(pkg.state)
-      drawFallbackIcon(nodeData.shape, effectiveIconKey, iconSize, iconColor, pkg.identity?.archetype, pkg.identity?.name)
-    }
 
     // Update position with shake offset
     const shakeX = effects?.shake.x || 0
@@ -192,7 +192,8 @@ export class NodeRenderer {
         graphics,
         radius,
         effects.duplicateHalo.color,
-        effects.duplicateHalo.pulsePhase
+        effects.duplicateHalo.pulsePhase,
+        effects.duplicateHalo.canAfford
       )
     }
 
@@ -379,24 +380,6 @@ export class NodeRenderer {
   }
 
   /**
-   * Get icon color based on package state
-   */
-  private getIconColor(state: string): number {
-    switch (state) {
-      case 'installing':
-        return 0x6a6a8a // Dimmed gray-blue
-      case 'ready':
-        return 0xccccee // Bright white-blue
-      case 'conflict':
-        return 0xff8888 // Red tint
-      case 'optimized':
-        return 0x88ffcc // Cyan/green tint
-      default:
-        return 0xaaaacc // Neutral
-    }
-  }
-
-  /**
    * Draw click hint indicator
    */
   private drawClickHint(
@@ -456,32 +439,40 @@ export class NodeRenderer {
 
   /**
    * Draw pulsing halo for duplicate packages
+   * Shows gray when symlink merge is unaffordable
    */
   private drawDuplicateHalo(
     graphics: Graphics,
     radius: number,
     color: number,
-    pulsePhase: number
+    pulsePhase: number,
+    canAfford: boolean
   ): void {
     // For reduced motion, use static values
     const reducedMotion = prefersReducedMotion()
     const effectivePhase = reducedMotion ? 0.5 : pulsePhase
 
+    // Use gray when unaffordable
+    const haloColor = canAfford ? color : 0x6a6a7a
+
     // Pulsing alpha based on phase (synced across group)
-    const baseAlpha = 0.2
+    // Slower, dimmer pulse when unaffordable
+    const baseAlpha = canAfford ? 0.2 : 0.15
+    const pulseScale = canAfford ? 0.15 : 0.08
     const pulseAlpha = reducedMotion
       ? 0
-      : 0.15 * Math.sin(effectivePhase * Math.PI * 2)
+      : pulseScale * Math.sin(effectivePhase * Math.PI * 2)
     const alpha = baseAlpha + pulseAlpha
 
-    // Outer halo ring (static size for reduced motion)
-    const haloRadius = radius + 8 + (reducedMotion ? 1.5 : effectivePhase * 3)
+    // Outer halo ring (static size for reduced motion, less expansion when unaffordable)
+    const expansionScale = canAfford ? 3 : 1.5
+    const haloRadius = radius + 8 + (reducedMotion ? 1.5 : effectivePhase * expansionScale)
     graphics.circle(0, 0, haloRadius)
-    graphics.stroke({ color, width: 3, alpha: alpha + 0.1 })
+    graphics.stroke({ color: haloColor, width: 3, alpha: alpha + 0.1 })
 
     // Inner glow
     graphics.circle(0, 0, radius + 4)
-    graphics.fill({ color, alpha: alpha * 0.5 })
+    graphics.fill({ color: haloColor, alpha: alpha * 0.5 })
   }
 
   /**
@@ -725,7 +716,10 @@ export class NodeRenderer {
       nodeData.container.destroy()
     }
     this.nodeContainers.clear()
+    this.queuedDepsGraphics.clear()
     this.nodesLayer.removeChildren()
+    // Re-add the queued deps graphics after clearing
+    this.nodesLayer.addChild(this.queuedDepsGraphics)
   }
 
   /**
@@ -733,6 +727,59 @@ export class NodeRenderer {
    */
   getContainer(): Container {
     return this.nodesLayer
+  }
+
+  // ============================================
+  // QUEUED DEP RENDERING (Awaiting Bandwidth)
+  // ============================================
+
+  /**
+   * Update rendering of queued deps that are awaiting bandwidth
+   * Renders faded outlines with progress rings showing BW accumulation
+   */
+  updateQueuedDeps(pendingSpawns: PendingSpawn[], currentBandwidth: number): void {
+    this.queuedDepsGraphics.clear()
+
+    const reducedMotion = prefersReducedMotion()
+    const now = Date.now()
+
+    // Only render spawns that are awaiting bandwidth
+    const awaitingSpawns = pendingSpawns.filter(s => s.awaitingBandwidth)
+
+    for (const spawn of awaitingSpawns) {
+      const x = spawn.position.x
+      const y = spawn.position.y
+      const size = 20 // Fixed size for queued dep outlines
+
+      // Faded box outline
+      this.queuedDepsGraphics.rect(x - size, y - size, size * 2, size * 2)
+      this.queuedDepsGraphics.stroke({ color: 0x5a5a7a, width: 2, alpha: 0.3 })
+
+      // Progress ring showing BW accumulation toward DEP_SPAWN_COST
+      const progress = Math.min(1, currentBandwidth / DEP_SPAWN_COST)
+      if (progress > 0) {
+        const ringRadius = size + 5
+
+        // Background ring (full circle, dim)
+        this.queuedDepsGraphics.circle(x, y, ringRadius)
+        this.queuedDepsGraphics.stroke({ color: 0x3a3a4a, width: 3, alpha: 0.3 })
+
+        // Progress arc
+        const startAngle = -Math.PI / 2 // Start at top
+        const endAngle = startAngle + progress * Math.PI * 2
+
+        this.queuedDepsGraphics.arc(x, y, ringRadius, startAngle, endAngle)
+        this.queuedDepsGraphics.stroke({ color: 0x5a7aff, width: 3, alpha: 0.8 })
+      }
+
+      // Pulsing effect when close to affordable (optional, skip if reduced motion)
+      if (!reducedMotion && progress > 0.8) {
+        const pulsePhase = ((now % 800) / 800) * Math.PI * 2
+        const pulseAlpha = 0.2 + 0.2 * Math.sin(pulsePhase)
+        this.queuedDepsGraphics.circle(x, y, size + 8)
+        this.queuedDepsGraphics.fill({ color: 0x5a7aff, alpha: pulseAlpha })
+      }
+    }
   }
 
   // ============================================

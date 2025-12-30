@@ -28,10 +28,12 @@ import {
   updateCrossPackageDuplicates,
   getSiblingWires,
   getCrossPackageDuplicateInfo,
-  getCrossPackageDuplicates,
 } from '../game/cross-package'
 import { getCleanliness, isOrganizing } from '../game/physics'
 import { getHoistedDeps, updateHoistedPositions, findSharedDeps } from '../game/hoisting'
+import { getAllPendingSpawns, isCascadeActive } from '../game/cascade'
+import { canAffordConflictResolve } from '../game/mutations'
+import { canAffordSymlinkMerge } from '../game/symlinks'
 
 export class GameRenderer {
   private app: Application
@@ -317,13 +319,16 @@ export class GameRenderer {
 
     const rawWires = scopeWires
 
+    // Check affordability for conflict resolution (cached for this frame)
+    const canAffordResolve = canAffordConflictResolve()
+
     // Update wires first (behind nodes)
     for (const wire of rawWires.values()) {
       const fromPkg = rawPackages.get(wire.fromId)
       const toPkg = rawPackages.get(wire.toId)
 
       if (fromPkg && toPkg) {
-        this.wireRenderer.updateWire(wire, fromPkg, toPkg)
+        this.wireRenderer.updateWire(wire, fromPkg, toPkg, canAffordResolve)
       }
     }
 
@@ -335,7 +340,7 @@ export class GameRenderer {
         const toPkg = rawPackages.get(wire.toId)
 
         if (fromPkg && toPkg) {
-          this.wireRenderer.updateWire(wire, fromPkg, toPkg)
+          this.wireRenderer.updateWire(wire, fromPkg, toPkg, canAffordResolve)
         }
       }
     }
@@ -386,12 +391,15 @@ export class GameRenderer {
       const isTopLevel = !inScope && pkg.parentId === gameState.rootId
 
       // Get duplicate halo info if applicable (getDuplicateGroup is scope-aware)
-      let duplicateHalo: { color: number; pulsePhase: number } | undefined
+      // Check affordability once for all duplicates this frame
+      const canAffordMerge = canAffordSymlinkMerge()
+      let duplicateHalo: { color: number; pulsePhase: number; canAfford: boolean } | undefined
       const group = getDuplicateGroup(pkg.id)
       if (group) {
         duplicateHalo = {
           color: group.haloColor,
           pulsePhase: pulsePhase,
+          canAfford: canAffordMerge,
         }
       }
 
@@ -402,6 +410,7 @@ export class GameRenderer {
           duplicateHalo = {
             color: crossDupInfo.haloColor,
             pulsePhase: pulsePhase,
+            canAfford: canAffordMerge,
           }
         }
       }
@@ -480,6 +489,18 @@ export class GameRenderer {
         this.nodeRenderer.drawEphemeralLines(null, [])
       }
 
+    }
+
+    // ============================================
+    // RENDER QUEUED DEPS (Awaiting Bandwidth)
+    // ============================================
+    // Only render when inside a scope and cascade is active
+    if (inScope && isCascadeActive()) {
+      const pendingSpawns = getAllPendingSpawns()
+      this.nodeRenderer.updateQueuedDeps(pendingSpawns, gameState.resources.bandwidth)
+    } else {
+      // Clear queued deps when not in cascade
+      this.nodeRenderer.updateQueuedDeps([], 0)
     }
 
     // Clean up nodes that no longer exist in current scope
@@ -787,13 +808,14 @@ export class GameRenderer {
     // Track which nodes we've rendered
     const renderedNodeIds = new Set<string>()
 
-    // Render wires
+    // Render wires (use current affordability state)
+    const canAffordResolve = canAffordConflictResolve()
     for (const wire of wires.values()) {
       if (!wire) continue
       const fromPkg = packages.get(wire.fromId)
       const toPkg = packages.get(wire.toId)
       if (fromPkg && toPkg) {
-        wireRenderer.updateWire(wire, fromPkg, toPkg)
+        wireRenderer.updateWire(wire, fromPkg, toPkg, canAffordResolve)
       }
     }
 
@@ -833,150 +855,153 @@ export class GameRenderer {
   }
 
   /**
-   * Draw a ghost line with drag hint between two duplicate packages
+   * Configuration for drawing animated guide lines
    */
-  private drawGhostLineWithHint(
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    color: number,
-    pulsePhase: number,
-    isFirstDuplicate: boolean
-  ): void {
-    const dx = x2 - x1
-    const dy = y2 - y1
-    const dist = Math.sqrt(dx * dx + dy * dy)
+  private drawAnimatedGuideLine(config: {
+    startX: number
+    startY: number
+    endX: number
+    endY: number
+    color: number
+    pulsePhase: number
+    emphasized: boolean
+    // Visual style
+    dashLength?: number
+    gapLength?: number
+    baseAlpha?: number
+    emphasisMult?: number
+    lineWidthNormal?: number
+    lineWidthEmph?: number
+    // Arrow config
+    arrowSizeNormal?: number
+    arrowSizeEmph?: number
+    arrowAnimCycle?: number
+    arrowStartT?: number
+    arrowRangeT?: number
+    // Optional: bidirectional arrows (for merge hints)
+    bidirectional?: boolean
+    // Optional: endpoint icon
+    endIcon?: { sizeNormal: number; sizeEmph: number }
+    // Optional: midpoint icon (for merge)
+    midIcon?: boolean
+  }): void {
+    const {
+      startX, startY, endX, endY, color, pulsePhase, emphasized,
+      dashLength = 6, gapLength = 8,
+      baseAlpha = 0.15, emphasisMult = 2.0,
+      lineWidthNormal = 1.5, lineWidthEmph = 2.5,
+      arrowSizeNormal = 7, arrowSizeEmph = 10,
+      arrowAnimCycle = 2000, arrowStartT = 0.2, arrowRangeT = 0.25,
+      bidirectional = false, endIcon, midIcon = false
+    } = config
 
-    if (dist < 60) return // Too close, don't draw
+    const dx = endX - startX
+    const dy = endY - startY
+    const lineDist = Math.sqrt(dx * dx + dy * dy)
+    if (lineDist < 20) return
 
-    // Normalize
-    const nx = dx / dist
-    const ny = dy / dist
-
-    // Offset from node centers
-    const offset = 40
-    const startX = x1 + nx * offset
-    const startY = y1 + ny * offset
-    const endX = x2 - nx * offset
-    const endY = y2 - ny * offset
-
-    // Midpoint for merge indicator
+    const nx = dx / lineDist
+    const ny = dy / lineDist
     const midX = (startX + endX) / 2
     const midY = (startY + endY) / 2
 
-    // Enhanced visibility for first duplicate (teaching moment)
-    const emphasisMultiplier = isFirstDuplicate ? 2.0 : 1.0
-
-    // Pulsing alpha - stronger for first duplicate
-    const baseAlpha = isFirstDuplicate ? 0.35 : 0.15
-    const alpha =
-      (baseAlpha + 0.15 * Math.sin(pulsePhase * Math.PI * 2)) *
-      emphasisMultiplier
+    const emphMult = emphasized ? emphasisMult : 1.0
+    const actualBaseAlpha = emphasized ? baseAlpha * 2.3 : baseAlpha
+    const alpha = (actualBaseAlpha + 0.15 * Math.sin(pulsePhase * Math.PI * 2)) * emphMult
+    const lineWidth = emphasized ? lineWidthEmph : lineWidthNormal
 
     // Draw dotted line
-    const dashLength = 6
-    const gapLength = 8
     const totalLength = dashLength + gapLength
-    const lineWidth = isFirstDuplicate ? 2.5 : 1.5
-
     let currentDist = 0
-    const lineDist = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2)
-
     while (currentDist < lineDist) {
       const dashEnd = Math.min(currentDist + dashLength, lineDist)
       const t1 = currentDist / lineDist
       const t2 = dashEnd / lineDist
-
-      this.ghostLinesGraphics.moveTo(
-        startX + (endX - startX) * t1,
-        startY + (endY - startY) * t1
-      )
-      this.ghostLinesGraphics.lineTo(
-        startX + (endX - startX) * t2,
-        startY + (endY - startY) * t2
-      )
-      this.ghostLinesGraphics.stroke({
-        color,
-        width: lineWidth,
-        alpha: Math.min(1, alpha),
-      })
-
+      this.ghostLinesGraphics.moveTo(startX + dx * t1, startY + dy * t1)
+      this.ghostLinesGraphics.lineTo(startX + dx * t2, startY + dy * t2)
+      this.ghostLinesGraphics.stroke({ color, width: lineWidth, alpha: Math.min(1, alpha) })
       currentDist += totalLength
     }
 
-    // Draw animated merge arrows pointing toward center (drag hint)
-    const arrowSize = isFirstDuplicate ? 10 : 7
+    // Draw animated arrow(s)
+    const arrowSize = emphasized ? arrowSizeEmph : arrowSizeNormal
     const arrowAlpha = Math.min(1, alpha * 1.5)
+    const animOffset = (Date.now() % arrowAnimCycle) / arrowAnimCycle
 
-    // Animated position - arrows move toward center
-    const animOffset = (Date.now() % 2000) / 2000 // 0-1 cycle over 2 seconds
+    if (bidirectional) {
+      // Two arrows moving toward center
+      const arrowT = arrowStartT + animOffset * arrowRangeT
+      const arrow1X = startX + (midX - startX) * arrowT * 2
+      const arrow1Y = startY + (midY - startY) * arrowT * 2
+      const arrow2X = endX + (midX - endX) * arrowT * 2
+      const arrow2Y = endY + (midY - endY) * arrowT * 2
+      this.drawChevronArrow(arrow1X, arrow1Y, nx, ny, arrowSize, color, arrowAlpha)
+      this.drawChevronArrow(arrow2X, arrow2Y, -nx, -ny, arrowSize, color, arrowAlpha)
+    } else {
+      // Single arrow moving toward end
+      const arrowT = arrowStartT + animOffset * arrowRangeT
+      const arrowX = startX + dx * arrowT
+      const arrowY = startY + dy * arrowT
+      this.drawChevronArrow(arrowX, arrowY, nx, ny, arrowSize, color, arrowAlpha)
+    }
 
-    // Arrow from start toward middle
-    const arrow1T = 0.2 + animOffset * 0.25
-    const arrow1X = startX + (midX - startX) * arrow1T * 2
-    const arrow1Y = startY + (midY - startY) * arrow1T * 2
-
-    // Arrow from end toward middle
-    const arrow2T = 0.2 + animOffset * 0.25
-    const arrow2X = endX + (midX - endX) * arrow2T * 2
-    const arrow2Y = endY + (midY - endY) * arrow2T * 2
-
-    // Draw chevron arrows pointing toward midpoint
-    this.drawChevronArrow(
-      arrow1X,
-      arrow1Y,
-      nx,
-      ny,
-      arrowSize,
-      color,
-      arrowAlpha
-    )
-    this.drawChevronArrow(
-      arrow2X,
-      arrow2Y,
-      -nx,
-      -ny,
-      arrowSize,
-      color,
-      arrowAlpha
-    )
-
-    // Draw merge icon at midpoint (pulsing circle)
-    if (isFirstDuplicate) {
-      const mergeIconSize = 8 + 3 * Math.sin(pulsePhase * Math.PI * 2)
-      this.ghostLinesGraphics.circle(midX, midY, mergeIconSize)
+    // Optional midpoint icon (merge indicator)
+    if (midIcon && emphasized) {
+      const iconSize = 8 + 3 * Math.sin(pulsePhase * Math.PI * 2)
+      this.ghostLinesGraphics.circle(midX, midY, iconSize)
       this.ghostLinesGraphics.stroke({ color, width: 2, alpha: arrowAlpha })
     }
+
+    // Optional endpoint icon (drop zone)
+    if (endIcon) {
+      const iconX = endX + nx * 15
+      const iconY = endY + ny * 15
+      const iconSize = emphasized
+        ? endIcon.sizeEmph + 2 * Math.sin(pulsePhase * Math.PI * 2)
+        : endIcon.sizeNormal + 1.5 * Math.sin(pulsePhase * Math.PI * 2)
+      this.ghostLinesGraphics.circle(iconX, iconY, iconSize)
+      this.ghostLinesGraphics.stroke({ color, width: emphasized ? 2.5 : 2, alpha: arrowAlpha })
+    }
+  }
+
+  /**
+   * Draw a ghost line with drag hint between two duplicate packages
+   */
+  private drawGhostLineWithHint(
+    x1: number, y1: number, x2: number, y2: number,
+    color: number, pulsePhase: number, isFirstDuplicate: boolean
+  ): void {
+    const dx = x2 - x1
+    const dy = y2 - y1
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    if (dist < 60) return
+
+    const nx = dx / dist
+    const ny = dy / dist
+    const offset = 40
+
+    this.drawAnimatedGuideLine({
+      startX: x1 + nx * offset, startY: y1 + ny * offset,
+      endX: x2 - nx * offset, endY: y2 - ny * offset,
+      color, pulsePhase, emphasized: isFirstDuplicate,
+      bidirectional: true, midIcon: true,
+    })
   }
 
   /**
    * Draw a chevron arrow pointing in direction (nx, ny)
    */
   private drawChevronArrow(
-    x: number,
-    y: number,
-    nx: number,
-    ny: number,
-    size: number,
-    color: number,
-    alpha: number
+    x: number, y: number, nx: number, ny: number,
+    size: number, color: number, alpha: number
   ): void {
-    // Perpendicular vector
-    const px = -ny
-    const py = nx
-
-    // Arrow tip
-    const tipX = x + nx * size
-    const tipY = y + ny * size
-
-    // Arrow wings
+    const px = -ny, py = nx
+    const tipX = x + nx * size, tipY = y + ny * size
     const wing1X = x - nx * size * 0.3 + px * size * 0.5
     const wing1Y = y - ny * size * 0.3 + py * size * 0.5
     const wing2X = x - nx * size * 0.3 - px * size * 0.5
     const wing2Y = y - ny * size * 0.3 - py * size * 0.5
 
-    // Draw chevron
     this.ghostLinesGraphics.moveTo(wing1X, wing1Y)
     this.ghostLinesGraphics.lineTo(tipX, tipY)
     this.ghostLinesGraphics.lineTo(wing2X, wing2Y)
@@ -985,94 +1010,30 @@ export class GameRenderer {
 
   /**
    * Draw a hoist guide line from package toward root
-   * Shows arrow pointing TO root (not between packages)
    */
   private drawHoistGuideLine(
-    pkgX: number,
-    pkgY: number,
-    rootX: number,
-    rootY: number,
-    color: number,
-    pulsePhase: number,
-    isFirstHoist: boolean
+    pkgX: number, pkgY: number, rootX: number, rootY: number,
+    color: number, pulsePhase: number, isHovered: boolean
   ): void {
     const dx = rootX - pkgX
     const dy = rootY - pkgY
     const dist = Math.sqrt(dx * dx + dy * dy)
+    if (dist < 80) return
 
-    if (dist < 80) return // Too close, don't draw
-
-    // Normalize direction (from package toward root)
     const nx = dx / dist
     const ny = dy / dist
 
-    // Offset from node centers
-    const startOffset = 45
-    const endOffset = 55 // Stop further from root to show drop zone
-    const startX = pkgX + nx * startOffset
-    const startY = pkgY + ny * startOffset
-    const endX = rootX - nx * endOffset
-    const endY = rootY - ny * endOffset
-
-    // Enhanced visibility for hovered hoist opportunity
-    const emphasisMultiplier = isFirstHoist ? 1.5 : 1.0
-
-    // Always visible pulsing alpha (not hidden on non-hover)
-    const baseAlpha = isFirstHoist ? 0.45 : 0.35
-    const alpha =
-      (baseAlpha + 0.15 * Math.sin(pulsePhase * Math.PI * 2)) *
-      emphasisMultiplier
-
-    // Draw dotted line
-    const dashLength = 8
-    const gapLength = 10
-    const totalLength = dashLength + gapLength
-    const lineWidth = isFirstHoist ? 3 : 2
-
-    let currentDist = 0
-    const lineDist = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2)
-
-    while (currentDist < lineDist) {
-      const dashEnd = Math.min(currentDist + dashLength, lineDist)
-      const t1 = currentDist / lineDist
-      const t2 = dashEnd / lineDist
-
-      this.ghostLinesGraphics.moveTo(
-        startX + (endX - startX) * t1,
-        startY + (endY - startY) * t1
-      )
-      this.ghostLinesGraphics.lineTo(
-        startX + (endX - startX) * t2,
-        startY + (endY - startY) * t2
-      )
-      this.ghostLinesGraphics.stroke({
-        color,
-        width: lineWidth,
-        alpha: Math.min(1, alpha),
-      })
-
-      currentDist += totalLength
-    }
-
-    // Draw animated arrow pointing toward root
-    const arrowSize = isFirstHoist ? 12 : 8
-    const arrowAlpha = Math.min(1, alpha * 1.8)
-
-    // Animated position - arrow moves toward root
-    const animOffset = (Date.now() % 1500) / 1500 // 0-1 cycle over 1.5 seconds
-    const arrowT = 0.4 + animOffset * 0.4
-    const arrowX = startX + (endX - startX) * arrowT
-    const arrowY = startY + (endY - startY) * arrowT
-
-    // Draw single chevron arrow pointing toward root
-    this.drawChevronArrow(arrowX, arrowY, nx, ny, arrowSize, color, arrowAlpha)
-
-    // Draw hoist icon near root (small circle representing drop zone) - always visible
-    const iconX = endX + nx * 15
-    const iconY = endY + ny * 15
-    const iconSize = isFirstHoist ? 7 + 2 * Math.sin(pulsePhase * Math.PI * 2) : 5 + 1.5 * Math.sin(pulsePhase * Math.PI * 2)
-    this.ghostLinesGraphics.circle(iconX, iconY, iconSize)
-    this.ghostLinesGraphics.stroke({ color, width: isFirstHoist ? 2.5 : 2, alpha: arrowAlpha })
+    this.drawAnimatedGuideLine({
+      startX: pkgX + nx * 45, startY: pkgY + ny * 45,
+      endX: rootX - nx * 55, endY: rootY - ny * 55,
+      color, pulsePhase, emphasized: isHovered,
+      dashLength: 8, gapLength: 10,
+      baseAlpha: 0.35, emphasisMult: 1.5,
+      lineWidthNormal: 2, lineWidthEmph: 3,
+      arrowSizeNormal: 8, arrowSizeEmph: 12,
+      arrowAnimCycle: 1500, arrowStartT: 0.4, arrowRangeT: 0.4,
+      endIcon: { sizeNormal: 5, sizeEmph: 7 },
+    })
   }
 
   /**

@@ -31,8 +31,9 @@ export class WireRenderer {
 
   /**
    * Update or create graphics for a wire
+   * @param canAffordResolve - whether player can afford to resolve conflict (for affordability indicator)
    */
-  updateWire(wire: Wire, fromPkg: Package, toPkg: Package): void {
+  updateWire(wire: Wire, fromPkg: Package, toPkg: Package, canAffordResolve: boolean = true): void {
     let graphics = this.wireGraphics.get(wire.id)
 
     if (!graphics) {
@@ -42,7 +43,7 @@ export class WireRenderer {
       this.container.addChild(graphics)
     }
 
-    this.drawWire(graphics, wire, fromPkg, toPkg)
+    this.drawWire(graphics, wire, fromPkg, toPkg, canAffordResolve)
 
     // Store endpoints for hit testing
     const x1 = fromPkg.position.x
@@ -66,7 +67,8 @@ export class WireRenderer {
     graphics: Graphics,
     wire: Wire,
     from: Package,
-    to: Package
+    to: Package,
+    canAffordResolve: boolean
   ): void {
     graphics.clear()
 
@@ -102,7 +104,8 @@ export class WireRenderer {
         startY,
         endX,
         endY,
-        wire.conflictTime
+        wire.conflictTime,
+        canAffordResolve
       )
       return
     }
@@ -118,7 +121,8 @@ export class WireRenderer {
         startY,
         endX,
         endY,
-        wire.conflictTime
+        wire.conflictTime,
+        canAffordResolve
       )
       return
     }
@@ -168,6 +172,7 @@ export class WireRenderer {
   /**
    * Draw a sibling conflict wire (curved arc between two packages)
    * Uses a quadratic curve that arcs above the packages
+   * Shows gray pulsing when unaffordable
    */
   private drawSiblingWire(
     graphics: Graphics,
@@ -175,7 +180,8 @@ export class WireRenderer {
     y1: number,
     x2: number,
     y2: number,
-    conflictTime: number
+    conflictTime: number,
+    canAfford: boolean
   ): void {
     const dx = x2 - x1
     const dy = y2 - y1
@@ -194,14 +200,20 @@ export class WireRenderer {
     const time = Date.now() - conflictTime
     const pulsePhase = (time % 600) / 600
 
-    // Outer glow (pulsing)
+    // Use gray when unaffordable, red/orange when affordable
+    const wireColor = canAfford ? Colors.borderConflict : 0x6a6a7a
+    const accentColor = canAfford ? 0xffaa5a : 0x5a5a6a
+    const centerColor = canAfford ? 0xffff5a : 0x8a8a9a
+
+    // Outer glow (pulsing - slower when unaffordable)
+    const pulseSpeed = canAfford ? pulsePhase : (time % 1200) / 1200
     const glowAlpha = reducedMotion
       ? 0.25
-      : 0.15 + 0.15 * Math.sin(pulsePhase * Math.PI * 2)
+      : 0.15 + 0.15 * Math.sin(pulseSpeed * Math.PI * 2)
     graphics.moveTo(x1, y1)
     graphics.quadraticCurveTo(controlX, controlY, x2, y2)
     graphics.stroke({
-      color: Colors.borderConflict,
+      color: wireColor,
       width: 10,
       alpha: glowAlpha,
     })
@@ -209,7 +221,7 @@ export class WireRenderer {
     // Base arc
     graphics.moveTo(x1, y1)
     graphics.quadraticCurveTo(controlX, controlY, x2, y2)
-    graphics.stroke({ color: Colors.borderConflict, width: 3, alpha: 0.8 })
+    graphics.stroke({ color: wireColor, width: 3, alpha: 0.8 })
 
     // Dashed overlay for sibling distinction
     if (!reducedMotion) {
@@ -222,7 +234,7 @@ export class WireRenderer {
         controlY,
         x2,
         y2,
-        0xffaa5a,
+        accentColor,
         2,
         dashOffset
       )
@@ -242,11 +254,11 @@ export class WireRenderer {
     // Pulsing warning circle
     const indicatorScale = reducedMotion
       ? 1
-      : 0.8 + 0.2 * Math.sin(pulsePhase * Math.PI * 2)
+      : 0.8 + 0.2 * Math.sin(pulseSpeed * Math.PI * 2)
     graphics.circle(indicatorX, indicatorY, 8 * indicatorScale)
-    graphics.fill({ color: Colors.borderConflict, alpha: 0.9 })
+    graphics.fill({ color: wireColor, alpha: 0.9 })
     graphics.circle(indicatorX, indicatorY, 4 * indicatorScale)
-    graphics.fill({ color: 0xffff5a, alpha: 1 }) // Bright center
+    graphics.fill({ color: centerColor, alpha: 1 })
   }
 
   /**
@@ -292,6 +304,7 @@ export class WireRenderer {
 
   /**
    * Draw a conflicted wire with crackling electric effect
+   * Shows gray pulsing when unaffordable
    */
   private drawConflictedWire(
     graphics: Graphics,
@@ -299,7 +312,8 @@ export class WireRenderer {
     y1: number,
     x2: number,
     y2: number,
-    conflictTime: number
+    conflictTime: number,
+    canAfford: boolean
   ): void {
     const dx = x2 - x1
     const dy = y2 - y1
@@ -309,17 +323,22 @@ export class WireRenderer {
 
     const reducedMotion = prefersReducedMotion()
 
-    // For reduced motion: static red wire with glow, no animation
+    // Use gray when unaffordable, red/orange when affordable
+    const wireColor = canAfford ? Colors.borderConflict : 0x6a6a7a
+    const crackleColor = canAfford ? 0xffaa5a : 0x5a5a6a
+    const sparkColor = canAfford ? 0xffff5a : 0x8a8a9a
+
+    // For reduced motion: static wire with glow, no animation
     if (reducedMotion) {
       // Static outer glow
       graphics.moveTo(x1, y1)
       graphics.lineTo(x2, y2)
-      graphics.stroke({ color: Colors.borderConflict, width: 8, alpha: 0.3 })
+      graphics.stroke({ color: wireColor, width: 8, alpha: 0.3 })
 
       // Static base wire
       graphics.moveTo(x1, y1)
       graphics.lineTo(x2, y2)
-      graphics.stroke({ color: Colors.borderConflict, width: 3.5, alpha: 0.9 })
+      graphics.stroke({ color: wireColor, width: 3.5, alpha: 0.9 })
       return
     }
 
@@ -331,26 +350,27 @@ export class WireRenderer {
     const px = -ny
     const py = nx
 
-    // Animation time
+    // Animation time - slower pulse when unaffordable
     const time = Date.now() - conflictTime
-    const pulsePhase = (time % 500) / 500 // 0-1 pulse over 500ms
+    const pulseDuration = canAfford ? 500 : 1000
+    const pulsePhase = (time % pulseDuration) / pulseDuration
 
     // Draw outer glow (pulsing)
     const glowAlpha = 0.2 + 0.15 * Math.sin(pulsePhase * Math.PI * 2)
     graphics.moveTo(x1, y1)
     graphics.lineTo(x2, y2)
     graphics.stroke({
-      color: Colors.borderConflict,
+      color: wireColor,
       width: 8,
       alpha: glowAlpha,
     })
 
-    // Draw base wire (thicker, red/orange gradient)
+    // Draw base wire
     graphics.moveTo(x1, y1)
     graphics.lineTo(x2, y2)
-    graphics.stroke({ color: Colors.borderConflict, width: 3.5, alpha: 0.9 })
+    graphics.stroke({ color: wireColor, width: 3.5, alpha: 0.9 })
 
-    // Draw crackling electric bolts along the wire
+    // Draw crackling electric bolts along the wire (less active when unaffordable)
     const segments = Math.max(3, Math.floor(dist / 25))
 
     // Different crackle pattern based on time
@@ -358,7 +378,9 @@ export class WireRenderer {
 
     for (let i = 0; i < segments; i++) {
       // Alternate which segments have crackle
-      if ((i + crackleOffset) % 3 !== 0) continue
+      // Skip more segments when unaffordable for subtler effect
+      const skipMod = canAfford ? 3 : 4
+      if ((i + crackleOffset) % skipMod !== 0) continue
 
       const t1 = i / segments
       const t2 = (i + 1) / segments
@@ -368,9 +390,10 @@ export class WireRenderer {
       const ex = x1 + dx * t2
       const ey = y1 + dy * t2
 
-      // Mid-point with random perpendicular offset
+      // Mid-point with random perpendicular offset (smaller when unaffordable)
       const midT = (t1 + t2) / 2
-      const crackleAmount = 8 + Math.sin(time * 0.01 + i) * 4
+      const crackleScale = canAfford ? 1 : 0.6
+      const crackleAmount = (8 + Math.sin(time * 0.01 + i) * 4) * crackleScale
       const crackleDir = ((i + Math.floor(time / 50)) % 2) * 2 - 1 // -1 or 1
       const mx = x1 + dx * midT + px * crackleAmount * crackleDir
       const my = y1 + dy * midT + py * crackleAmount * crackleDir
@@ -379,11 +402,11 @@ export class WireRenderer {
       graphics.moveTo(sx, sy)
       graphics.lineTo(mx, my)
       graphics.lineTo(ex, ey)
-      graphics.stroke({ color: 0xffaa5a, width: 2, alpha: 0.8 }) // Orange crackling
+      graphics.stroke({ color: crackleColor, width: 2, alpha: canAfford ? 0.8 : 0.5 })
 
       // Small spark at junction
       graphics.circle(mx, my, 2)
-      graphics.fill({ color: 0xffff5a, alpha: 0.9 }) // Bright spark
+      graphics.fill({ color: sparkColor, alpha: canAfford ? 0.9 : 0.6 })
     }
   }
 
