@@ -49,33 +49,46 @@ export const Colors = {
   particleBurst: 0xffaa5a,
   gravityWarp: 0x2a1a3a,
 
+  // Automation effects
+  autoResolve: 0x5aff8a, // Green-ish for conflict resolution
+  autoDedup: 0x5affff, // Cyan for deduplication
+
   // Text (for HUD overlay)
   textPrimary: 0xeeeeff,
   textSecondary: 0xaaaacc,
   textWarning: 0xffaa5a,
   textDanger: 0xff5a5a,
-} as const;
+} as const
 
-export type ColorKey = keyof typeof Colors;
+export type ColorKey = keyof typeof Colors
 
 // Get color for package state
 export function getNodeColor(state: string): number {
   switch (state) {
-    case 'installing': return Colors.nodeInstalling;
-    case 'ready': return Colors.nodeReady;
-    case 'conflict': return Colors.nodeConflict;
-    case 'optimized': return Colors.nodeOptimized;
-    default: return Colors.nodeDefault;
+    case 'installing':
+      return Colors.nodeInstalling
+    case 'ready':
+      return Colors.nodeReady
+    case 'conflict':
+      return Colors.nodeConflict
+    case 'optimized':
+      return Colors.nodeOptimized
+    default:
+      return Colors.nodeDefault
   }
 }
 
 export function getBorderColor(state: string): number {
   switch (state) {
-    case 'installing': return Colors.borderInstalling;
-    case 'ready': return Colors.borderReady;
-    case 'conflict': return Colors.borderConflict;
-    case 'optimized': return Colors.borderOptimized;
-    default: return Colors.borderDefault;
+    case 'installing':
+      return Colors.borderInstalling
+    case 'ready':
+      return Colors.borderReady
+    case 'conflict':
+      return Colors.borderConflict
+    case 'optimized':
+      return Colors.borderOptimized
+    default:
+      return Colors.borderDefault
   }
 }
-
