@@ -11,7 +11,11 @@ import {
   getEffectiveInstallSpeed,
   applyUpgradeEffects,
 } from './upgrades'
-import { updatePhysics, updateInternalPhysics } from './physics'
+import {
+  updatePhysics,
+  updateInternalPhysics,
+  isCollapseActive,
+} from './physics'
 import { updateAutomation } from './automation'
 import type { Package } from './types'
 
@@ -143,12 +147,15 @@ function tick(): void {
   // Update packages
   updatePackages(deltaTime)
 
-  // Update physics
-  updatePhysics(deltaTime)
+  // Skip normal physics during collapse - collapse physics handles everything
+  if (!isCollapseActive()) {
+    // Update physics
+    updatePhysics(deltaTime)
 
-  // Update internal physics when inside a package scope (uses scopeStack for arbitrary depth)
-  if (isInPackageScope()) {
-    updateInternalPhysics([...gameState.scopeStack], deltaTime)
+    // Update internal physics when inside a package scope (uses scopeStack for arbitrary depth)
+    if (isInPackageScope()) {
+      updateInternalPhysics([...gameState.scopeStack], deltaTime)
+    }
   }
 
   // Update efficiency
