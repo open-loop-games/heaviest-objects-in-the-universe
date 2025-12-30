@@ -5,7 +5,7 @@
 // 2. Devicon SVGs (external, keyed by iconKey)
 // 3. Procedural fallback (hash-based shapes by archetype)
 
-import { Graphics } from 'pixi.js'
+import { Graphics, ColorMatrixFilter } from 'pixi.js'
 import { hasSemanticIcon, drawSemanticIcon, SEMANTIC_ICONS } from './semantic'
 import { drawProceduralIcon, hslToHex } from './procedural'
 
@@ -94,52 +94,41 @@ interface IconVariant {
 }
 
 const ICON_VARIANTS: Record<string, IconVariant> = {
+  // React ecosystem variants
   'react-dom': { baseIcon: 'react', hueShift: 30 },
   'react-native': { baseIcon: 'react', hueShift: 180 },
   'react-router': { baseIcon: 'react', hueShift: 270, saturate: 1.3 },
   'react-query': { baseIcon: 'react', hueShift: 320 },
+  // Vue ecosystem variants
   'vue-router': { baseIcon: 'vuejs', hueShift: 60 },
   'vuex': { baseIcon: 'vuejs', hueShift: 200, saturate: 0.8 },
   'pinia': { baseIcon: 'vuejs', hueShift: 330 },
-  'fs-extra': { baseIcon: 'nodejs', hueShift: 40 },
-  'path': { baseIcon: 'nodejs', hueShift: 180, saturate: 0.7 },
-  'buffer': { baseIcon: 'nodejs', hueShift: 270 },
-  'process': { baseIcon: 'nodejs', hueShift: 60, brightness: 1.2 },
+  // Node runtime packages now use procedural icons for better distinction
 }
 
-const variantSvgCache = new Map<string, string | null>()
+/**
+ * Apply variant effects using Pixi's ColorMatrixFilter
+ * This actually works, unlike CSS filters in SVG strings
+ */
+function applyVariantFilter(g: Graphics, variant: IconVariant): void {
+  const filter = new ColorMatrixFilter()
 
-function applyVariantToSvg(svgText: string, variant: IconVariant): string {
-  const filters: string[] = []
-  if (variant.hueShift) filters.push(`hue-rotate(${variant.hueShift}deg)`)
-  if (variant.saturate && variant.saturate !== 1) filters.push(`saturate(${variant.saturate})`)
-  if (variant.brightness && variant.brightness !== 1) filters.push(`brightness(${variant.brightness})`)
-
-  if (filters.length === 0) return svgText
-
-  const filterStyle = `filter: ${filters.join(' ')};`
-  return svgText
-    .replace(/(<svg[^>]*>)/i, `$1<g style="${filterStyle}">`)
-    .replace(/<\/svg>/i, '</g></svg>')
-}
-
-async function fetchVariantSvg(packageName: string, iconKey: string): Promise<string | null> {
-  const variant = ICON_VARIANTS[packageName]
-  if (!variant) return fetchSvgContent(iconKey)
-
-  if (variantSvgCache.has(packageName)) {
-    return variantSvgCache.get(packageName) || null
+  // Apply hue rotation (convert degrees to Pixi's rotation value)
+  if (variant.hueShift) {
+    filter.hue(variant.hueShift, false)
   }
 
-  const baseSvg = await fetchSvgContent(variant.baseIcon)
-  if (!baseSvg) {
-    variantSvgCache.set(packageName, null)
-    return null
+  // Apply saturation adjustment
+  if (variant.saturate && variant.saturate !== 1) {
+    filter.saturate(variant.saturate - 1, false) // Pixi saturate is additive (-1 to 1)
   }
 
-  const variantSvg = applyVariantToSvg(baseSvg, variant)
-  variantSvgCache.set(packageName, variantSvg)
-  return variantSvg
+  // Apply brightness adjustment
+  if (variant.brightness && variant.brightness !== 1) {
+    filter.brightness(variant.brightness, false)
+  }
+
+  g.filters = [filter]
 }
 
 // ============================================
@@ -177,6 +166,8 @@ export function createPackageIcon(
   // 2. Try devicon (if iconKey provided and not 'npm')
   if (iconKey && iconKey !== 'npm') {
     const variant = ICON_VARIANTS[packageName]
+    // For variants, use the base icon key for caching/fetching
+    const actualIconKey = variant ? variant.baseIcon : iconKey
     const failureKey = variant ? `variant:${packageName}` : iconKey
 
     if (parseFailures.has(failureKey)) {
@@ -185,20 +176,10 @@ export function createPackageIcon(
       return g
     }
 
-    let svgContent: string | null | undefined
-
-    if (variant) {
-      svgContent = variantSvgCache.get(packageName)
-      if (svgContent === undefined) {
-        fetchVariantSvg(packageName, iconKey)
-        return null // Loading
-      }
-    } else {
-      svgContent = svgCache.get(iconKey)
-      if (svgContent === undefined) {
-        fetchSvgContent(iconKey)
-        return null // Loading
-      }
+    const svgContent = svgCache.get(actualIconKey)
+    if (svgContent === undefined) {
+      fetchSvgContent(actualIconKey)
+      return null // Loading
     }
 
     if (svgContent) {
@@ -208,9 +189,20 @@ export function createPackageIcon(
         const scale = size / svgSize
         g.scale.set(scale)
         g.pivot.set(svgSize / 2, svgSize / 2)
+
+        // Apply variant filter (hue shift, saturation, brightness) via Pixi
+        if (variant) {
+          applyVariantFilter(g, variant)
+        }
+
         return g
       } catch {
         parseFailures.add(failureKey)
+        // Create a fresh graphics object for procedural fallback
+        // The failed SVG parse may have left drawing state in g
+        const fallbackG = new Graphics()
+        drawProceduralIcon(fallbackG, packageName, size, archetype)
+        return fallbackG
       }
     }
   }
@@ -230,10 +222,9 @@ export function isIconReady(packageName: string, iconKey?: string): boolean {
   // Check devicon cache
   if (iconKey && iconKey !== 'npm') {
     const variant = ICON_VARIANTS[packageName]
-    if (variant) {
-      return variantSvgCache.has(packageName)
-    }
-    return svgCache.has(iconKey)
+    // For variants, check if the base icon is cached
+    const actualIconKey = variant ? variant.baseIcon : iconKey
+    return svgCache.has(actualIconKey)
   }
 
   // Procedural is always ready

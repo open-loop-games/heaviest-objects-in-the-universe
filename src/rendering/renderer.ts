@@ -88,12 +88,17 @@ export class GameRenderer {
     // Create black hole renderer (needs to be split between bg and foreground)
     this.blackHoleRenderer = new BlackHoleRenderer(this.app)
 
+    // Set up black hole renderer with world-to-screen converter
+    this.blackHoleRenderer.setWorldToScreen((x, y) => this.worldToScreen(x, y))
+
     // Add world container with proper z-ordering
     // Background effects (gravity warp) -> behind world
     this.app.stage.addChild(this.blackHoleRenderer.getBackgroundContainer())
     this.app.stage.addChild(this.worldContainer)
     // Core effects (black hole, collapse) -> in front during collapse
     this.app.stage.addChild(this.blackHoleRenderer.getCoreContainer())
+    // Overlay effects (vignette, ambient particles) -> always on top
+    this.app.stage.addChild(this.blackHoleRenderer.getOverlayContainer())
 
     // ============================================
     // BACKGROUND LAYER (grandparent scope - faint, blurred, zoomed in)
@@ -267,6 +272,7 @@ export class GameRenderer {
     this.blackHoleRenderer.getBackgroundContainer().y = screenHeight / 2
     this.blackHoleRenderer.getCoreContainer().x = screenWidth / 2
     this.blackHoleRenderer.getCoreContainer().y = screenHeight / 2
+    // Overlay container stays at (0,0) - uses standard screen coordinates like EdgeIndicatorRenderer
 
     // Update effects
     this.effectsRenderer.update(deltaTime)
@@ -1097,6 +1103,14 @@ export class GameRenderer {
    */
   getBlackHoleRenderer(): BlackHoleRenderer {
     return this.blackHoleRenderer
+  }
+
+  /**
+   * Set the prestige panel target position for gravity effects
+   * Call this when the prestige panel position is known/changes
+   */
+  setPrestigeTarget(screenX: number, screenY: number): void {
+    this.blackHoleRenderer.setPrestigeTarget(screenX, screenY)
   }
 
   /**
