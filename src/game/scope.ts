@@ -1,41 +1,101 @@
 // Scope navigation - entering/exiting package internal views
+// Supports 2 layers: root → layer 1 (top-level pkg) → layer 2 (compressed internal dep)
 
-import type { Package, Wire } from './types';
-import { gameState } from './state';
+import type { Package, Wire } from './types'
+import { gameState } from './state'
+
+// ============================================
+// SCOPE DEPTH HELPERS
+// ============================================
+
+/**
+ * Get current scope depth
+ * 0 = root, 1 = inside top-level package, 2 = inside compressed internal dep
+ */
+export function getScopeDepth(): number {
+  return gameState.scopeStack.length
+}
+
+/**
+ * Check if we're at root scope
+ */
+export function isAtRoot(): boolean {
+  return gameState.scopeStack.length === 0
+}
+
+/**
+ * Check if we're at layer 1 (inside a top-level package)
+ */
+export function isAtLayer1(): boolean {
+  return gameState.scopeStack.length === 1
+}
+
+/**
+ * Check if we're at layer 2 (inside a compressed internal dep)
+ */
+export function isAtLayer2(): boolean {
+  return gameState.scopeStack.length === 2
+}
 
 // ============================================
 // SCOPE PRIMITIVES
 // ============================================
 
 /**
- * Enter a package's internal scope (low-level)
- * Only top-level packages (direct children of root) can be entered
- *
- * Note: Use enterPackageScope() from packages.ts for full behavior
- * (spawns internal deps if pristine)
+ * Enter a top-level package's internal scope (layer 1)
+ * Only works from root scope
  */
 export function enterScope(packageId: string): boolean {
-  const pkg = gameState.packages.get(packageId);
-  if (!pkg) return false;
+  const pkg = gameState.packages.get(packageId)
+  if (!pkg) return false
 
   // Only enter top-level packages (direct children of root)
-  if (pkg.parentId !== gameState.rootId) return false;
+  if (pkg.parentId !== gameState.rootId) return false
 
-  // Can't enter if already in a scope
-  if (gameState.currentScope !== 'root') return false;
+  // Can only enter layer 1 from root
+  if (!isAtRoot()) return false
 
-  gameState.currentScope = packageId;
-  return true;
+  gameState.scopeStack.push(packageId)
+  gameState.currentScope = packageId // Keep legacy field in sync
+  return true
 }
 
 /**
- * Exit current scope back to root (low-level)
- *
- * Note: Use exitPackageScope() from packages.ts for full behavior
- * (recalculates internal state before exiting)
+ * Enter a compressed internal dep's scope (works at any depth)
+ * Requires being inside a package scope already
+ */
+export function enterInternalScope(internalPkgId: string): boolean {
+  // Must be inside a package scope to enter an internal package
+  if (gameState.scopeStack.length === 0) return false
+
+  // Use the generic path-based entry
+  return enterScopeAtPath(internalPkgId)
+}
+
+/**
+ * Exit current scope (go up one level)
+ * Layer 2 → Layer 1, Layer 1 → Root
  */
 export function exitScope(): void {
-  gameState.currentScope = 'root';
+  if (gameState.scopeStack.length === 0) return
+
+  gameState.scopeStack.pop()
+
+  // Update legacy currentScope field
+  if (gameState.scopeStack.length === 0) {
+    gameState.currentScope = 'root'
+  } else {
+    gameState.currentScope =
+      gameState.scopeStack[gameState.scopeStack.length - 1] ?? 'root'
+  }
+}
+
+/**
+ * Exit all the way to root
+ */
+export function exitToRoot(): void {
+  gameState.scopeStack = []
+  gameState.currentScope = 'root'
 }
 
 // ============================================
@@ -43,38 +103,38 @@ export function exitScope(): void {
 // ============================================
 
 /**
- * Get packages for the current scope
- * Returns outer packages if at root, or internal packages if inside a package
+ * Get packages for the current scope (works at any depth)
  */
 export function getCurrentScopePackages(): Map<string, Package> {
-  if (gameState.currentScope === 'root') {
-    return gameState.packages;
-  }
-  const scopePkg = gameState.packages.get(gameState.currentScope);
-  return scopePkg?.internalPackages || new Map();
+  return getPackagesAtPath(gameState.scopeStack)
 }
 
 /**
- * Get wires for the current scope
+ * Get wires for the current scope (works at any depth)
  */
 export function getCurrentScopeWires(): Map<string, Wire> {
-  if (gameState.currentScope === 'root') {
-    return gameState.wires;
-  }
-  const scopePkg = gameState.packages.get(gameState.currentScope);
-  return scopePkg?.internalWires || new Map();
+  return getWiresAtPath(gameState.scopeStack)
 }
 
 /**
- * Get the local root package for current scope
- * At root scope: returns the actual root (package.json)
- * In package scope: returns the entered package
+ * Get the local root package for current scope (works at any depth)
  */
 export function getCurrentScopeRoot(): Package | null {
-  if (gameState.currentScope === 'root') {
-    return gameState.rootId ? gameState.packages.get(gameState.rootId) || null : null;
+  if (isAtRoot()) {
+    return gameState.rootId
+      ? gameState.packages.get(gameState.rootId) || null
+      : null
   }
-  return gameState.packages.get(gameState.currentScope) || null;
+  return getPackageAtPath(gameState.scopeStack)
+}
+
+/**
+ * Get the parent scope's package (works at any depth)
+ * Returns the package one level up, or null if at root or layer 1
+ */
+export function getParentScopePackage(): Package | null {
+  if (gameState.scopeStack.length < 2) return null
+  return getPackageAtPath(gameState.scopeStack.slice(0, -1))
 }
 
 // ============================================
@@ -82,10 +142,10 @@ export function getCurrentScopeRoot(): Package | null {
 // ============================================
 
 /**
- * Check if we're currently inside a package scope
+ * Check if we're currently inside a package scope (layer 1 or 2)
  */
 export function isInPackageScope(): boolean {
-  return gameState.currentScope !== 'root';
+  return gameState.scopeStack.length > 0
 }
 
 /**
@@ -93,15 +153,137 @@ export function isInPackageScope(): boolean {
  * Returns 'root' or a package ID
  */
 export function getCurrentScope(): string {
-  return gameState.currentScope;
+  return gameState.currentScope
+}
+
+/**
+ * Get the full scope stack
+ */
+export function getScopeStack(): readonly string[] {
+  return gameState.scopeStack
 }
 
 /**
  * Check if a package is the current scope's root
  */
 export function isCurrentScopeRoot(packageId: string): boolean {
-  if (gameState.currentScope === 'root') {
-    return packageId === gameState.rootId;
+  if (isAtRoot()) {
+    return packageId === gameState.rootId
   }
-  return packageId === gameState.currentScope;
+  const currentId = gameState.scopeStack[gameState.scopeStack.length - 1]
+  return packageId === currentId
+}
+
+/**
+ * Check if a package is compressed (has internal scope) and can be entered
+ */
+export function isPackageCompressed(pkg: Package): boolean {
+  return pkg.internalPackages !== null && pkg.internalWires !== null
+}
+
+/**
+ * Get the layer 1 package ID (if in layer 1 or 2)
+ */
+export function getLayer1PackageId(): string | null {
+  if (gameState.scopeStack.length >= 1) {
+    return gameState.scopeStack[0] ?? null
+  }
+  return null
+}
+
+/**
+ * Get the layer 2 package ID (if in layer 2)
+ */
+export function getLayer2PackageId(): string | null {
+  if (gameState.scopeStack.length >= 2) {
+    return gameState.scopeStack[1] ?? null
+  }
+  return null
+}
+
+// ============================================
+// GENERIC PATH-BASED ACCESSORS (arbitrary depth)
+// ============================================
+
+/**
+ * Get a package at an arbitrary path in the nested tree
+ * Path is array of package IDs: [topLevelId, internalId, deeperId, ...]
+ * Empty path returns null (root is not a package in this context)
+ */
+export function getPackageAtPath(path: string[]): Package | null {
+  if (path.length === 0) return null
+
+  // First element is always a top-level package
+  const topLevelId = path[0]
+  if (!topLevelId) return null
+
+  let current: Package | undefined = gameState.packages.get(topLevelId)
+  if (!current) return null
+
+  // Traverse deeper into internal packages
+  for (let i = 1; i < path.length; i++) {
+    const nextId = path[i]
+    if (!nextId || !current.internalPackages) return null
+    current = current.internalPackages.get(nextId)
+    if (!current) return null
+  }
+
+  return current
+}
+
+/**
+ * Get the internal packages map at a given path
+ * Empty path returns root-level packages
+ */
+export function getPackagesAtPath(path: string[]): Map<string, Package> {
+  if (path.length === 0) {
+    return gameState.packages
+  }
+
+  const pkg = getPackageAtPath(path)
+  return pkg?.internalPackages || new Map()
+}
+
+/**
+ * Get the internal wires map at a given path
+ * Empty path returns root-level wires
+ */
+export function getWiresAtPath(path: string[]): Map<string, Wire> {
+  if (path.length === 0) {
+    return gameState.wires
+  }
+
+  const pkg = getPackageAtPath(path)
+  return pkg?.internalWires || new Map()
+}
+
+/**
+ * Enter a package scope at any depth
+ * Returns true if successful
+ */
+export function enterScopeAtPath(packageId: string): boolean {
+  // If at root, entering means the package must be a top-level package
+  if (gameState.scopeStack.length === 0) {
+    const pkg = gameState.packages.get(packageId)
+    if (!pkg || pkg.parentId !== gameState.rootId) return false
+    if (!pkg.internalPackages || !pkg.internalWires) return false
+
+    gameState.scopeStack.push(packageId)
+    gameState.currentScope = packageId
+    return true
+  }
+
+  // Otherwise, we're entering a deeper scope
+  const currentPkg = getPackageAtPath(gameState.scopeStack)
+  if (!currentPkg?.internalPackages) return false
+
+  const targetPkg = currentPkg.internalPackages.get(packageId)
+  if (!targetPkg) return false
+
+  // Can only enter compressed packages (those with internal maps)
+  if (!targetPkg.internalPackages || !targetPkg.internalWires) return false
+
+  gameState.scopeStack.push(packageId)
+  gameState.currentScope = packageId
+  return true
 }

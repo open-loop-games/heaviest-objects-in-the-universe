@@ -1,6 +1,42 @@
 // Game configuration constants and initial state factory
 
-import type { GameConfig, GameState } from './types';
+import type { GameConfig, GameState } from './types'
+
+// ============================================
+// TIER SYSTEM
+// ============================================
+
+// Cache token thresholds for each ecosystem tier (1-5)
+// Tier is derived from cache tokens, not tracked separately
+// Unlocks: Tier 2 = auto-resolve, Tier 3 = auto-dedup, Tier 4/5 = faster
+export const TIER_THRESHOLDS = [0, 9, 21, 42, 63] as const
+
+// Max depth allowed at each tier (tier N = depth N)
+export const TIER_MAX_DEPTH = [1, 2, 3, 4, 5] as const
+
+// ============================================
+// COMPRESSION SCALING
+// ============================================
+
+// Base compression chance (before token scaling)
+export const BASE_COMPRESSION_CHANCE = 0.2
+
+// Additional compression per cache token
+export const COMPRESSION_PER_TOKEN = 0.01
+
+// Compression softcap (reached at 20 tokens)
+export const COMPRESSION_SOFTCAP = 0.4
+
+// Compression hardcap (asymptotic limit)
+export const COMPRESSION_HARDCAP = 0.5
+
+// Depth multipliers for compression chance
+// depth 1 = 100%, depth 5 = 0% (always leaves)
+export const DEPTH_COMPRESSION_MULT = [1.0, 0.75, 0.5, 0.25, 0.0] as const
+
+// ============================================
+// DEFAULT CONFIG
+// ============================================
 
 // Default configuration based on design doc
 export const DEFAULT_CONFIG: GameConfig = {
@@ -10,7 +46,7 @@ export const DEFAULT_CONFIG: GameConfig = {
 
   // Production rates
   baseBandwidthRegen: 1,
-  cacheTokenMultiplier: 1.10,
+  cacheTokenMultiplier: 1.1,
 
   // Dependencies
   minDependencies: 1,
@@ -21,17 +57,17 @@ export const DEFAULT_CONFIG: GameConfig = {
   prestigeWeightThreshold: 100000,
 
   // Physics
-  nodeRepulsion: 150,    // Lower = nodes slide past each other easier
+  nodeRepulsion: 150, // Lower = nodes slide past each other easier
   wireAttraction: 0.01,
   damping: 0.95,
-};
+}
 
 // Starting values - tweak these for early game balance
-export const STARTING_BANDWIDTH = 150;
-export const STARTING_MAX_BANDWIDTH = 1000;
+export const STARTING_BANDWIDTH = 150
+export const STARTING_MAX_BANDWIDTH = 1000
 
 // Save version - increment to force reset on incompatible changes
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 2
 
 /**
  * Create a fresh game state for new game or prestige reset
@@ -59,13 +95,38 @@ export function createInitialState(): GameState {
       firstConflictSeen: false,
       firstSymlinkSeen: false,
       firstPrestigeComplete: false,
+      weightSeen: false,
+      efficiencySeen: false,
     },
     packages: new Map(),
     wires: new Map(),
     rootId: null,
+    // Hoisting system
+    hoistedDeps: new Map(),
     // Scope system
     currentScope: 'root',
+    scopeStack: [], // Empty = root scope
     tutorialGating: true, // Relaxed after first prestige
+    // Cascade system
+    cascade: {
+      active: false,
+      scopePackageId: null,
+      pendingSpawns: [],
+      lastSpawnTime: 0,
+      spawnInterval: 100, // ms between spawns
+    },
+    // Automation system
+    automation: {
+      resolveActive: false,
+      resolveTargetWireId: null,
+      resolveTargetScope: null,
+      dedupActive: false,
+      dedupTargetPair: null,
+      dedupTargetScope: null,
+      processStartTime: 0,
+      lastResolveTime: 0,
+      lastDedupTime: 0,
+    },
     stats: {
       totalPackagesInstalled: 0,
       totalConflictsResolved: 0,
@@ -80,5 +141,5 @@ export function createInitialState(): GameState {
     },
     lastTick: Date.now(),
     tickCount: 0,
-  };
+  }
 }
