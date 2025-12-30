@@ -8,7 +8,7 @@ import type { GameConfig, GameState } from './types'
 
 // Cache token thresholds for each ecosystem tier (1-5)
 // Tier is derived from cache tokens, not tracked separately
-// Unlocks: Tier 2 = auto-resolve, Tier 3 = auto-dedup, Tier 4/5 = faster
+// Unlocks: Tier 2 = auto-resolve, Tier 3 = auto-hoist, Tier 4/5 = faster
 export const TIER_THRESHOLDS = [0, 9, 21, 42, 63] as const
 
 // Max depth allowed at each tier (tier N = depth N)
@@ -49,11 +49,27 @@ export const SYMLINK_MERGE_COST = 8
 
 // Automation drain per operation
 export const AUTO_RESOLVE_DRAIN = 2
-export const AUTO_DEDUP_DRAIN = 1.5
 export const AUTO_HOIST_DRAIN = 3
 
 // Maximum pending deps in queue
 export const MAX_PENDING_DEPS = 40
+
+// ============================================
+// DEPTH REWARDS
+// ============================================
+
+// Golden packages (only spawn at depth 3+, 4x weight)
+export const GOLDEN_SPAWN_CHANCE = 0.05
+export const GOLDEN_WEIGHT_MULTIPLIER = 4
+export const GOLDEN_MIN_DEPTH = 3
+
+// Cache fragments (collectible bonus tokens)
+export const CACHE_FRAGMENT_CHANCE = 0.04
+export const CACHE_FRAGMENT_MIN_DEPTH = 2
+export const FRAGMENT_TO_TOKEN_RATIO = 5 // 5 fragments = 1 cache token on prestige
+
+// Depth weight multipliers: [depth 0, depth 1, depth 2, depth 3, depth 4+]
+export const DEPTH_WEIGHT_MULTIPLIERS = [1.0, 1.0, 1.15, 1.25, 1.35] as const
 
 // ============================================
 // DEFAULT CONFIG
@@ -100,6 +116,7 @@ export function createInitialState(): GameState {
       maxBandwidth: STARTING_MAX_BANDWIDTH,
       bandwidthRegen: DEFAULT_CONFIG.baseBandwidthRegen,
       weight: 0,
+      cacheFragments: 0,
     },
     meta: {
       cacheTokens: 0,
@@ -111,7 +128,6 @@ export function createInitialState(): GameState {
       efficiencyLevel: 0,
       compressionLevel: 0,
       resolveSpeedLevel: 0,
-      dedupSpeedLevel: 0,
       hoistSpeedLevel: 0,
     },
     onboarding: {
@@ -145,16 +161,11 @@ export function createInitialState(): GameState {
     automation: {
       // Toggle states (default off, user enables)
       resolveEnabled: false,
-      dedupEnabled: false,
       hoistEnabled: false,
       // Auto-resolve
       resolveActive: false,
       resolveTargetWireId: null,
       resolveTargetScope: null,
-      // Auto-dedup
-      dedupActive: false,
-      dedupTargetPair: null,
-      dedupTargetScope: null,
       // Auto-hoist
       hoistActive: false,
       hoistTargetDepName: null,
@@ -162,7 +173,6 @@ export function createInitialState(): GameState {
       // Timing
       processStartTime: 0,
       lastResolveTime: 0,
-      lastDedupTime: 0,
       lastHoistTime: 0,
     },
     stats: {
@@ -171,13 +181,13 @@ export function createInitialState(): GameState {
       totalSymlinksCreated: 0,
       maxWeightReached: 0,
       currentEfficiency: 1,
+      goldenPackagesFound: 0,
+      cacheFragmentsCollected: 0,
     },
     camera: {
       x: 0,
       y: 0,
       zoom: 1,
     },
-    lastTick: Date.now(),
-    tickCount: 0,
   }
 }

@@ -3,6 +3,7 @@
 
 import { gameState } from './state'
 import { spendBandwidth } from './mutations'
+import { getScopePackageCount } from './scope'
 
 export interface UpgradeDefinition {
   id: string
@@ -68,15 +69,6 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     costMultiplier: 1.7,
     unlockAt: 0,
     tierRequirement: 2,
-  },
-  dedupSpeed: {
-    id: 'dedupSpeed',
-    icon: '⟲+',
-    maxLevel: 5,
-    baseCost: 50,
-    costMultiplier: 1.7,
-    unlockAt: 0,
-    tierRequirement: 3,
   },
   hoistSpeed: {
     id: 'hoistSpeed',
@@ -159,8 +151,10 @@ export function getEffectiveBandwidthRegen(): number {
   const bwLevel = getUpgradeLevel('bandwidth')
   const regenMultiplier = effects.bandwidthRegen(bwLevel)
 
-  // Cache token bonus from prestige
-  const cacheBonus = Math.pow(1.1, gameState.meta.cacheTokens)
+  // Cache token bonus from prestige (flattened: sqrt scaling instead of exponential)
+  // Old: 1.1^tokens → 17× at 30 tokens (breaks balance at P7+)
+  // New: 1 + sqrt(tokens) * 0.5 → 3.7× at 30 tokens (maintains sub-20s beats)
+  const cacheBonus = 1 + Math.sqrt(gameState.meta.cacheTokens) * 0.5
 
   return baseRegen * regenMultiplier * cacheBonus * gameState.meta.ecosystemTier
 }
@@ -198,18 +192,6 @@ export function getResolveDrainMultiplier(): number {
 // Get speed boost for auto-resolve
 export function getResolveSpeedMultiplier(): number {
   const level = getUpgradeLevel('resolveSpeed')
-  return effects.speedBoost(level)
-}
-
-// Get drain reduction for auto-dedup
-export function getDedupDrainMultiplier(): number {
-  const level = getUpgradeLevel('dedupSpeed')
-  return effects.drainReduction(level)
-}
-
-// Get speed boost for auto-dedup
-export function getDedupSpeedMultiplier(): number {
-  const level = getUpgradeLevel('dedupSpeed')
   return effects.speedBoost(level)
 }
 
@@ -268,10 +250,13 @@ export function getNextLockedUpgrade(): UpgradeDefinition | null {
 }
 
 // Calculate install cost with upgrades applied
+// Per-scope scaling: each scope has its own cost curve (resets when entering)
+// Tier scaling: higher tiers have higher base costs to match increased regen
 export function getEffectiveInstallCost(): number {
-  const packageCount = gameState.packages.size
-  const baseCost = 10
-  const scaledCost = baseCost * Math.pow(1.12, packageCount)
+  const scopePackageCount = getScopePackageCount()
+  const tier = gameState.meta.ecosystemTier
+  const baseCost = 10 * tier // 10 → 20 → 30 at tiers 1-3
+  const scaledCost = baseCost * Math.pow(1.12, scopePackageCount)
   const costMultiplier = getEffectiveCostMultiplier()
   return Math.floor(scaledCost * costMultiplier)
 }

@@ -1,16 +1,13 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { gameState, computed_ecosystemTier } from '../../game/state'
 import {
   getUpgradeLevel,
   canPurchaseUpgrade,
   purchaseUpgrade,
+  setPreviewedUpgrade,
 } from '../../game/upgrades'
-import {
-  AUTO_RESOLVE_DRAIN,
-  AUTO_DEDUP_DRAIN,
-  AUTO_HOIST_DRAIN,
-} from '../../game/config'
+import { AUTO_RESOLVE_DRAIN, AUTO_HOIST_DRAIN } from '../../game/config'
 
 // ============================================
 // TIER & VISIBILITY
@@ -46,14 +43,6 @@ const resolveState = computed<ToggleState>(() =>
   )
 )
 
-const dedupState = computed<ToggleState>(() =>
-  getToggleState(
-    gameState.automation.dedupEnabled,
-    gameState.automation.dedupActive,
-    AUTO_DEDUP_DRAIN
-  )
-)
-
 const hoistState = computed<ToggleState>(() =>
   getToggleState(
     gameState.automation.hoistEnabled,
@@ -70,10 +59,6 @@ function toggleResolve() {
   gameState.automation.resolveEnabled = !gameState.automation.resolveEnabled
 }
 
-function toggleDedup() {
-  gameState.automation.dedupEnabled = !gameState.automation.dedupEnabled
-}
-
 function toggleHoist() {
   gameState.automation.hoistEnabled = !gameState.automation.hoistEnabled
 }
@@ -85,31 +70,43 @@ function toggleHoist() {
 // Note: These upgrades may not exist yet in upgrades.ts
 // Using placeholder logic that will work once upgrades are added
 const resolveSpeedLevel = computed(() => getUpgradeLevel('resolveSpeed') || 0)
-const dedupSpeedLevel = computed(() => getUpgradeLevel('dedupSpeed') || 0)
 const hoistSpeedLevel = computed(() => getUpgradeLevel('hoistSpeed') || 0)
 
 const canAffordResolveSpeed = computed(() => canPurchaseUpgrade('resolveSpeed'))
-const canAffordDedupSpeed = computed(() => canPurchaseUpgrade('dedupSpeed'))
 const canAffordHoistSpeed = computed(() => canPurchaseUpgrade('hoistSpeed'))
 
 const MAX_SPEED_LEVEL = 5
 
-function handleResolveSpeedPip(pipIndex: number) {
-  if (pipIndex === resolveSpeedLevel.value + 1 && canAffordResolveSpeed.value) {
+// Container handlers for resolve speed
+const isHoveringResolve = ref(false)
+function handleResolveSpeedClick() {
+  if (canAffordResolveSpeed.value) {
     purchaseUpgrade('resolveSpeed')
   }
 }
-
-function handleDedupSpeedPip(pipIndex: number) {
-  if (pipIndex === dedupSpeedLevel.value + 1 && canAffordDedupSpeed.value) {
-    purchaseUpgrade('dedupSpeed')
-  }
+function handleResolveSpeedEnter() {
+  isHoveringResolve.value = true
+  setPreviewedUpgrade('resolveSpeed')
+}
+function handleResolveSpeedLeave() {
+  isHoveringResolve.value = false
+  setPreviewedUpgrade(null)
 }
 
-function handleHoistSpeedPip(pipIndex: number) {
-  if (pipIndex === hoistSpeedLevel.value + 1 && canAffordHoistSpeed.value) {
+// Container handlers for hoist speed
+const isHoveringHoist = ref(false)
+function handleHoistSpeedClick() {
+  if (canAffordHoistSpeed.value) {
     purchaseUpgrade('hoistSpeed')
   }
+}
+function handleHoistSpeedEnter() {
+  isHoveringHoist.value = true
+  setPreviewedUpgrade('hoistSpeed')
+}
+function handleHoistSpeedLeave() {
+  isHoveringHoist.value = false
+  setPreviewedUpgrade(null)
 }
 </script>
 
@@ -121,37 +118,24 @@ function handleHoistSpeedPip(pipIndex: number) {
         <span class="auto-icon">⚙</span>
         <span class="toggle-dot" :class="resolveState">●</span>
       </button>
-      <div class="upgrade-pips mini">
-        <span
-          v-for="i in MAX_SPEED_LEVEL"
-          :key="i"
-          class="pip"
-          :class="{
-            filled: i <= resolveSpeedLevel,
-            affordable: i === resolveSpeedLevel + 1 && canAffordResolveSpeed,
-          }"
-          @click="handleResolveSpeedPip(i)"
-        />
-      </div>
-    </div>
-
-    <!-- Auto-dedup (Tier 3+) -->
-    <div v-if="tier >= 3" class="auto-group">
-      <button class="auto-toggle" :class="dedupState" @click="toggleDedup">
-        <span class="auto-icon">⟲</span>
-        <span class="toggle-dot" :class="dedupState">●</span>
-      </button>
-      <div class="upgrade-pips mini">
-        <span
-          v-for="i in MAX_SPEED_LEVEL"
-          :key="i"
-          class="pip"
-          :class="{
-            filled: i <= dedupSpeedLevel,
-            affordable: i === dedupSpeedLevel + 1 && canAffordDedupSpeed,
-          }"
-          @click="handleDedupSpeedPip(i)"
-        />
+      <div
+        class="upgrade-pips-container"
+        @mouseenter="handleResolveSpeedEnter"
+        @mouseleave="handleResolveSpeedLeave"
+        @click="handleResolveSpeedClick"
+      >
+        <div class="upgrade-pips mini">
+          <span
+            v-for="i in MAX_SPEED_LEVEL"
+            :key="i"
+            class="pip"
+            :class="{
+              filled: i <= resolveSpeedLevel,
+              affordable: i === resolveSpeedLevel + 1 && canAffordResolveSpeed,
+              'next-level': i === resolveSpeedLevel + 1,
+            }"
+          />
+        </div>
       </div>
     </div>
 
@@ -161,17 +145,24 @@ function handleHoistSpeedPip(pipIndex: number) {
         <span class="auto-icon">⤴</span>
         <span class="toggle-dot" :class="hoistState">●</span>
       </button>
-      <div class="upgrade-pips mini">
-        <span
-          v-for="i in MAX_SPEED_LEVEL"
-          :key="i"
-          class="pip"
-          :class="{
-            filled: i <= hoistSpeedLevel,
-            affordable: i === hoistSpeedLevel + 1 && canAffordHoistSpeed,
-          }"
-          @click="handleHoistSpeedPip(i)"
-        />
+      <div
+        class="upgrade-pips-container"
+        @mouseenter="handleHoistSpeedEnter"
+        @mouseleave="handleHoistSpeedLeave"
+        @click="handleHoistSpeedClick"
+      >
+        <div class="upgrade-pips mini">
+          <span
+            v-for="i in MAX_SPEED_LEVEL"
+            :key="i"
+            class="pip"
+            :class="{
+              filled: i <= hoistSpeedLevel,
+              affordable: i === hoistSpeedLevel + 1 && canAffordHoistSpeed,
+              'next-level': i === hoistSpeedLevel + 1,
+            }"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -269,6 +260,18 @@ function handleHoistSpeedPip(pipIndex: number) {
   animation: hud-pulse 0.5s ease-in-out infinite;
 }
 
+/* Upgrade pips container */
+.upgrade-pips-container {
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background var(--hud-t-fast) ease;
+  cursor: pointer;
+}
+
+.upgrade-pips-container:hover {
+  background: rgba(90, 255, 255, 0.1);
+}
+
 /* Mini upgrade pips */
 .upgrade-pips.mini {
   display: flex;
@@ -309,6 +312,11 @@ function handleHoistSpeedPip(pipIndex: number) {
 .pip.affordable:hover {
   background: #3a5a5a;
   box-shadow: 0 0 10px #5affff;
+}
+
+.pip.next-level:not(.affordable) {
+  background: #3a3a4a;
+  border: 1px solid #5a5a6a;
 }
 
 @keyframes pip-glow {

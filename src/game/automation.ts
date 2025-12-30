@@ -1,23 +1,18 @@
-// Automation system for auto-resolve, auto-dedup, and auto-hoist
-// Unlocks at tier 2 (resolve) and tier 3 (dedup, hoist)
+// Automation system for auto-resolve and auto-hoist
+// Unlocks at tier 2 (resolve) and tier 3 (hoist)
+// Note: Auto-dedup intentionally removed - merging stays manual for gameplay
 
 import { toRaw } from 'vue'
 import { gameState, getEcosystemTier } from './state'
-import { performSymlinkMerge } from './symlinks'
 import { getPackageAtPath } from './scope'
 import { findSharedDeps, hoistDep } from './hoisting'
-import {
-  AUTO_RESOLVE_DRAIN,
-  AUTO_DEDUP_DRAIN,
-  AUTO_HOIST_DRAIN,
-} from './config'
+import { getCascadeScopePath, isCascadeActive } from './cascade'
 import {
   getResolveDrainMultiplier,
   getResolveSpeedMultiplier,
-  getDedupDrainMultiplier,
-  getDedupSpeedMultiplier,
   getHoistDrainMultiplier,
   getHoistSpeedMultiplier,
+  getEffectiveBandwidthRegen,
 } from './upgrades'
 import type { Wire, Package } from './types'
 
@@ -37,18 +32,6 @@ const RESOLVE_INTERVALS = [
   500, // Tier 5: 0.5s
 ] as const
 
-// Interval between auto-dedups by tier (ms)
-// Index 0 unused, Index 1-5 = Tiers 1-5
-// Tier 1-2 = no automation, Tier 3 = 3s, Tier 4 = 2s, Tier 5 = 1s
-const DEDUP_INTERVALS = [
-  Infinity, // unused (index 0)
-  Infinity, // Tier 1: no automation
-  Infinity, // Tier 2: no automation
-  3000, // Tier 3: 3s
-  2000, // Tier 4: 2s
-  1000, // Tier 5: 1s
-] as const
-
 // Interval between auto-hoists by tier (ms)
 // Index 0 unused, Index 1-5 = Tiers 1-5
 // Tier 1-2 = no automation, Tier 3 = 4s, Tier 4 = 2.5s, Tier 5 = 1.5s
@@ -56,7 +39,7 @@ const HOIST_INTERVALS = [
   Infinity, // unused (index 0)
   Infinity, // Tier 1: no automation
   Infinity, // Tier 2: no automation
-  4000, // Tier 3: 4s (slower than dedup)
+  4000, // Tier 3: 4s
   2500, // Tier 4: 2.5s
   1500, // Tier 5: 1.5s
 ] as const
@@ -74,18 +57,41 @@ interface ConflictLocation {
 }
 
 /**
+ * Check if a scope path is currently being populated by the cascade system.
+ * We should skip automation on scopes that are still populating to avoid
+ * race conditions between cascade spawning and automation resolution.
+ */
+function isScopePopulating(scopePath: string[]): boolean {
+  if (!isCascadeActive()) return false
+
+  const cascadePath = getCascadeScopePath()
+  if (cascadePath.length === 0) return false
+
+  // Check if the scope path matches or is inside the cascading scope
+  // e.g., if cascade is at [A, B], skip [A, B] and [A, B, C] but not [A] or [X]
+  if (scopePath.length < cascadePath.length) return false
+
+  for (let i = 0; i < cascadePath.length; i++) {
+    if (scopePath[i] !== cascadePath[i]) return false
+  }
+
+  return true
+}
+
+/**
  * Find the first conflicted wire across all scopes.
  * Searches root scope first, then internal scopes of each package.
+ * Skips scopes that are currently being populated by the cascade system.
  */
 export function findFirstConflictedWire(): ConflictLocation | null {
-  // Check root scope first
+  // Check root scope first (root is never cascading)
   for (const [wireId, wire] of toRaw(gameState.wires)) {
     if (wire.conflicted) {
       return { wireId, scopePath: [] }
     }
   }
 
-  // Check internal scopes (recursively)
+  // Check internal scopes (recursively), skipping cascading scopes
   for (const [pkgId, pkg] of toRaw(gameState.packages)) {
     const result = findConflictInPackage(pkg, [pkgId])
     if (result) return result
@@ -96,12 +102,17 @@ export function findFirstConflictedWire(): ConflictLocation | null {
 
 /**
  * Recursively search for conflicts in a package's internal scope
+ * Skips scopes that are currently being populated by the cascade system.
  */
 function findConflictInPackage(
   pkg: Package,
   scopePath: string[]
 ): ConflictLocation | null {
   if (!pkg.internalWires) return null
+
+  // Skip this scope if it's currently being populated by the cascade
+  // This prevents race conditions between automation and cascade spawning
+  if (isScopePopulating(scopePath)) return null
 
   // Check this package's internal wires
   for (const [wireId, wire] of toRaw(pkg.internalWires)) {
@@ -116,102 +127,6 @@ function findConflictInPackage(
       const result = findConflictInPackage(innerPkg, [...scopePath, innerPkgId])
       if (result) return result
     }
-  }
-
-  return null
-}
-
-// ============================================
-// DUPLICATE FINDING (ALL SCOPES)
-// ============================================
-
-interface DuplicateLocation {
-  packageIds: [string, string] // Pair of package IDs with same identity
-  scopePath: string[] // [] = root, [pkgId] = layer 1, etc.
-}
-
-/**
- * Find the first duplicate pair across all scopes.
- * Searches root scope first, then internal scopes.
- */
-export function findFirstDuplicatePair(): DuplicateLocation | null {
-  // Check root scope first
-  const rootDups = findDuplicatesInScope(
-    toRaw(gameState.packages),
-    gameState.rootId
-  )
-  if (rootDups) {
-    return { packageIds: rootDups, scopePath: [] }
-  }
-
-  // Check internal scopes (recursively)
-  for (const [pkgId, pkg] of toRaw(gameState.packages)) {
-    const result = findDuplicatesInPackage(pkg, [pkgId])
-    if (result) return result
-  }
-
-  return null
-}
-
-/**
- * Find duplicates within a specific scope (map of packages)
- */
-function findDuplicatesInScope(
-  packages: Map<string, Package>,
-  rootId: string | null
-): [string, string] | null {
-  const identityGroups = new Map<string, string[]>()
-
-  for (const [id, pkg] of packages) {
-    if (!pkg.identity) continue
-    if (pkg.isGhost) continue
-    if (id === rootId) continue // Don't include root
-
-    // Skip packages with internal scopes at root (complex packages)
-    if (
-      rootId === gameState.rootId &&
-      pkg.internalPackages &&
-      pkg.internalPackages.size > 0
-    ) {
-      continue
-    }
-
-    const name = pkg.identity.name
-    const group = identityGroups.get(name) || []
-    group.push(id)
-    identityGroups.set(name, group)
-  }
-
-  // Find first group with 2+ packages
-  for (const ids of identityGroups.values()) {
-    if (ids.length >= 2) {
-      return [ids[0]!, ids[1]!]
-    }
-  }
-
-  return null
-}
-
-/**
- * Recursively search for duplicates in a package's internal scope
- */
-function findDuplicatesInPackage(
-  pkg: Package,
-  scopePath: string[]
-): DuplicateLocation | null {
-  if (!pkg.internalPackages) return null
-
-  // Check this package's internal packages
-  const scopeRootId = scopePath[scopePath.length - 1] ?? null
-  const dups = findDuplicatesInScope(toRaw(pkg.internalPackages), scopeRootId)
-  if (dups) {
-    return { packageIds: dups, scopePath }
-  }
-
-  // Recurse into internal packages that have their own scopes
-  for (const [innerPkgId, innerPkg] of toRaw(pkg.internalPackages)) {
-    const result = findDuplicatesInPackage(innerPkg, [...scopePath, innerPkgId])
-    if (result) return result
   }
 
   return null
@@ -279,40 +194,6 @@ function resolveWireAtPath(wireId: string, scopePath: string[]): boolean {
 }
 
 /**
- * Merge duplicates at a specific scope path
- */
-function mergeDuplicatesAtPath(
-  sourceId: string,
-  targetId: string,
-  scopePath: string[]
-): number {
-  // For now, we need to temporarily switch scope to perform the merge
-  // This is a bit hacky but ensures all the existing merge logic works
-  const originalScope = gameState.currentScope
-  const originalStack = [...gameState.scopeStack]
-
-  try {
-    // Set scope to the target path
-    if (scopePath.length === 0) {
-      gameState.currentScope = 'root'
-      gameState.scopeStack = []
-    } else {
-      gameState.currentScope = scopePath[scopePath.length - 1]!
-      gameState.scopeStack = scopePath
-    }
-
-    // Perform the merge using existing scope-aware function
-    const result = performSymlinkMerge(sourceId, targetId)
-
-    return result
-  } finally {
-    // Restore original scope
-    gameState.currentScope = originalScope
-    gameState.scopeStack = originalStack
-  }
-}
-
-/**
  * Recalculate internal state after changes at a path
  */
 function recalculateInternalStateAtPath(scopePath: string[]): void {
@@ -352,9 +233,19 @@ function checkForConflicts(pkg: Package): boolean {
 
 function checkForDuplicates(pkg: Package): boolean {
   if (!pkg.internalPackages) return false
-  const scopeRootId = pkg.id
-  const dups = findDuplicatesInScope(pkg.internalPackages, scopeRootId)
-  return dups !== null
+
+  // Simple duplicate detection - just check if any two packages share same identity
+  const identityCounts = new Map<string, number>()
+  for (const [id, innerPkg] of pkg.internalPackages) {
+    if (!innerPkg.identity || innerPkg.isGhost || id === pkg.id) continue
+    const name = innerPkg.identity.name
+    identityCounts.set(name, (identityCounts.get(name) || 0) + 1)
+  }
+
+  for (const count of identityCounts.values()) {
+    if (count >= 2) return true
+  }
+  return false
 }
 
 // ============================================
@@ -366,9 +257,6 @@ function checkForDuplicates(pkg: Package): boolean {
 let onAutoResolveComplete:
   | ((scopePath: string[], position: { x: number; y: number }) => void)
   | null = null
-let onAutoDedupComplete:
-  | ((scopePath: string[], position: { x: number; y: number }) => void)
-  | null = null
 const onAutoHoistComplete:
   | ((depName: string, position: { x: number; y: number }) => void)
   | null = null
@@ -377,12 +265,6 @@ export function setAutoResolveCallback(
   callback: (scopePath: string[], position: { x: number; y: number }) => void
 ): void {
   onAutoResolveComplete = callback
-}
-
-export function setAutoDedupCallback(
-  callback: (scopePath: string[], position: { x: number; y: number }) => void
-): void {
-  onAutoDedupComplete = callback
 }
 
 /**
@@ -402,9 +284,14 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
     const baseInterval = RESOLVE_INTERVALS[tier] ?? Infinity
     const resolveInterval = baseInterval / getResolveSpeedMultiplier()
 
-    // If actively processing, drain bandwidth (reduced by upgrade)
+    // If actively processing, drain bandwidth (% of regen, reduced by upgrade)
+    // 5% of regen per second while processing - scales with power level
     if (auto.resolveActive) {
-      const drain = AUTO_RESOLVE_DRAIN * deltaTime * getResolveDrainMultiplier()
+      const drain =
+        getEffectiveBandwidthRegen() *
+        0.05 *
+        deltaTime *
+        getResolveDrainMultiplier()
       if (gameState.resources.bandwidth >= drain) {
         gameState.resources.bandwidth -= drain
       } else {
@@ -429,31 +316,41 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
     // Check if current resolve should complete
     if (auto.resolveActive && auto.resolveTargetWireId) {
       if (now - auto.processStartTime >= PROCESS_DURATION) {
-        // Get the wire's target position BEFORE resolving
         const scopePath = auto.resolveTargetScope ?? []
-        const wires = getWiresAtPath(scopePath)
-        const packages = getPackagesAtPath(scopePath)
-        const wire = wires?.get(auto.resolveTargetWireId)
 
-        let effectPosition = { x: 0, y: 0 }
-        if (wire && packages) {
-          const toPkg = packages.get(wire.toId)
-          if (toPkg) {
-            effectPosition = { x: toPkg.position.x, y: toPkg.position.y }
+        // Safety check: abort if the target scope started cascading mid-resolution
+        // This prevents race conditions if cascade started after we targeted this wire
+        if (isScopePopulating(scopePath)) {
+          // Cancel this resolve - we'll find the conflict again after cascade ends
+          auto.resolveActive = false
+          auto.resolveTargetWireId = null
+          auto.resolveTargetScope = null
+        } else {
+          // Get the wire's target position BEFORE resolving
+          const wires = getWiresAtPath(scopePath)
+          const packages = getPackagesAtPath(scopePath)
+          const wire = wires?.get(auto.resolveTargetWireId)
+
+          let effectPosition = { x: 0, y: 0 }
+          if (wire && packages) {
+            const toPkg = packages.get(wire.toId)
+            if (toPkg) {
+              effectPosition = { x: toPkg.position.x, y: toPkg.position.y }
+            }
           }
+
+          // Complete the resolve
+          const success = resolveWireAtPath(auto.resolveTargetWireId, scopePath)
+
+          if (success && onAutoResolveComplete) {
+            onAutoResolveComplete(scopePath, effectPosition)
+          }
+
+          // Reset state
+          auto.resolveActive = false
+          auto.resolveTargetWireId = null
+          auto.resolveTargetScope = null
         }
-
-        // Complete the resolve
-        const success = resolveWireAtPath(auto.resolveTargetWireId, scopePath)
-
-        if (success && onAutoResolveComplete) {
-          onAutoResolveComplete(scopePath, effectPosition)
-        }
-
-        // Reset state
-        auto.resolveActive = false
-        auto.resolveTargetWireId = null
-        auto.resolveTargetScope = null
       }
     }
   } else if (auto.resolveActive) {
@@ -464,75 +361,6 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
   }
 
   // ============================================
-  // AUTO-DEDUP (Tier 3+, requires toggle enabled)
-  // ============================================
-  if (tier >= 3 && auto.dedupEnabled) {
-    // Apply speed upgrade to interval (faster with upgrades)
-    const baseInterval = DEDUP_INTERVALS[tier] ?? Infinity
-    const dedupInterval = baseInterval / getDedupSpeedMultiplier()
-
-    // If actively processing, drain bandwidth (reduced by upgrade)
-    if (auto.dedupActive) {
-      const drain = AUTO_DEDUP_DRAIN * deltaTime * getDedupDrainMultiplier()
-      if (gameState.resources.bandwidth >= drain) {
-        gameState.resources.bandwidth -= drain
-      }
-      // Note: dedup doesn't pause on low BW - it just completes without drain
-    }
-
-    // Check if we should start a new dedup
-    if (!auto.dedupActive && now - auto.lastDedupTime >= dedupInterval) {
-      const duplicates = findFirstDuplicatePair()
-      if (duplicates) {
-        // Start processing
-        auto.dedupActive = true
-        auto.dedupTargetPair = duplicates.packageIds
-        auto.dedupTargetScope = duplicates.scopePath
-        auto.processStartTime = now
-      }
-      auto.lastDedupTime = now
-    }
-
-    // Check if current dedup should complete
-    if (auto.dedupActive && auto.dedupTargetPair) {
-      if (now - auto.processStartTime >= PROCESS_DURATION) {
-        const [sourceId, targetId] = auto.dedupTargetPair
-        const scopePath = auto.dedupTargetScope ?? []
-
-        // Get target position BEFORE merging
-        const packages = getPackagesAtPath(scopePath)
-        let effectPosition = { x: 0, y: 0 }
-        if (packages) {
-          const targetPkg = packages.get(targetId)
-          if (targetPkg) {
-            effectPosition = {
-              x: targetPkg.position.x,
-              y: targetPkg.position.y,
-            }
-          }
-        }
-
-        // Complete the merge
-        const weightSaved = mergeDuplicatesAtPath(sourceId, targetId, scopePath)
-
-        if (weightSaved > 0 && onAutoDedupComplete) {
-          onAutoDedupComplete(scopePath, effectPosition)
-        }
-
-        // Reset state
-        auto.dedupActive = false
-        auto.dedupTargetPair = null
-        auto.dedupTargetScope = null
-      }
-    }
-  } else if (auto.dedupActive) {
-    // Toggle turned off while processing - cancel
-    auto.dedupActive = false
-    auto.dedupTargetPair = null
-    auto.dedupTargetScope = null
-  }
-
-  // ============================================
   // AUTO-HOIST (Tier 3+, requires toggle enabled)
   // ============================================
   if (tier >= 3 && auto.hoistEnabled) {
@@ -540,9 +368,14 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
     const baseInterval = HOIST_INTERVALS[tier] ?? Infinity
     const hoistInterval = baseInterval / getHoistSpeedMultiplier()
 
-    // If actively processing, drain bandwidth (reduced by upgrade)
+    // If actively processing, drain bandwidth (% of regen, reduced by upgrade)
+    // 5% of regen per second while processing - scales with power level
     if (auto.hoistActive) {
-      const drain = AUTO_HOIST_DRAIN * deltaTime * getHoistDrainMultiplier()
+      const drain =
+        getEffectiveBandwidthRegen() *
+        0.05 *
+        deltaTime *
+        getHoistDrainMultiplier()
       if (gameState.resources.bandwidth >= drain) {
         gameState.resources.bandwidth -= drain
       }
@@ -624,23 +457,14 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
  * Check if automation is currently processing anything
  */
 export function isAutomationProcessing(): boolean {
-  return (
-    gameState.automation.resolveActive ||
-    gameState.automation.dedupActive ||
-    gameState.automation.hoistActive
-  )
+  return gameState.automation.resolveActive || gameState.automation.hoistActive
 }
 
 /**
  * Get the type of automation currently processing
  */
-export function getAutomationProcessingType():
-  | 'resolve'
-  | 'dedup'
-  | 'hoist'
-  | null {
+export function getAutomationProcessingType(): 'resolve' | 'hoist' | null {
   if (gameState.automation.resolveActive) return 'resolve'
-  if (gameState.automation.dedupActive) return 'dedup'
   if (gameState.automation.hoistActive) return 'hoist'
   return null
 }
