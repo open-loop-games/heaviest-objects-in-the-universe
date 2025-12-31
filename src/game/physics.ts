@@ -750,11 +750,11 @@ export function updateInternalPhysics(
 
 const COLLAPSE_CONFIG = {
   // Timing
-  duration: 4.0, // Total collapse duration in seconds (doubled for drama)
+  duration: 5.0, // Total collapse duration in seconds (extended for wave rhythm)
 
   // Gravitational pull
-  baseAcceleration: 400, // Base acceleration toward black hole (slower for more spaghetti time)
-  maxVelocity: 800, // Maximum velocity cap (slower)
+  baseAcceleration: 350, // Base acceleration toward black hole
+  maxVelocity: 900, // Maximum velocity cap
 
   // Absorption
   absorptionRadius: 15, // Distance at which packages are absorbed (smaller = more stretch visible)
@@ -763,6 +763,11 @@ const COLLAPSE_CONFIG = {
   stretchStartDistance: 300, // Start stretching when this close
   maxStretch: 4.0, // Maximum stretch factor (4x longer)
   minWidth: 0.12, // Minimum width factor (12% of original)
+
+  // Wave rhythm parameters (pull → pause → stronger pull)
+  waveCount: 3, // Number of pull waves
+  wavePauseDuration: 0.15, // Fraction of wave that is "pause"
+  waveIntensities: [0.6, 0.85, 1.0], // Intensity multiplier for each wave
 }
 
 /**
@@ -812,6 +817,14 @@ export function getCollapseProgress(): number {
 }
 
 /**
+ * Get current wave intensity (0-1) for visual sync
+ */
+export function getCollapseWaveIntensity(): number {
+  if (!collapseState.value.active) return 0
+  return getWaveIntensity(collapseState.value.progress)
+}
+
+/**
  * Check if a package has been absorbed
  */
 export function isPackageAbsorbed(pkgId: string): boolean {
@@ -819,7 +832,54 @@ export function isPackageAbsorbed(pkgId: string): boolean {
 }
 
 /**
+ * Calculate the wave intensity multiplier based on progress
+ * Creates a rhythm of pull → pause → stronger pull
+ * Always maintains minimum pull to prevent stalling
+ */
+function getWaveIntensity(progress: number): number {
+  const { waveCount, wavePauseDuration, waveIntensities } = COLLAPSE_CONFIG
+
+  // Each wave takes up an equal portion of the total time
+  const waveLength = 1 / waveCount
+  const currentWaveIndex = Math.min(
+    waveCount - 1,
+    Math.floor(progress / waveLength)
+  )
+  const waveProgress = (progress % waveLength) / waveLength
+
+  // Get intensity for current wave
+  const baseIntensity = waveIntensities[currentWaveIndex] ?? 1
+
+  // Within each wave: ramp up → hold → pause
+  // 0-0.2: ramp up (from 0.4 to 1.0)
+  // 0.2-0.85: full intensity
+  // 0.85-1.0: pause (reduced but never zero)
+  const rampEnd = 0.2
+  const pauseStart = 1 - wavePauseDuration
+  const minIntensity = 0.4 // Always maintain some pull
+
+  let waveMultiplier: number
+  if (waveProgress < rampEnd) {
+    // Ramp up phase - start at minIntensity, ease to 1.0
+    const rampProgress = waveProgress / rampEnd
+    const eased = rampProgress * rampProgress // Quadratic ease-in
+    waveMultiplier = minIntensity + (1 - minIntensity) * eased
+  } else if (waveProgress < pauseStart) {
+    // Full intensity phase
+    waveMultiplier = 1
+  } else {
+    // Pause phase - ease down but maintain minimum
+    const pauseProgress = (waveProgress - pauseStart) / wavePauseDuration
+    const eased = (1 - pauseProgress) * (1 - pauseProgress)
+    waveMultiplier = minIntensity + (1 - minIntensity) * eased
+  }
+
+  return baseIntensity * waveMultiplier
+}
+
+/**
  * Update physics during collapse - gravitational pull toward black hole
+ * Uses wave-based rhythm for dramatic effect
  * Returns true when all packages have been absorbed
  */
 export function updateCollapsePhysics(deltaTime: number): boolean {
@@ -828,6 +888,9 @@ export function updateCollapsePhysics(deltaTime: number): boolean {
   // Update progress
   const elapsed = (Date.now() - collapseState.value.startTime) / 1000
   collapseState.value.progress = Math.min(1, elapsed / COLLAPSE_CONFIG.duration)
+
+  const progress = collapseState.value.progress
+  const waveIntensity = getWaveIntensity(progress)
 
   const targetX = collapseState.value.targetX
   const targetY = collapseState.value.targetY
@@ -859,13 +922,17 @@ export function updateCollapsePhysics(deltaTime: number): boolean {
     const nx = dx / distance
     const ny = dy / distance
 
-    // Acceleration increases as collapse progresses and as packages get closer
-    // This creates the "accelerating into the void" effect
-    const progressMult = 1 + collapseState.value.progress * 3 // 1x to 4x
+    // Base multipliers
+    const progressMult = 1 + progress * 2.5 // 1x to 3.5x over time
     const distanceMult =
       1 + COLLAPSE_CONFIG.stretchStartDistance / Math.max(50, distance)
+
+    // Apply wave intensity - creates the pull→pause→pull rhythm
     const acceleration =
-      COLLAPSE_CONFIG.baseAcceleration * progressMult * distanceMult
+      COLLAPSE_CONFIG.baseAcceleration *
+      progressMult *
+      distanceMult *
+      waveIntensity
 
     // Apply gravitational acceleration
     pkg.velocity.vx += nx * acceleration * deltaTime

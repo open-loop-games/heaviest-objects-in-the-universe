@@ -23,7 +23,8 @@ const parseFailures = new Set<string>()
 const ICON_TINT_COLOR = '#c8d8c8'
 
 function getDeviconPaths(iconKey: string): { original: string; plain: string } {
-  const base = `/node_modules/devicon/icons/${iconKey}/${iconKey}`
+  // Icons are copied to public/icons by scripts/copy-devicons.js
+  const base = `/icons/${iconKey}/${iconKey}`
   return {
     original: `${base}-original.svg`,
     plain: `${base}-plain.svg`,

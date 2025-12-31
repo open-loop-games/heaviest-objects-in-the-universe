@@ -9,7 +9,11 @@ import {
   endCollapse as endCollapseState,
   collapseState,
 } from '../game/state'
-import { updateCollapsePhysics, getCollapseProgress } from '../game/physics'
+import {
+  updateCollapsePhysics,
+  getCollapseProgress,
+  getCollapseWaveIntensity,
+} from '../game/physics'
 
 // Gravity stages based on weight progress toward prestige
 const GRAVITY_STAGES = {
@@ -74,7 +78,31 @@ export class BlackHoleRenderer {
   private isBursting = false
   private burstProgress = 0
   private burstStartTime = 0
-  private readonly BURST_DURATION = 0.8 // seconds
+  private readonly BURST_DURATION = 2.0 // seconds (extended for drama)
+
+  // Post-burst recovery phase
+  private isRecovering = false
+  private recoveryProgress = 0
+  private recoveryStartTime = 0
+  private readonly RECOVERY_DURATION = 1.0 // seconds
+
+  // Accretion disk particles
+  private accretionParticles: {
+    angle: number
+    radius: number
+    speed: number
+    size: number
+    alpha: number
+  }[] = []
+
+  // Absorption flash effects
+  private absorptionFlashes: {
+    x: number
+    y: number
+    progress: number
+    color: number
+  }[] = []
+  private lastAbsorbedCount = 0
 
   // Screen shake
   private shakeIntensity = 0
@@ -136,6 +164,17 @@ export class BlackHoleRenderer {
         offset: Math.random() * 100,
       })
     }
+
+    // Initialize accretion disk particles
+    for (let i = 0; i < 24; i++) {
+      this.accretionParticles.push({
+        angle: (Math.PI * 2 * i) / 24 + Math.random() * 0.3,
+        radius: 0.8 + Math.random() * 0.4, // Multiplier of hole size
+        speed: 2 + Math.random() * 2, // Radians per second
+        size: 2 + Math.random() * 3,
+        alpha: 0.4 + Math.random() * 0.4,
+      })
+    }
   }
 
   /**
@@ -163,13 +202,31 @@ export class BlackHoleRenderer {
 
     // Handle collapse animation
     if (this.isCollapsing) {
+      // Continue updating ambient particles - they get sucked into the black hole
+      this.updateCollapsingAmbientParticles(
+        deltaTime,
+        screenWidth,
+        screenHeight
+      )
+      this.drawAmbientParticles(screenWidth, screenHeight)
       this.updateCollapse(deltaTime, screenWidth, screenHeight)
       return
     }
 
     // Handle burst animation (after collapse)
     if (this.isBursting) {
-      this.updateBurst(screenWidth, screenHeight)
+      // During early burst, show remaining particles swirling at center
+      if (this.burstProgress < 0.15) {
+        this.updateBurstParticles(deltaTime, screenWidth, screenHeight)
+        this.drawAmbientParticles(screenWidth, screenHeight)
+      }
+      this.updateBurst(deltaTime, screenWidth, screenHeight)
+      return
+    }
+
+    // Handle recovery animation (after burst)
+    if (this.isRecovering) {
+      this.updateRecovery(deltaTime, screenWidth, screenHeight)
       return
     }
 
@@ -366,6 +423,7 @@ export class BlackHoleRenderer {
     // Update physics-based collapse (moves actual nodes)
     const collapseComplete = updateCollapsePhysics(deltaTime)
     const progress = getCollapseProgress()
+    const waveIntensity = getCollapseWaveIntensity()
     this.collapseProgress = progress
 
     // Get absorbed count from physics state
@@ -373,8 +431,10 @@ export class BlackHoleRenderer {
     const absorbedCount = collapseState.value.absorbedPackages.size
     const absorbedRatio = totalPackages > 0 ? absorbedCount / totalPackages : 0
 
-    // Screen shake - intensifies as more packages are absorbed
-    const shakeAmount = 2 + absorbedRatio * 8 + progress * 4
+    // Screen shake - syncs with wave intensity for rhythmic feel
+    const baseShake = 2 + absorbedRatio * 6 + progress * 3
+    const waveShake = waveIntensity * 4 // Extra shake during intense pull
+    const shakeAmount = baseShake + waveShake
     this.shakeOffset.x = (Math.random() - 0.5) * shakeAmount
     this.shakeOffset.y = (Math.random() - 0.5) * shakeAmount
 
@@ -383,15 +443,19 @@ export class BlackHoleRenderer {
     const targetX = 0
     const targetY = 0
 
-    // Spawn shockwave rings periodically during collapse
-    if (Math.random() < absorbedRatio * 0.1) {
-      this.shockwaveRings.push({
-        progress: 0,
-        startTime: this.collapseProgress,
+    // Draw wave pulse effect - visible ring that expands during high intensity
+    if (waveIntensity > 0.7) {
+      const pulseIntensity = (waveIntensity - 0.7) / 0.3
+      const pulseRadius = 80 + pulseIntensity * 60
+      this.collapseGraphics.circle(targetX, targetY, pulseRadius)
+      this.collapseGraphics.stroke({
+        color: 0xaa7aff,
+        width: 3 * pulseIntensity,
+        alpha: 0.4 * pulseIntensity,
       })
     }
 
-    // Update and draw shockwave rings
+    // Update and draw shockwave rings (spawned by absorption events below)
     for (let i = this.shockwaveRings.length - 1; i >= 0; i--) {
       const ring = this.shockwaveRings[i]!
       ring.progress += deltaTime * 1.5
@@ -401,13 +465,17 @@ export class BlackHoleRenderer {
         continue
       }
 
+      // Skip drawing if still in stagger delay (negative progress)
+      if (ring.progress < 0) continue
+
       const ringRadius = 20 + ring.progress * 200
       const ringAlpha = 0.6 * (1 - ring.progress)
       const ringWidth = 3 * (1 - ring.progress * 0.5)
 
+      // Use cohesive gold/purple colors
       this.collapseGraphics.circle(targetX, targetY, ringRadius)
       this.collapseGraphics.stroke({
-        color: 0xaa7aff,
+        color: 0xddaaff,
         width: ringWidth,
         alpha: ringAlpha,
       })
@@ -415,10 +483,79 @@ export class BlackHoleRenderer {
       const innerRingRadius = ringRadius * 0.7
       this.collapseGraphics.circle(targetX, targetY, innerRingRadius)
       this.collapseGraphics.stroke({
-        color: 0x7a5aff,
+        color: 0xaa7aff,
         width: ringWidth * 0.6,
         alpha: ringAlpha * 0.5,
       })
+    }
+
+    // Track new absorptions for flash effects and shockwave rings
+    const currentAbsorbed = collapseState.value.absorbedPackages.size
+    if (currentAbsorbed > this.lastAbsorbedCount) {
+      // Spawn absorption flashes for newly absorbed packages
+      const newAbsorptions = currentAbsorbed - this.lastAbsorbedCount
+      for (let i = 0; i < newAbsorptions; i++) {
+        // Spawn flash at random angle around the absorption radius
+        const angle = Math.random() * Math.PI * 2
+        const dist = 15 + Math.random() * 10
+        this.absorptionFlashes.push({
+          x: targetX + Math.cos(angle) * dist,
+          y: targetY + Math.sin(angle) * dist,
+          progress: 0,
+          color: Math.random() > 0.5 ? 0xaa7aff : 0xddaaff, // Cohesive purple/violet
+        })
+      }
+
+      // Spawn shockwave ring for each absorption - creates rhythmic visual feedback
+      // Stagger slightly to avoid all rings spawning at once
+      for (let i = 0; i < Math.min(newAbsorptions, 3); i++) {
+        this.shockwaveRings.push({
+          progress: -i * 0.1, // Stagger start times
+          startTime: this.collapseProgress,
+        })
+      }
+
+      this.lastAbsorbedCount = currentAbsorbed
+    }
+
+    // Update and draw absorption flashes
+    for (let i = this.absorptionFlashes.length - 1; i >= 0; i--) {
+      const flash = this.absorptionFlashes[i]!
+      flash.progress += deltaTime * 3
+
+      if (flash.progress >= 1) {
+        this.absorptionFlashes.splice(i, 1)
+        continue
+      }
+
+      // Expanding flash ring
+      const flashRadius = 5 + flash.progress * 40
+      const flashAlpha = 0.9 * (1 - flash.progress)
+      this.collapseGraphics.circle(flash.x, flash.y, flashRadius)
+      this.collapseGraphics.stroke({
+        color: flash.color,
+        width: 3 * (1 - flash.progress),
+        alpha: flashAlpha,
+      })
+
+      // Inner bright core
+      const coreRadius = 3 * (1 - flash.progress)
+      this.collapseGraphics.circle(flash.x, flash.y, coreRadius)
+      this.collapseGraphics.fill({ color: 0xffffff, alpha: flashAlpha })
+
+      // Sparks shooting outward
+      const numSparks = 4
+      for (let s = 0; s < numSparks; s++) {
+        const sparkAngle = (Math.PI * 2 * s) / numSparks + flash.progress * 2
+        const sparkDist = flashRadius * (0.5 + flash.progress * 0.5)
+        const sparkX = flash.x + Math.cos(sparkAngle) * sparkDist
+        const sparkY = flash.y + Math.sin(sparkAngle) * sparkDist
+        this.collapseGraphics.circle(sparkX, sparkY, 2 * (1 - flash.progress))
+        this.collapseGraphics.fill({
+          color: flash.color,
+          alpha: flashAlpha * 0.8,
+        })
+      }
     }
 
     // Small but growing black hole at center
@@ -439,12 +576,41 @@ export class BlackHoleRenderer {
     this.collapseGraphics.circle(targetX, targetY, holeSize)
     this.collapseGraphics.fill({ color: 0x000000, alpha: 0.98 })
 
-    // Bright accretion disk ring
-    this.collapseGraphics.circle(targetX, targetY, holeSize * 1.15)
+    // Animated accretion disk - spinning particles
+    const diskBaseRadius = holeSize * 1.3
+    // Spins faster during wave pulses and as more absorbed
+    const diskSpeedMult = (1 + absorbedRatio * 2) * (0.7 + waveIntensity * 0.8)
+    for (const particle of this.accretionParticles) {
+      // Update angle
+      particle.angle += deltaTime * particle.speed * diskSpeedMult
+
+      const particleRadius = diskBaseRadius * particle.radius
+
+      // Draw particle with trail
+      const trailLength = 8
+      for (let t = 0; t < trailLength; t++) {
+        const trailAngle = particle.angle - (t * 0.15) / particle.radius
+        const trailRadius = particleRadius * (1 + t * 0.02)
+        const tx = targetX + Math.cos(trailAngle) * trailRadius
+        const ty = targetY + Math.sin(trailAngle) * trailRadius
+        const trailAlpha =
+          particle.alpha * (1 - t / trailLength) * (0.6 + absorbedRatio * 0.4)
+        const trailSize = particle.size * (1 - (t / trailLength) * 0.5)
+
+        this.collapseGraphics.circle(tx, ty, trailSize)
+        this.collapseGraphics.fill({
+          color: t % 2 === 0 ? 0xaa7aff : 0xff7aff,
+          alpha: trailAlpha,
+        })
+      }
+    }
+
+    // Bright accretion disk ring (outer edge)
+    this.collapseGraphics.circle(targetX, targetY, diskBaseRadius * 1.2)
     this.collapseGraphics.stroke({
       color: 0xaa7aff,
-      width: 2 + absorbedRatio * 2,
-      alpha: 0.8 + absorbedRatio * 0.2,
+      width: 1.5 + absorbedRatio,
+      alpha: 0.4 + absorbedRatio * 0.3,
     })
 
     // Inner event horizon glow
@@ -458,125 +624,295 @@ export class BlackHoleRenderer {
     // Draw intensifying vignette during collapse
     this.drawCollapseVignette(screenWidth, screenHeight, absorbedRatio)
 
-    // Flash at the end
-    if (progress > 0.85) {
-      const flashProgress = (progress - 0.85) / 0.15
-      const flashAlpha = Math.sin(flashProgress * Math.PI)
+    // As collapse nears completion, the core brightens (transitioning to burst)
+    // This creates visual continuity - the dark core becomes bright before exploding
+    if (progress > 0.7) {
+      const brightenProgress = (progress - 0.7) / 0.3
+      const brightenAlpha = brightenProgress * 0.6
 
-      this.collapseGraphics.rect(
-        -screenWidth,
-        -screenHeight,
-        screenWidth * 2,
-        screenHeight * 2
+      // Bright glow building inside the core
+      this.collapseGraphics.circle(targetX, targetY, holeSize * 0.8)
+      this.collapseGraphics.fill({
+        color: 0xffffff,
+        alpha: brightenAlpha,
+      })
+
+      // Expanding bright edge
+      this.collapseGraphics.circle(
+        targetX,
+        targetY,
+        holeSize * (1 + brightenProgress * 0.3)
       )
-      this.collapseGraphics.fill({ color: 0xffffff, alpha: flashAlpha * 0.8 })
+      this.collapseGraphics.stroke({
+        color: 0xffffcc,
+        width: 2 + brightenProgress * 3,
+        alpha: brightenAlpha * 0.8,
+      })
     }
 
     // When collapse is done, transition to burst phase
+    // Note: Don't call endCollapseState() yet - keep packages absorbed until recovery ends
     if (collapseComplete && !this.isBursting) {
       this.isCollapsing = false
       this.isBursting = true
       this.burstProgress = 0
       this.burstStartTime = Date.now()
-      endCollapseState()
     }
   }
 
   /**
    * Update and draw the burst effect after collapse
-   * Returns true when burst is complete
+   * One continuous transformation - elements layer and blend, no hard phase cuts
    */
-  private updateBurst(screenWidth: number, screenHeight: number): void {
+  private updateBurst(
+    _deltaTime: number,
+    screenWidth: number,
+    screenHeight: number
+  ): void {
     const elapsed = (Date.now() - this.burstStartTime) / 1000
     this.burstProgress = Math.min(1, elapsed / this.BURST_DURATION)
+    const t = this.burstProgress // shorthand
 
-    // Eased progress for smoother animation
-    const eased = 1 - Math.pow(1 - this.burstProgress, 3) // ease-out cubic
-
-    // Screen shake during burst (decreasing)
-    const shakeAmount = 8 * (1 - this.burstProgress)
-    this.shakeOffset.x = (Math.random() - 0.5) * shakeAmount
-    this.shakeOffset.y = (Math.random() - 0.5) * shakeAmount
-
-    // Draw at screen center (core container is positioned there)
     const centerX = 0
     const centerY = 0
 
-    // Central flash - bright at start, fades
-    const flashAlpha = 0.9 * (1 - eased)
-    const flashSize = 20 + eased * 100
-    this.collapseGraphics.circle(centerX, centerY, flashSize)
-    this.collapseGraphics.fill({ color: 0xffffff, alpha: flashAlpha })
+    // Calculate direction toward prestige panel
+    const prestigeDirX = this.prestigeTargetX - screenWidth / 2
+    const prestigeDirY = this.prestigeTargetY - screenHeight / 2
+    const prestigeDist = Math.sqrt(
+      prestigeDirX * prestigeDirX + prestigeDirY * prestigeDirY
+    )
+    const prestigeAngle = Math.atan2(prestigeDirY, prestigeDirX)
+    const normalizedDirX = prestigeDist > 0 ? prestigeDirX / prestigeDist : 0
+    const normalizedDirY = prestigeDist > 0 ? prestigeDirY / prestigeDist : 1
 
-    // Expanding energy rings
-    for (let i = 0; i < 4; i++) {
-      const ringDelay = i * 0.1
-      const ringProgress = Math.max(
-        0,
-        (this.burstProgress - ringDelay) / (1 - ringDelay)
-      )
-      if (ringProgress <= 0) continue
+    // Screen shake - peaks early, fades smoothly
+    const shakeAmount = 10 * Math.pow(1 - t, 2)
+    this.shakeOffset.x = (Math.random() - 0.5) * shakeAmount
+    this.shakeOffset.y = (Math.random() - 0.5) * shakeAmount
 
-      const ringEased = 1 - Math.pow(1 - ringProgress, 2)
-      const ringRadius = 30 + ringEased * 400
-      const ringAlpha = 0.7 * (1 - ringProgress)
-      const ringWidth = 4 * (1 - ringProgress * 0.5)
+    // === PERSISTENT CORE ===
+    // The core persists throughout, transforming from compressed singularity to expanding glow
+    const coreExpansion = Math.pow(t, 0.5) // Fast initial expansion, slows down
+    const coreSize = 15 + coreExpansion * 80
+    const coreAlpha = Math.pow(1 - t, 1.5) // Fades as it expands
 
-      // Purple energy ring
-      this.collapseGraphics.circle(centerX, centerY, ringRadius)
+    // Core glow layers (always present, expanding and fading)
+    for (let i = 3; i >= 0; i--) {
+      const layerSize = coreSize * (1 + i * 0.4)
+      const layerAlpha = coreAlpha * (0.6 - i * 0.12)
+      if (layerAlpha > 0) {
+        this.collapseGraphics.circle(centerX, centerY, layerSize)
+        this.collapseGraphics.fill({
+          color: i === 0 ? 0xffffff : i === 1 ? 0xffffcc : 0xddaaff,
+          alpha: layerAlpha,
+        })
+      }
+    }
+
+    // Core bright edge (event horizon expanding)
+    if (coreAlpha > 0.1) {
+      this.collapseGraphics.circle(centerX, centerY, coreSize * 1.1)
       this.collapseGraphics.stroke({
-        color: 0xaa7aff,
+        color: 0xffffff,
+        width: 3 * coreAlpha,
+        alpha: coreAlpha * 0.9,
+      })
+    }
+
+    // === EXPANDING RINGS ===
+    // Continuous stream of rings, each one spawned at a different time
+    const numRings = 8
+    for (let i = 0; i < numRings; i++) {
+      const ringSpawnTime = i * 0.1 // Each ring starts 0.1 later
+      const ringAge = t - ringSpawnTime
+      if (ringAge < 0 || ringAge > 0.8) continue // Ring lifespan
+
+      const ringProgress = ringAge / 0.8
+      const ringEased = 1 - Math.pow(1 - ringProgress, 2)
+
+      // Ring expands outward
+      const ringRadius = 30 + ringEased * 400
+
+      // Offset toward prestige (rings drift toward cache)
+      const driftAmount = ringEased * 40
+      const ringX = centerX + normalizedDirX * driftAmount
+      const ringY = centerY + normalizedDirY * driftAmount
+
+      const ringAlpha = (1 - ringProgress) * 0.6
+      const ringWidth = 4 * (1 - ringProgress * 0.7)
+
+      // Color shifts from bright to purple as ring ages
+      const colorProgress = ringProgress
+      const ringColor =
+        colorProgress < 0.3
+          ? 0xffffff
+          : colorProgress < 0.5
+            ? 0xffffcc
+            : colorProgress < 0.7
+              ? 0xddaaff
+              : 0xaa7aff
+
+      this.collapseGraphics.circle(ringX, ringY, ringRadius)
+      this.collapseGraphics.stroke({
+        color: ringColor,
         width: ringWidth,
         alpha: ringAlpha,
       })
-
-      // Inner cyan ring
-      this.collapseGraphics.circle(centerX, centerY, ringRadius * 0.8)
-      this.collapseGraphics.stroke({
-        color: 0x5affff,
-        width: ringWidth * 0.6,
-        alpha: ringAlpha * 0.6,
-      })
     }
 
-    // Particle burst - rays shooting outward
-    const numRays = 16
-    for (let i = 0; i < numRays; i++) {
-      const angle = (Math.PI * 2 * i) / numRays + this.burstProgress * 0.3
-      const rayLength = 50 + eased * 350
-      const rayAlpha = 0.6 * (1 - this.burstProgress)
+    // === PARTICLE RAYS ===
+    // Rays emerge from core and extend outward, biased toward prestige
+    // They start appearing at t=0.15 and persist until end
+    if (t > 0.1) {
+      const rayStartTime = 0.1
+      const rayProgress = (t - rayStartTime) / (1 - rayStartTime)
 
-      const innerRadius = 10 + eased * 30
-      const outerRadius = innerRadius + rayLength * (0.3 + Math.random() * 0.7)
+      const numRays = 16
+      for (let i = 0; i < numRays; i++) {
+        const raySpawnDelay = (i % 4) * 0.08
+        const rayAge = rayProgress - raySpawnDelay
+        if (rayAge < 0) continue
 
-      const x1 = centerX + Math.cos(angle) * innerRadius
-      const y1 = centerY + Math.sin(angle) * innerRadius
-      const x2 = centerX + Math.cos(angle) * outerRadius
-      const y2 = centerY + Math.sin(angle) * outerRadius
+        const rayT = Math.min(1, rayAge / 0.7) // Each ray's individual progress
+        const angle = (Math.PI * 2 * i) / numRays
 
-      this.collapseGraphics.moveTo(x1, y1)
-      this.collapseGraphics.lineTo(x2, y2)
-      this.collapseGraphics.stroke({
-        color: i % 2 === 0 ? 0x7aff7a : 0xffff7a, // Alternating green/yellow
-        width: 3 * (1 - this.burstProgress * 0.5),
-        alpha: rayAlpha,
-      })
+        // Prestige alignment affects ray length and brightness
+        const angleDiff = Math.abs(angle - prestigeAngle)
+        const normalizedDiff =
+          Math.min(angleDiff, Math.PI * 2 - angleDiff) / Math.PI
+        const prestigeAlignment = 1 - normalizedDiff
+
+        // Ray extends outward over time
+        const innerRadius = coreSize * 0.8
+        const maxLength = 200 + prestigeAlignment * 200
+        const rayLength = rayT * maxLength
+        const outerRadius = innerRadius + rayLength
+
+        const rayAlpha = (1 - rayT) * (0.4 + prestigeAlignment * 0.4)
+        if (rayAlpha < 0.05) continue
+
+        const x1 = centerX + Math.cos(angle) * innerRadius
+        const y1 = centerY + Math.sin(angle) * innerRadius
+        const x2 = centerX + Math.cos(angle) * outerRadius
+        const y2 = centerY + Math.sin(angle) * outerRadius
+
+        // Ray color - brighter toward prestige
+        const rayColor = prestigeAlignment > 0.6 ? 0xffffcc : 0xddaaff
+
+        this.collapseGraphics.moveTo(x1, y1)
+        this.collapseGraphics.lineTo(x2, y2)
+        this.collapseGraphics.stroke({
+          color: rayColor,
+          width: (2 + prestigeAlignment * 2) * (1 - rayT * 0.5),
+          alpha: rayAlpha,
+        })
+
+        // Particle at ray tip
+        if (rayT < 0.9) {
+          const tipSize = (3 + prestigeAlignment * 2) * (1 - rayT)
+          this.collapseGraphics.circle(x2, y2, tipSize)
+          this.collapseGraphics.fill({ color: 0xffffff, alpha: rayAlpha * 1.2 })
+        }
+      }
     }
 
-    // Fading vignette (inverse of collapse - lightening from edges)
-    const vignetteAlpha = 0.3 * (1 - eased)
-    this.collapseGraphics.rect(
-      -screenWidth / 2,
-      -screenHeight / 2,
-      screenWidth,
-      screenHeight
-    )
-    this.collapseGraphics.fill({ color: 0x000000, alpha: vignetteAlpha })
+    // === VIGNETTE ===
+    // Starts dark, fades out as burst progresses
+    const vignetteAlpha = 0.3 * Math.pow(1 - t, 2)
+    if (vignetteAlpha > 0.02) {
+      this.collapseGraphics.rect(
+        -screenWidth / 2,
+        -screenHeight / 2,
+        screenWidth,
+        screenHeight
+      )
+      this.collapseGraphics.fill({ color: 0x0a0510, alpha: vignetteAlpha })
+    }
 
-    // Complete burst
+    // Complete burst - transition to recovery
     if (this.burstProgress >= 1) {
       this.isBursting = false
+      this.isRecovering = true
+      this.recoveryProgress = 0
+      this.recoveryStartTime = Date.now()
       this.shockwaveRings = []
+      this.absorptionFlashes = []
+      this.lastAbsorbedCount = 0
+    }
+  }
+
+  /**
+   * Update recovery phase - continuation of burst, everything fades smoothly to nothing
+   * The burst's core and rings continue but diminish, leaving clean slate
+   */
+  private updateRecovery(
+    _deltaTime: number,
+    screenWidth: number,
+    screenHeight: number
+  ): void {
+    const elapsed = (Date.now() - this.recoveryStartTime) / 1000
+    this.recoveryProgress = Math.min(1, elapsed / this.RECOVERY_DURATION)
+
+    const t = this.recoveryProgress
+    const fadeOut = Math.pow(1 - t, 2) // Smooth fade to zero
+    const centerX = screenWidth / 2
+    const centerY = screenHeight / 2
+
+    // Shake continues fading from burst
+    const shakeAmount = 2 * fadeOut
+    this.shakeOffset.x = (Math.random() - 0.5) * shakeAmount
+    this.shakeOffset.y = (Math.random() - 0.5) * shakeAmount
+
+    // Continue the burst's core - but now it's fading and shrinking
+    // This is the same visual as burst end, just continuing to diminish
+    const coreSize = 30 * fadeOut // Shrinking
+    const coreAlpha = 0.3 * fadeOut
+
+    if (coreAlpha > 0.02) {
+      // Residual glow at center
+      this.ambientGraphics.circle(centerX, centerY, coreSize * 2)
+      this.ambientGraphics.fill({ color: 0xddaaff, alpha: coreAlpha * 0.3 })
+
+      this.ambientGraphics.circle(centerX, centerY, coreSize)
+      this.ambientGraphics.fill({ color: 0xffffcc, alpha: coreAlpha * 0.5 })
+
+      // Fading bright edge
+      this.ambientGraphics.circle(centerX, centerY, coreSize * 1.2)
+      this.ambientGraphics.stroke({
+        color: 0xffffff,
+        width: 2 * fadeOut,
+        alpha: coreAlpha * 0.6,
+      })
+    }
+
+    // Continue the burst's rings - a few more rippling out and fading
+    for (let i = 0; i < 2; i++) {
+      const ringAge = t + i * 0.3 // Staggered, continuing from burst
+      if (ringAge > 1) continue
+
+      const ringRadius = 100 + ringAge * 200
+      const ringAlpha = 0.2 * (1 - ringAge) * fadeOut
+
+      if (ringAlpha > 0.02) {
+        this.ambientGraphics.circle(centerX, centerY, ringRadius)
+        this.ambientGraphics.stroke({
+          color: 0xaa7aff,
+          width: 2 * (1 - ringAge),
+          alpha: ringAlpha,
+        })
+      }
+    }
+
+    // Complete recovery
+    if (this.recoveryProgress >= 1) {
+      this.isRecovering = false
+      this.shakeOffset.x = 0
+      this.shakeOffset.y = 0
+
+      // Now it's safe to end collapse state - absorbed packages will be cleared by performPrestige
+      endCollapseState()
+
       if (this.onCollapseComplete) {
         this.onCollapseComplete()
         this.onCollapseComplete = null
@@ -659,10 +995,10 @@ export class BlackHoleRenderer {
   }
 
   /**
-   * Check if collapse animation is playing
+   * Check if collapse animation is playing (including burst and recovery)
    */
   isCollapseAnimating(): boolean {
-    return this.isCollapsing
+    return this.isCollapsing || this.isBursting || this.isRecovering
   }
 
   /**
@@ -768,6 +1104,96 @@ export class BlackHoleRenderer {
     }
 
     // Removed corner guide lines - vignette alone provides enough visual cue
+  }
+
+  /**
+   * Update particles during burst phase 1 - swirl tightly around singularity
+   * Creates visual bridge between collapse (sucked in) and burst (explode out)
+   */
+  private updateBurstParticles(
+    deltaTime: number,
+    screenWidth: number,
+    screenHeight: number
+  ): void {
+    const centerX = screenWidth / 2
+    const centerY = screenHeight / 2
+
+    // Remaining particles swirl tightly around center
+    for (let i = this.ambientParticles.length - 1; i >= 0; i--) {
+      const particle = this.ambientParticles[i]!
+
+      // Calculate current distance and angle from center
+      const dx = particle.x - centerX
+      const dy = particle.y - centerY
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const angle = Math.atan2(dy, dx)
+
+      // Spiral inward while rotating faster
+      const newAngle = angle + deltaTime * 8 // Fast rotation
+      const newDist = Math.max(5, dist - deltaTime * 50) // Spiral in
+
+      particle.x = centerX + Math.cos(newAngle) * newDist
+      particle.y = centerY + Math.sin(newAngle) * newDist
+
+      // Particles get brighter as they compress
+      particle.color = 0xffffff
+      particle.size = Math.min(6, particle.size + deltaTime * 2)
+
+      // Remove when too close to center
+      if (newDist <= 5) {
+        this.ambientParticles.splice(i, 1)
+      }
+    }
+  }
+
+  /**
+   * Update ambient particles during collapse - redirect them toward black hole
+   * Creates visual continuity as particles get "sucked in"
+   */
+  private updateCollapsingAmbientParticles(
+    deltaTime: number,
+    screenWidth: number,
+    screenHeight: number
+  ): void {
+    const blackHoleX = screenWidth / 2
+    const blackHoleY = screenHeight / 2
+
+    // Update existing particles - redirect toward black hole with acceleration
+    for (let i = this.ambientParticles.length - 1; i >= 0; i--) {
+      const particle = this.ambientParticles[i]!
+
+      // Redirect target to black hole center
+      particle.targetX = blackHoleX
+      particle.targetY = blackHoleY
+
+      // Accelerate particles during collapse
+      particle.progress += deltaTime * (particle.speed * 2.5)
+
+      if (particle.progress >= 1) {
+        // Particle reached black hole - remove with flash effect
+        this.ambientParticles.splice(i, 1)
+      } else {
+        // Update position with stronger curve toward center
+        const t = particle.progress
+        const eased = t * t * t // Stronger acceleration
+
+        const dx = particle.targetX - particle.sourceX
+        const dy = particle.targetY - particle.sourceY
+
+        // Tighter spiral toward center
+        const spiralAmount = (1 - t) * 0.3
+        const perpX = -dy * spiralAmount * Math.sin(t * Math.PI * 3)
+        const perpY = dx * spiralAmount * Math.sin(t * Math.PI * 3)
+
+        particle.x = particle.sourceX + dx * eased + perpX
+        particle.y = particle.sourceY + dy * eased + perpY
+
+        // Shift color toward brighter as it approaches center
+        if (t > 0.7) {
+          particle.color = 0xffffcc // Brighten near center
+        }
+      }
+    }
   }
 
   /**
@@ -903,7 +1329,11 @@ export class BlackHoleRenderer {
     this.vignetteGraphics.clear()
     this.ambientGraphics.clear()
     this.isCollapsing = false
+    this.isBursting = false
+    this.isRecovering = false
     this.ambientParticles = []
     this.shockwaveRings = []
+    this.absorptionFlashes = []
+    this.lastAbsorbedCount = 0
   }
 }

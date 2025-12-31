@@ -266,6 +266,11 @@ export class GameRenderer {
     // Update black hole effects
     this.blackHoleRenderer.update(deltaTime, screenWidth, screenHeight)
 
+    // Hide wires, ghost lines, and hoisted deps during collapse animation
+    const collapseAnimating = this.blackHoleRenderer.isCollapseAnimating()
+    this.wireRenderer.getContainer().visible = !collapseAnimating
+    this.ghostLinesGraphics.visible = !collapseAnimating
+
     // Get shake offset from black hole
     const shake = this.blackHoleRenderer.getShakeOffset()
 
@@ -511,10 +516,11 @@ export class GameRenderer {
     // ============================================
     // RENDER HOISTED DEPS (at root scope only)
     // ============================================
-    // Toggle visibility based on scope
-    this.nodeRenderer.setHoistedDepsVisible(!inScope)
+    // Toggle visibility based on scope and collapse state
+    this.nodeRenderer.setHoistedDepsVisible(!inScope && !collapseAnimating)
 
-    if (!inScope) {
+    // Skip hoisted deps updates entirely during collapse animation
+    if (!inScope && !collapseAnimating) {
       // Update hoisted dep positions (they orbit root)
       updateHoistedPositions()
 
