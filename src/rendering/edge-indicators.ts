@@ -36,7 +36,7 @@ interface IndicatorState {
 
 // Constants for organic movement
 const DRIFT_RADIUS = 4 // Max pixels to drift from origin
-const DRIFT_LERP = 0.008 // How fast to move toward destination
+const DRIFT_LERP = 0.012 // How fast to move toward destination (50% faster)
 const ACTIVITY_DECAY = 0.97 // Exponential decay per frame
 const ACTIVITY_MIN = 0.15 // Resting activity level
 const FLOW_SPEED = 0.012 // How fast the dot travels
@@ -182,17 +182,36 @@ export class EdgeIndicatorRenderer {
       state.targetDestY = targetY + Math.sin(angle) * DRIFT_RADIUS
     }
 
+    // Calculate distance from actual positions - use faster lerp when far off
+    const edgeDistFromActual = Math.hypot(
+      state.edgeDrawX - edgeX,
+      state.edgeDrawY - edgeY
+    )
+    const targetDistFromActual = Math.hypot(
+      state.targetDrawX - targetX,
+      state.targetDrawY - targetY
+    )
+
+    // Adaptive lerp: base speed + catchup factor based on distance
+    const edgeCatchup = Math.min(1, edgeDistFromActual / 100)
+    const targetCatchup = Math.min(1, targetDistFromActual / 100)
+    const edgeLerp = DRIFT_LERP + edgeCatchup * 0.15
+    const targetLerp = DRIFT_LERP + targetCatchup * 0.15
+
     // Lerp toward drift destinations
-    state.edgeDrawX += (state.edgeDestX - state.edgeDrawX) * DRIFT_LERP
-    state.edgeDrawY += (state.edgeDestY - state.edgeDrawY) * DRIFT_LERP
-    state.targetDrawX += (state.targetDestX - state.targetDrawX) * DRIFT_LERP
-    state.targetDrawY += (state.targetDestY - state.targetDrawY) * DRIFT_LERP
+    state.edgeDrawX += (state.edgeDestX - state.edgeDrawX) * edgeLerp
+    state.edgeDrawY += (state.edgeDestY - state.edgeDrawY) * edgeLerp
+    state.targetDrawX += (state.targetDestX - state.targetDrawX) * targetLerp
+    state.targetDrawY += (state.targetDestY - state.targetDrawY) * targetLerp
 
     // Also lerp destinations toward actual positions (so drift follows target)
-    state.edgeDestX += (edgeX - state.edgeDestX) * 0.02
-    state.edgeDestY += (edgeY - state.edgeDestY) * 0.02
-    state.targetDestX += (targetX - state.targetDestX) * 0.02
-    state.targetDestY += (targetY - state.targetDestY) * 0.02
+    // Use same adaptive speed so destinations track quickly when needed
+    state.edgeDestX += (edgeX - state.edgeDestX) * (0.03 + edgeCatchup * 0.2)
+    state.edgeDestY += (edgeY - state.edgeDestY) * (0.03 + edgeCatchup * 0.2)
+    state.targetDestX +=
+      (targetX - state.targetDestX) * (0.03 + targetCatchup * 0.2)
+    state.targetDestY +=
+      (targetY - state.targetDestY) * (0.03 + targetCatchup * 0.2)
 
     // Decay activity toward minimum
     state.activity = Math.max(ACTIVITY_MIN, state.activity * ACTIVITY_DECAY)
@@ -308,11 +327,28 @@ export class EdgeIndicatorRenderer {
         reducedMotion
       )
 
-      // Use organic positions
-      const drawEdgeX = state.edgeDrawX
-      const drawEdgeY = state.edgeDrawY
+      // Use organic positions, but clamp edge to screen boundary
+      // Determine which edge we're anchored to and only allow drift along it
+      let drawEdgeX = state.edgeDrawX
+      let drawEdgeY = state.edgeDrawY
       const drawTargetX = state.targetDrawX
       const drawTargetY = state.targetDrawY
+
+      // Clamp to edge - keep tail connected to screen boundary
+      if (edgeX <= 1) {
+        // Left edge - lock X, allow Y drift
+        drawEdgeX = 0
+      } else if (edgeX >= screenWidth - 1) {
+        // Right edge - lock X, allow Y drift
+        drawEdgeX = screenWidth
+      }
+      if (edgeY <= 1) {
+        // Top edge - lock Y, allow X drift
+        drawEdgeY = 0
+      } else if (edgeY >= screenHeight - 1) {
+        // Bottom edge - lock Y, allow X drift
+        drawEdgeY = screenHeight
+      }
 
       // Calculate alpha and line width based on activity (logarithmic feel)
       const activity = state.activity

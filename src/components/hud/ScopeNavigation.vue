@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { gameState } from '../../game/state'
 import { getScopeDepth } from '../../game/scope'
 import { exitPackageScope, getInternalStats } from '../../game/packages'
 import { setCameraTarget } from '../../game/loop'
+import { setBackButtonPos } from '../../onboarding/tutorial-state'
+
+// Template ref for the back button
+const backBtnRef = ref<HTMLElement | null>(null)
 
 // ============================================
 // SCOPE STATE
@@ -81,15 +85,33 @@ function handleBackClick() {
   setCameraTarget(targetX, targetY)
 }
 
+// Report back button position for tutorial indicators
+function updateBackButtonPos() {
+  if (backBtnRef.value) {
+    const rect = backBtnRef.value.getBoundingClientRect()
+    setBackButtonPos({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    })
+  }
+}
+
+onMounted(() => {
+  // Initial position report (after layout settles)
+  setTimeout(updateBackButtonPos, 50)
+})
+
 // Cleanup on unmount
 onUnmounted(() => {
   if (depthChangeTimeout) clearTimeout(depthChangeTimeout)
+  setBackButtonPos(null)
 })
 </script>
 
 <template>
   <div class="hud-top-left">
     <button
+      ref="backBtnRef"
       class="back-btn"
       :class="{
         stable: isScopeStable,

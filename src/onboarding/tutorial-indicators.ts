@@ -483,10 +483,11 @@ export function getScopeExitIndicators(bounds: ScreenBounds): {
     return { indicators, vignettes }
   }
 
-  const backButtonX = 100
-  const backButtonY = 195
-  const startX = bounds.width / 2
-  const startY = bounds.height / 2
+  // Get dynamic back button position from ScopeNavigation component
+  const backBtnPos = tutorialState.getBackButtonPos()
+  if (!backBtnPos) {
+    return { indicators, vignettes }
+  }
 
   indicators.push({
     worldX: 0,
@@ -496,10 +497,10 @@ export function getScopeExitIndicators(bounds: ScreenBounds): {
     pulseRate: 1.5,
     persistent: true,
     id: 'exit-teaching',
-    screenX: startX,
-    screenY: startY,
-    pointTowardX: backButtonX,
-    pointTowardY: backButtonY,
+    screenX: 0, // left edge
+    screenY: bounds.height / 2, // middle of screen vertically
+    pointTowardX: backBtnPos.x,
+    pointTowardY: backBtnPos.y,
     targetRadius: 30,
   })
 
@@ -542,6 +543,12 @@ export function getFirstSpawnedIndicators(
 
     const firstSpawnedId = tutorialState.getFirstSpawnedPackageId()
     if (firstSpawnedId && !gameState.onboarding.firstConflictSeen) {
+      // Wait for physics to settle before showing indicator
+      const elapsed = now - tutorialState.getFirstSpawnedTime()
+      if (elapsed < 500) {
+        return { indicators, vignettes }
+      }
+
       const pkg = gameState.packages.get(firstSpawnedId)
       if (pkg) {
         const screenPos = worldToScreen(pkg.position.x, pkg.position.y)

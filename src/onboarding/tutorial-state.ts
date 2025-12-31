@@ -25,6 +25,9 @@ let conflictTeachingTargetWireId: string | null = null
 let selectedConflictWireId: string | null = null
 let selectedConflictActionPos: { x: number; y: number } | null = null
 
+// Back button position (reported by ScopeNavigation component)
+let backButtonPos: { x: number; y: number } | null = null
+
 // First click tutorial timing
 let gameStartTime = Date.now()
 
@@ -112,6 +115,10 @@ export function getFirstSpawnedTime(): number {
   return firstSpawnedTime
 }
 
+export function getBackButtonPos(): { x: number; y: number } | null {
+  return backButtonPos
+}
+
 // ============================================
 // SETTERS
 // ============================================
@@ -182,6 +189,10 @@ export function setFirstSpawnedPackageId(value: string | null): void {
 
 export function setFirstSpawnedTime(value: number): void {
   firstSpawnedTime = value
+}
+
+export function setBackButtonPos(value: { x: number; y: number } | null): void {
+  backButtonPos = value
 }
 
 // ============================================
