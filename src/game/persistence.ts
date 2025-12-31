@@ -54,6 +54,33 @@ function deserializePackageFromSave(data: Record<string, unknown>): Package {
   return pkg
 }
 
+/**
+ * Migrate game state to ensure all required fields exist
+ * Called after loading a save to handle backwards compatibility
+ */
+function migrateGameState(): void {
+  // Ensure surge upgrade level exists
+  if (gameState.upgrades.surgeLevel === undefined) {
+    gameState.upgrades.surgeLevel = 0
+  }
+
+  // Ensure surge state exists
+  if (!gameState.surge) {
+    ;(gameState as Record<string, unknown>).surge = {
+      chargedSegments: 0,
+      unlockedSegments: 1 + gameState.upgrades.surgeLevel,
+    }
+  }
+
+  // Ensure surge state has all fields
+  if (gameState.surge.chargedSegments === undefined) {
+    gameState.surge.chargedSegments = 0
+  }
+  if (gameState.surge.unlockedSegments === undefined) {
+    gameState.surge.unlockedSegments = 1 + gameState.upgrades.surgeLevel
+  }
+}
+
 export function saveGame(): string {
   const saveData = {
     version: SAVE_VERSION,
@@ -97,6 +124,9 @@ export function loadGame(saveString: string): boolean {
     delete data.version
 
     Object.assign(gameState, data)
+
+    // Migrate missing fields for backwards compatibility
+    migrateGameState()
 
     // Sync derived values after loading
     syncEcosystemTier()
