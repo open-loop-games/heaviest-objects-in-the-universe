@@ -5,6 +5,7 @@ import {
   previewedActionType,
   cascadeStarved,
 } from '../../game/state'
+import { isViewingCascadeScope } from '../../game/cascade'
 import {
   getUpgradeLevel,
   canPurchaseUpgrade,
@@ -134,6 +135,13 @@ const isPreviewingEfficiency = computed(
   () => previewedUpgradeId.value === 'efficiency'
 )
 const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
+
+// Only show starved state when viewing the scope that's actually cascading
+// Used in template :class bindings
+const showStarved = computed(
+  () => cascadeStarved.value && isViewingCascadeScope()
+)
+void showStarved.value // Suppress TS6133 - used in template
 </script>
 
 <template>
@@ -143,7 +151,7 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
       'warning-low': warning === 'low',
       'warning-critical': warning === 'critical',
       'preview-active': isPreviewingAny,
-      'cascade-starved': cascadeStarved,
+      'cascade-starved': showStarved,
     }"
   >
     <!-- Bandwidth icon -->
@@ -153,7 +161,7 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
         'bw-preview': isPreviewingBandwidth,
         'warning-low': warning === 'low',
         'warning-critical': warning === 'critical',
-        'cascade-starved': cascadeStarved,
+        'cascade-starved': showStarved,
       }"
     >
       ↓

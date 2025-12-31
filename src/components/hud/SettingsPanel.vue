@@ -345,18 +345,17 @@ onUnmounted(() => {
           <svg
             v-if="hardResetProgress > 0"
             class="hold-progress"
-            viewBox="0 0 100 70"
-            preserveAspectRatio="none"
+            viewBox="0 0 103 55"
           >
             <rect
               class="hold-progress-ring"
-              x="2"
-              y="2"
-              width="96"
-              height="66"
+              x="1.5"
+              y="1.5"
+              width="100"
+              height="49"
               rx="12"
-              stroke-dashoffset="-160"
-              :stroke-dasharray="`${hardResetProgress * 320}, 320`"
+              pathLength="100"
+              :stroke-dasharray="`${hardResetProgress * 100}, 100`"
             />
           </svg>
         </button>
@@ -537,20 +536,18 @@ onUnmounted(() => {
   box-shadow: 0 0 16px rgba(255, 90, 90, 0.4);
 }
 
-/* Hold progress ring (rectangular for wider button) */
-.hold-progress {
+/* Hold progress ring - uses inset to overlay button border */
+.hard-reset > .hold-progress {
   position: absolute;
-  top: -3px;
-  left: -3px;
-  width: calc(100% + 6px);
-  height: calc(100% + 6px);
+  inset: -1.5px;
+  width: auto;
+  height: auto;
   pointer-events: none;
 }
 
 .hold-progress-ring {
   fill: none;
   stroke: #ff5a5a;
-  stroke-width: 4;
-  stroke-linecap: round;
+  stroke-width: 3;
 }
 </style>

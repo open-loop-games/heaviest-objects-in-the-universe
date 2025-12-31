@@ -79,11 +79,6 @@ export function calculateEfficiency(state: GameState): number {
 
   const { duplicates, total } = countAllScopeDuplicates(rawPackages)
 
-  // Debug: log duplicate info (throttled)
-  if (Math.random() < 0.03) {
-    console.log(`[Efficiency] Unresolved scope dupes: ${duplicates}/${total}`)
-  }
-
   if (total === 0) return 1
 
   // Efficiency = 1 - (unresolved duplicates / total packages in entered scopes)
