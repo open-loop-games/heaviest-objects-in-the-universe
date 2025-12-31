@@ -22,14 +22,58 @@ const parseFailures = new Set<string>()
 // Light color to tint plain SVGs for visibility
 const ICON_TINT_COLOR = '#c8d8c8'
 
-function getDeviconPaths(iconKey: string): { original: string; plain: string } {
+// Manifest loaded from build (tells us which variants exist)
+interface IconManifest {
+  [iconKey: string]: {
+    original: boolean
+    plain: boolean
+    hasGradient: boolean
+  }
+}
+let iconManifest: IconManifest | null = null
+let manifestLoading: Promise<void> | null = null
+
+async function loadManifest(): Promise<void> {
+  if (iconManifest !== null) return
+  if (manifestLoading) return manifestLoading
+
+  const baseUrl = import.meta.env.BASE_URL || '/'
+  manifestLoading = fetch(`${baseUrl}icons/manifest.json`)
+    .then((res) => (res.ok ? res.json() : {}))
+    .then((data) => {
+      iconManifest = data
+    })
+    .catch(() => {
+      iconManifest = {} // Empty manifest on error - will try fetches anyway
+    })
+
+  return manifestLoading
+}
+
+// Start loading manifest immediately
+loadManifest()
+
+function getDeviconPaths(iconKey: string): {
+  original: string | null
+  plain: string | null
+} {
   // Icons are copied to public/icons by scripts/copy-devicons.js
   // Use Vite's BASE_URL to handle different deployment paths (GitHub Pages, itch.io, etc.)
   const baseUrl = import.meta.env.BASE_URL || '/'
   const base = `${baseUrl}icons/${iconKey}/${iconKey}`
+
+  const manifest = iconManifest?.[iconKey]
+
+  // If manifest loaded, only return paths for variants that exist
+  // Skip original if it has gradients (Pixi can't parse them)
+  const hasOriginal = manifest
+    ? manifest.original && !manifest.hasGradient
+    : true
+  const hasPlain = manifest ? manifest.plain : true
+
   return {
-    original: `${base}-original.svg`,
-    plain: `${base}-plain.svg`,
+    original: hasOriginal ? `${base}-original.svg` : null,
+    plain: hasPlain ? `${base}-plain.svg` : null,
   }
 }
 
@@ -52,32 +96,39 @@ async function fetchSvgContent(iconKey: string): Promise<string | null> {
     return loadingPromises.get(iconKey)!
   }
 
-  const paths = getDeviconPaths(iconKey)
-
   const promise = (async () => {
-    // Try -original first (has brand colors)
-    try {
-      const response = await fetch(paths.original)
-      if (response.ok) {
-        const svgText = await response.text()
-        svgCache.set(iconKey, svgText)
-        return svgText
+    // Wait for manifest to load first (avoids unnecessary 404s)
+    await loadManifest()
+
+    const paths = getDeviconPaths(iconKey)
+
+    // Try -original first (has brand colors), if available
+    if (paths.original) {
+      try {
+        const response = await fetch(paths.original)
+        if (response.ok) {
+          const svgText = await response.text()
+          svgCache.set(iconKey, svgText)
+          return svgText
+        }
+      } catch {
+        // Fall through to try plain
       }
-    } catch {
-      // Fall through to try plain
     }
 
-    // Fall back to -plain with light tinting
-    try {
-      const response = await fetch(paths.plain)
-      if (response.ok) {
-        const svgText = await response.text()
-        const tintedSvg = tintSvgLight(svgText)
-        svgCache.set(iconKey, tintedSvg)
-        return tintedSvg
+    // Fall back to -plain with light tinting, if available
+    if (paths.plain) {
+      try {
+        const response = await fetch(paths.plain)
+        if (response.ok) {
+          const svgText = await response.text()
+          const tintedSvg = tintSvgLight(svgText)
+          svgCache.set(iconKey, tintedSvg)
+          return tintedSvg
+        }
+      } catch {
+        // Silent fail - will use fallback
       }
-    } catch {
-      // Silent fail - will use fallback
     }
 
     svgCache.set(iconKey, null)
