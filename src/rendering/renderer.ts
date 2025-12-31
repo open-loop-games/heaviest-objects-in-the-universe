@@ -8,7 +8,8 @@ import { EffectsRenderer } from './effects'
 import { BlackHoleRenderer } from './blackhole'
 import { EdgeIndicatorRenderer } from './edge-indicators'
 import { Colors } from './colors'
-import { gameState } from '../game/state'
+import { gameState, getWigglePhase } from '../game/state'
+import { getFirstConflictDimming } from '../onboarding/tutorial-state'
 import {
   getCurrentScopePackages,
   getCurrentScopeWires,
@@ -22,6 +23,7 @@ import {
   updateDuplicateGroups,
   getDuplicateGroup,
   getAllDuplicateGroups,
+  type DuplicateGroup,
 } from '../game/symlinks'
 import {
   updateCrossPackageConflicts,
@@ -66,6 +68,9 @@ export class GameRenderer {
 
   // Hovered hoistable package (for showing prominent guide)
   private hoveredHoistableId: string | null = null
+
+  // Hovered duplicate package (for emphasizing ghost lines and halos)
+  private hoveredDuplicateId: string | null = null
 
   // Track previous scope depth for transition animations
   private previousScopeDepth = 0
@@ -366,8 +371,7 @@ export class GameRenderer {
     const pulsePhase = (Date.now() % 1500) / 1500
 
     // Get first conflict dimming intensity
-    const firstConflictDim =
-      this.edgeIndicatorRenderer.getFirstConflictDimming()
+    const firstConflictDim = getFirstConflictDimming()
 
     // Check which packages are involved in conflicts (don't dim them)
     const conflictPackageIds = new Set<string>()
@@ -403,15 +407,29 @@ export class GameRenderer {
       // Get duplicate halo info if applicable (getDuplicateGroup is scope-aware)
       // Check affordability once for all duplicates this frame
       const canAffordMerge = canAffordSymlinkMerge()
+      const hoveredGroup = this.getHoveredDuplicateGroup()
+      const isFirstDuplicates =
+        !gameState.onboarding.firstSymlinkSeen &&
+        getAllDuplicateGroups().length > 0
+
       let duplicateHalo:
-        | { color: number; pulsePhase: number; canAfford: boolean }
+        | {
+            color: number
+            pulsePhase: number
+            canAfford: boolean
+            isHovered: boolean
+            isFirstDuplicate: boolean
+          }
         | undefined
       const group = getDuplicateGroup(pkg.id)
       if (group) {
+        const isGroupHovered = hoveredGroup?.identityName === group.identityName
         duplicateHalo = {
           color: group.haloColor,
           pulsePhase: pulsePhase,
           canAfford: canAffordMerge,
+          isHovered: isGroupHovered,
+          isFirstDuplicate: isFirstDuplicates,
         }
       }
 
@@ -423,6 +441,8 @@ export class GameRenderer {
             color: crossDupInfo.haloColor,
             pulsePhase: pulsePhase,
             canAfford: canAffordMerge,
+            isHovered: false,
+            isFirstDuplicate: isFirstDuplicates,
           }
         }
       }
@@ -454,9 +474,21 @@ export class GameRenderer {
         ? this.effectsRenderer.getCelebrationScale()
         : 1
 
+      // Get wiggle phase for non-draggable feedback
+      const wigglePhase = getWigglePhase(pkg.id)
+
+      // Check if this is the scope root and it's stable (for checkmark badge)
+      const isScopeRootStable = !!(
+        inScope &&
+        scopeRootPkg &&
+        pkg.id === scopeRootPkg.id &&
+        scopeRootPkg.internalState === 'stable'
+      )
+
       this.nodeRenderer.updateNode(pkg, {
         pulseIntensity,
         shake: shakeOffset,
+        wigglePhase,
         showHint: isRoot && showHint,
         duplicateHalo,
         isDragging,
@@ -471,6 +503,8 @@ export class GameRenderer {
         hasCacheFragment: pkg.hasCacheFragment,
         // Celebration
         celebrationScale,
+        // Scope root stable indicator
+        isScopeRootStable,
       })
     }
 
@@ -574,7 +608,13 @@ export class GameRenderer {
     const isFirstDuplicates =
       !gameState.onboarding.firstSymlinkSeen && groups.length > 0
 
+    // Get hovered duplicate group for emphasis
+    const hoveredGroup = this.getHoveredDuplicateGroup()
+
     for (const group of groups) {
+      // Check if this group is being hovered
+      const isGroupHovered = hoveredGroup?.identityName === group.identityName
+
       // Draw lines between all pairs in the group
       const ids = group.packageIds
       for (let i = 0; i < ids.length; i++) {
@@ -590,7 +630,8 @@ export class GameRenderer {
               pkgB.position.y,
               group.haloColor,
               pulsePhase,
-              isFirstDuplicates
+              isFirstDuplicates,
+              isGroupHovered
             )
           }
         }
@@ -605,6 +646,10 @@ export class GameRenderer {
         const sharedDeps = findSharedDeps()
         const drawnPackages = new Set<string>() // Avoid duplicate lines
 
+        // Check if this is first-time hoist teaching (like first duplicate teaching)
+        const isFirstHoist =
+          !gameState.onboarding.firstHoistSeen && sharedDeps.size > 0
+
         // For each shared dep, draw lines from source packages to root
         for (const [, sourcePackageIds] of sharedDeps) {
           for (const pkgId of sourcePackageIds) {
@@ -616,7 +661,7 @@ export class GameRenderer {
               // Check if this package is being hovered - show prominent guide
               const isHovered = pkgId === this.hoveredHoistableId
 
-              // Draw guide line (more prominent if hovered)
+              // Draw guide line (more prominent if hovered or first hoist teaching)
               this.drawHoistGuideLine(
                 pkg.position.x,
                 pkg.position.y,
@@ -624,7 +669,8 @@ export class GameRenderer {
                 root.position.y,
                 0x8b5cf6, // Purple for hoisting
                 pulsePhase,
-                isHovered // Use hover state for emphasis instead of just first duplicate
+                isHovered,
+                isFirstHoist
               )
             }
           }
@@ -887,6 +933,71 @@ export class GameRenderer {
   }
 
   /**
+   * Calculate distance from point to line segment
+   */
+  private distanceToLineSegment(
+    px: number,
+    py: number,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number
+  ): number {
+    const dx = x2 - x1
+    const dy = y2 - y1
+    const lengthSq = dx * dx + dy * dy
+    if (lengthSq === 0) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2)
+
+    // Project point onto line, clamped to segment
+    const t = Math.max(
+      0,
+      Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lengthSq)
+    )
+    const projX = x1 + t * dx
+    const projY = y1 + t * dy
+    return Math.sqrt((px - projX) ** 2 + (py - projY) ** 2)
+  }
+
+  /**
+   * Sample point on quadratic bezier curve
+   */
+  private bezierPoint(
+    t: number,
+    x1: number,
+    y1: number,
+    cx: number,
+    cy: number,
+    x2: number,
+    y2: number
+  ): { x: number; y: number } {
+    const mt = 1 - t
+    return {
+      x: mt * mt * x1 + 2 * mt * t * cx + t * t * x2,
+      y: mt * mt * y1 + 2 * mt * t * cy + t * t * y2,
+    }
+  }
+
+  /**
+   * Get tangent direction on quadratic bezier curve
+   */
+  private bezierTangent(
+    t: number,
+    x1: number,
+    y1: number,
+    cx: number,
+    cy: number,
+    x2: number,
+    y2: number
+  ): { nx: number; ny: number } {
+    // Derivative of quadratic bezier
+    const mt = 1 - t
+    const dx = 2 * mt * (cx - x1) + 2 * t * (x2 - cx)
+    const dy = 2 * mt * (cy - y1) + 2 * t * (y2 - cy)
+    const len = Math.sqrt(dx * dx + dy * dy)
+    return { nx: dx / len, ny: dy / len }
+  }
+
+  /**
    * Configuration for drawing animated guide lines
    */
   private drawAnimatedGuideLine(config: {
@@ -916,6 +1027,8 @@ export class GameRenderer {
     endIcon?: { sizeNormal: number; sizeEmph: number }
     // Optional: midpoint icon (for merge)
     midIcon?: boolean
+    // Solid alpha override (no pulsing, fully visible)
+    solidAlpha?: number
   }): void {
     const {
       startX,
@@ -939,6 +1052,7 @@ export class GameRenderer {
       bidirectional = false,
       endIcon,
       midIcon = false,
+      solidAlpha,
     } = config
 
     const dx = endX - startX
@@ -951,83 +1065,274 @@ export class GameRenderer {
     const midX = (startX + endX) / 2
     const midY = (startY + endY) / 2
 
-    const emphMult = emphasized ? emphasisMult : 1.0
-    const actualBaseAlpha = emphasized ? baseAlpha * 2.3 : baseAlpha
-    const alpha =
-      (actualBaseAlpha + 0.15 * Math.sin(pulsePhase * Math.PI * 2)) * emphMult
+    // Use solid alpha if provided (fully visible, no pulsing)
+    let alpha: number
+    if (solidAlpha !== undefined) {
+      alpha = solidAlpha
+    } else {
+      const emphMult = emphasized ? emphasisMult : 1.0
+      const actualBaseAlpha = emphasized ? baseAlpha * 2.3 : baseAlpha
+      alpha =
+        (actualBaseAlpha + 0.15 * Math.sin(pulsePhase * Math.PI * 2)) * emphMult
+    }
     const lineWidth = emphasized ? lineWidthEmph : lineWidthNormal
 
-    // Draw dotted line
-    const totalLength = dashLength + gapLength
-    let currentDist = 0
-    while (currentDist < lineDist) {
-      const dashEnd = Math.min(currentDist + dashLength, lineDist)
-      const t1 = currentDist / lineDist
-      const t2 = dashEnd / lineDist
-      this.ghostLinesGraphics.moveTo(startX + dx * t1, startY + dy * t1)
-      this.ghostLinesGraphics.lineTo(startX + dx * t2, startY + dy * t2)
-      this.ghostLinesGraphics.stroke({
-        color,
-        width: lineWidth,
-        alpha: Math.min(1, alpha),
-      })
-      currentDist += totalLength
-    }
+    // Check if line passes near root (0,0) - if so, curve around it
+    const rootAvoidRadius = 70 // How close to root before we curve
+    const distToRoot = this.distanceToLineSegment(
+      0,
+      0,
+      startX,
+      startY,
+      endX,
+      endY
+    )
+    const needsCurve = distToRoot < rootAvoidRadius && lineDist > 100
 
-    // Draw animated arrow(s)
-    const arrowSize = emphasized ? arrowSizeEmph : arrowSizeNormal
-    const arrowAlpha = Math.min(1, alpha * 1.5)
-    const animOffset = (Date.now() % arrowAnimCycle) / arrowAnimCycle
+    if (needsCurve) {
+      // Calculate bezier control point to curve around root
+      // Push control point away from root, perpendicular to line
+      const perpX = -ny // Perpendicular to line direction
+      const perpY = nx
 
-    if (bidirectional) {
-      // Two arrows moving toward center
-      const arrowT = arrowStartT + animOffset * arrowRangeT
-      const arrow1X = startX + (midX - startX) * arrowT * 2
-      const arrow1Y = startY + (midY - startY) * arrowT * 2
-      const arrow2X = endX + (midX - endX) * arrowT * 2
-      const arrow2Y = endY + (midY - endY) * arrowT * 2
-      this.drawChevronArrow(
-        arrow1X,
-        arrow1Y,
-        nx,
-        ny,
-        arrowSize,
-        color,
-        arrowAlpha
-      )
-      this.drawChevronArrow(
-        arrow2X,
-        arrow2Y,
-        -nx,
-        -ny,
-        arrowSize,
-        color,
-        arrowAlpha
-      )
+      // Determine which side of the line the root is on
+      const crossProduct =
+        (endX - startX) * (0 - startY) - (endY - startY) * (0 - startX)
+      const side = crossProduct > 0 ? 1 : -1
+
+      // Push control point away from root (opposite side)
+      const pushAmount = rootAvoidRadius + 40 - distToRoot // Stronger push when closer
+      const ctrlX = midX + perpX * pushAmount * -side
+      const ctrlY = midY + perpY * pushAmount * -side
+
+      // Draw dashed bezier curve by sampling points
+      const totalLength = dashLength + gapLength
+      const numSamples = Math.ceil(lineDist / 5) // Sample every ~5 pixels
+      let currentDist = 0
+      let lastPoint = { x: startX, y: startY }
+
+      for (let i = 1; i <= numSamples; i++) {
+        const t = i / numSamples
+        const point = this.bezierPoint(
+          t,
+          startX,
+          startY,
+          ctrlX,
+          ctrlY,
+          endX,
+          endY
+        )
+        const segmentDist = Math.sqrt(
+          (point.x - lastPoint.x) ** 2 + (point.y - lastPoint.y) ** 2
+        )
+
+        // Accumulate distance and draw dashes
+        const segmentStart = currentDist
+        currentDist += segmentDist
+
+        // Check if we're in a dash or gap
+        const dashPhase = segmentStart % totalLength
+        if (dashPhase < dashLength) {
+          // We're in a dash - draw this segment
+          this.ghostLinesGraphics.moveTo(lastPoint.x, lastPoint.y)
+          this.ghostLinesGraphics.lineTo(point.x, point.y)
+          this.ghostLinesGraphics.stroke({
+            color,
+            width: lineWidth,
+            alpha: Math.min(1, alpha),
+          })
+        }
+
+        lastPoint = point
+      }
+
+      // Draw animated arrows along the curve
+      const arrowSize = emphasized ? arrowSizeEmph : arrowSizeNormal
+      const arrowAlpha = Math.min(1, alpha * 1.5)
+      const animOffset = (Date.now() % arrowAnimCycle) / arrowAnimCycle
+
+      if (bidirectional) {
+        const arrowT = animOffset
+        const pos1 = this.bezierPoint(
+          arrowT,
+          startX,
+          startY,
+          ctrlX,
+          ctrlY,
+          endX,
+          endY
+        )
+        const tan1 = this.bezierTangent(
+          arrowT,
+          startX,
+          startY,
+          ctrlX,
+          ctrlY,
+          endX,
+          endY
+        )
+        const pos2 = this.bezierPoint(
+          1 - arrowT,
+          startX,
+          startY,
+          ctrlX,
+          ctrlY,
+          endX,
+          endY
+        )
+        const tan2 = this.bezierTangent(
+          1 - arrowT,
+          startX,
+          startY,
+          ctrlX,
+          ctrlY,
+          endX,
+          endY
+        )
+
+        this.drawChevronArrow(
+          pos1.x,
+          pos1.y,
+          tan1.nx,
+          tan1.ny,
+          arrowSize,
+          color,
+          arrowAlpha
+        )
+        this.drawChevronArrow(
+          pos2.x,
+          pos2.y,
+          -tan2.nx,
+          -tan2.ny,
+          arrowSize,
+          color,
+          arrowAlpha
+        )
+      } else {
+        const arrowT = arrowStartT + animOffset * arrowRangeT
+        const pos = this.bezierPoint(
+          arrowT,
+          startX,
+          startY,
+          ctrlX,
+          ctrlY,
+          endX,
+          endY
+        )
+        const tan = this.bezierTangent(
+          arrowT,
+          startX,
+          startY,
+          ctrlX,
+          ctrlY,
+          endX,
+          endY
+        )
+        this.drawChevronArrow(
+          pos.x,
+          pos.y,
+          tan.nx,
+          tan.ny,
+          arrowSize,
+          color,
+          arrowAlpha
+        )
+      }
+
+      // Midpoint icon on curve
+      if (midIcon && emphasized) {
+        const curveMid = this.bezierPoint(
+          0.5,
+          startX,
+          startY,
+          ctrlX,
+          ctrlY,
+          endX,
+          endY
+        )
+        const iconSize = 8 + 3 * Math.sin(pulsePhase * Math.PI * 2)
+        this.ghostLinesGraphics.circle(curveMid.x, curveMid.y, iconSize)
+        this.ghostLinesGraphics.stroke({ color, width: 2, alpha: arrowAlpha })
+      }
     } else {
-      // Single arrow moving toward end
-      const arrowT = arrowStartT + animOffset * arrowRangeT
-      const arrowX = startX + dx * arrowT
-      const arrowY = startY + dy * arrowT
-      this.drawChevronArrow(
-        arrowX,
-        arrowY,
-        nx,
-        ny,
-        arrowSize,
-        color,
-        arrowAlpha
-      )
+      // Original straight line drawing
+      const totalLength = dashLength + gapLength
+      let currentDist = 0
+      while (currentDist < lineDist) {
+        const dashEnd = Math.min(currentDist + dashLength, lineDist)
+        const t1 = currentDist / lineDist
+        const t2 = dashEnd / lineDist
+        this.ghostLinesGraphics.moveTo(startX + dx * t1, startY + dy * t1)
+        this.ghostLinesGraphics.lineTo(startX + dx * t2, startY + dy * t2)
+        this.ghostLinesGraphics.stroke({
+          color,
+          width: lineWidth,
+          alpha: Math.min(1, alpha),
+        })
+        currentDist += totalLength
+      }
+
+      // Draw animated arrow(s)
+      const arrowSize = emphasized ? arrowSizeEmph : arrowSizeNormal
+      const arrowAlpha = Math.min(1, alpha * 1.5)
+      const animOffset = (Date.now() % arrowAnimCycle) / arrowAnimCycle
+
+      if (bidirectional) {
+        // Two arrows traveling full distance, crossing in middle
+        // Arrow 1: start -> end, Arrow 2: end -> start
+        const arrowT = animOffset // 0 to 1 over the cycle
+
+        // Arrow 1: travels from start to end
+        const arrow1X = startX + dx * arrowT
+        const arrow1Y = startY + dy * arrowT
+
+        // Arrow 2: travels from end to start (opposite direction)
+        const arrow2X = endX - dx * arrowT
+        const arrow2Y = endY - dy * arrowT
+
+        this.drawChevronArrow(
+          arrow1X,
+          arrow1Y,
+          nx,
+          ny,
+          arrowSize,
+          color,
+          arrowAlpha
+        )
+        this.drawChevronArrow(
+          arrow2X,
+          arrow2Y,
+          -nx,
+          -ny,
+          arrowSize,
+          color,
+          arrowAlpha
+        )
+      } else {
+        // Single arrow moving toward end
+        const arrowT = arrowStartT + animOffset * arrowRangeT
+        const arrowX = startX + dx * arrowT
+        const arrowY = startY + dy * arrowT
+        this.drawChevronArrow(
+          arrowX,
+          arrowY,
+          nx,
+          ny,
+          arrowSize,
+          color,
+          arrowAlpha
+        )
+      }
+
+      // Optional midpoint icon (merge indicator)
+      if (midIcon && emphasized) {
+        const iconSize = 8 + 3 * Math.sin(pulsePhase * Math.PI * 2)
+        this.ghostLinesGraphics.circle(midX, midY, iconSize)
+        this.ghostLinesGraphics.stroke({ color, width: 2, alpha: arrowAlpha })
+      }
     }
 
-    // Optional midpoint icon (merge indicator)
-    if (midIcon && emphasized) {
-      const iconSize = 8 + 3 * Math.sin(pulsePhase * Math.PI * 2)
-      this.ghostLinesGraphics.circle(midX, midY, iconSize)
-      this.ghostLinesGraphics.stroke({ color, width: 2, alpha: arrowAlpha })
-    }
-
-    // Optional endpoint icon (drop zone)
+    // Optional endpoint icon (drop zone) - same for both cases
     if (endIcon) {
       const iconX = endX + nx * 15
       const iconY = endY + ny * 15
@@ -1038,7 +1343,7 @@ export class GameRenderer {
       this.ghostLinesGraphics.stroke({
         color,
         width: emphasized ? 2.5 : 2,
-        alpha: arrowAlpha,
+        alpha: Math.min(1, alpha * 1.5),
       })
     }
   }
@@ -1053,7 +1358,8 @@ export class GameRenderer {
     y2: number,
     color: number,
     pulsePhase: number,
-    isFirstDuplicate: boolean
+    isFirstDuplicate: boolean,
+    isHovered: boolean = false
   ): void {
     const dx = x2 - x1
     const dy = y2 - y1
@@ -1064,6 +1370,12 @@ export class GameRenderer {
     const ny = dy / dist
     const offset = 40
 
+    // Determine visibility:
+    // - Hovered: fully visible (solid alpha 0.9)
+    // - First duplicate: heavy teaching (double intensity, wider lines)
+    // - Normal: subtle pulsing
+    const isEmphasized = isFirstDuplicate || isHovered
+
     this.drawAnimatedGuideLine({
       startX: x1 + nx * offset,
       startY: y1 + ny * offset,
@@ -1071,9 +1383,18 @@ export class GameRenderer {
       endY: y2 - ny * offset,
       color,
       pulsePhase,
-      emphasized: isFirstDuplicate,
+      emphasized: isEmphasized,
       bidirectional: true,
       midIcon: true,
+      // Hovered: fully visible, no pulsing
+      solidAlpha: isHovered ? 0.9 : undefined,
+      // First duplicate teaching: even heavier
+      baseAlpha: isFirstDuplicate ? 0.4 : 0.15,
+      emphasisMult: isFirstDuplicate ? 3.0 : 2.0,
+      lineWidthNormal: isFirstDuplicate ? 2.5 : 1.5,
+      lineWidthEmph: isFirstDuplicate || isHovered ? 3.5 : 2.5,
+      arrowSizeNormal: isFirstDuplicate ? 10 : 7,
+      arrowSizeEmph: isFirstDuplicate || isHovered ? 14 : 10,
     })
   }
 
@@ -1114,7 +1435,8 @@ export class GameRenderer {
     rootY: number,
     color: number,
     pulsePhase: number,
-    isHovered: boolean
+    isHovered: boolean,
+    isFirstHoist: boolean = false
   ): void {
     const dx = rootX - pkgX
     const dy = rootY - pkgY
@@ -1124,6 +1446,9 @@ export class GameRenderer {
     const nx = dx / dist
     const ny = dy / dist
 
+    // First hoist teaching: make lines very prominent (like first duplicate teaching)
+    const isEmphasized = isHovered || isFirstHoist
+
     this.drawAnimatedGuideLine({
       startX: pkgX + nx * 45,
       startY: pkgY + ny * 45,
@@ -1131,19 +1456,23 @@ export class GameRenderer {
       endY: rootY - ny * 55,
       color,
       pulsePhase,
-      emphasized: isHovered,
+      emphasized: isEmphasized,
       dashLength: 8,
       gapLength: 10,
-      baseAlpha: 0.35,
-      emphasisMult: 1.5,
-      lineWidthNormal: 2,
-      lineWidthEmph: 3,
-      arrowSizeNormal: 8,
-      arrowSizeEmph: 12,
+      // First hoist: heavy emphasis like first duplicate
+      baseAlpha: isFirstHoist ? 0.5 : 0.35,
+      emphasisMult: isFirstHoist ? 2.5 : 1.5,
+      lineWidthNormal: isFirstHoist ? 2.5 : 2,
+      lineWidthEmph: isFirstHoist || isHovered ? 3.5 : 3,
+      arrowSizeNormal: isFirstHoist ? 10 : 8,
+      arrowSizeEmph: isFirstHoist || isHovered ? 14 : 12,
       arrowAnimCycle: 1500,
       arrowStartT: 0.4,
       arrowRangeT: 0.4,
-      endIcon: { sizeNormal: 5, sizeEmph: 7 },
+      endIcon: {
+        sizeNormal: isFirstHoist ? 7 : 5,
+        sizeEmph: isFirstHoist ? 10 : 7,
+      },
     })
   }
 
@@ -1167,6 +1496,21 @@ export class GameRenderer {
    */
   setHoveredHoistable(packageId: string | null): void {
     this.hoveredHoistableId = packageId
+  }
+
+  /**
+   * Set hovered duplicate package (for emphasizing ghost lines and halos)
+   */
+  setHoveredDuplicate(packageId: string | null): void {
+    this.hoveredDuplicateId = packageId
+  }
+
+  /**
+   * Get the hovered duplicate's group (for checking if a package is in the hovered group)
+   */
+  getHoveredDuplicateGroup(): DuplicateGroup | null {
+    if (!this.hoveredDuplicateId) return null
+    return getDuplicateGroup(this.hoveredDuplicateId)
   }
 
   /**
