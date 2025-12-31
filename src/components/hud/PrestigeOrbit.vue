@@ -12,7 +12,7 @@ import {
   isAutomationProcessing,
   getAutomationProcessingType,
 } from '../../game/automation'
-import { TIER_THRESHOLDS } from '../../game/config'
+import { TIER_THRESHOLDS, FRAGMENT_TO_TOKEN_RATIO } from '../../game/config'
 
 // ============================================
 // PRESTIGE STATE
@@ -101,6 +101,26 @@ const rewardQuality = computed(() => {
   if (eff >= 0.3) return 'poor' // Faded
   return 'terrible' // Very faded, shaky
 })
+
+// ============================================
+// CACHE FRAGMENT DISPLAY
+// ============================================
+
+// Full tokens from fragments (bonus on prestige)
+const fragmentBonusTokens = computed(() => {
+  return Math.floor(
+    gameState.resources.cacheFragments / FRAGMENT_TO_TOKEN_RATIO
+  )
+})
+
+// Fractional progress toward next token (0-1)
+const fragmentProgress = computed(() => {
+  const fragments = gameState.resources.cacheFragments
+  return (fragments % FRAGMENT_TO_TOKEN_RATIO) / FRAGMENT_TO_TOKEN_RATIO
+})
+
+// Whether to show fragment indicator (has any fragments)
+const hasFragments = computed(() => gameState.resources.cacheFragments > 0)
 
 // ============================================
 // TIER PROGRESS ARCS
@@ -370,6 +390,7 @@ onUnmounted(() => {
           { visible: gravityReady && computed_prestigeReward > 0 },
         ]"
       >
+        <!-- Base reward tokens -->
         <span
           v-for="i in Math.min(prestigeRewardDots, 5)"
           :key="i"
@@ -383,6 +404,30 @@ onUnmounted(() => {
           :key="'empty-' + i"
           class="reward-token empty"
           >⟲</span
+        >
+      </div>
+
+      <!-- Fragment bonus indicator (sliced icon) -->
+      <div class="fragment-preview" :class="{ visible: hasFragments }">
+        <!-- Full bonus tokens from fragments -->
+        <span
+          v-for="i in Math.min(fragmentBonusTokens, 3)"
+          :key="'bonus-' + i"
+          class="fragment-token filled"
+          >✦</span
+        >
+        <!-- Partial fragment (sliced icon) -->
+        <div v-if="fragmentProgress > 0" class="fragment-partial">
+          <span class="fragment-token empty">✦</span>
+          <span
+            class="fragment-token filled slice"
+            :style="{ '--fill-percent': fragmentProgress * 100 + '%' }"
+            >✦</span
+          >
+        </div>
+        <!-- Empty slot when no partial but has full tokens -->
+        <span v-else-if="fragmentBonusTokens > 0" class="fragment-token empty"
+          >✦</span
         >
       </div>
     </div>
@@ -712,10 +757,15 @@ onUnmounted(() => {
 /* Individual tier unlock icons */
 .tier-unlock-icon {
   position: absolute;
-  font-size: 14px;
+  font-size: 18px;
   transition: all 0.3s ease;
   opacity: 0.25;
   color: #6a6a8a;
+}
+
+/* Lightning bolt stays smaller */
+.tier-unlock-icon.tier-4 {
+  font-size: 14px;
 }
 
 /* Position icons at the end of each arc quadrant */
@@ -765,6 +815,11 @@ onUnmounted(() => {
 /* Complete icons - bright with glow */
 .tier-unlock-icon.complete {
   opacity: 1;
+  font-size: 21px;
+}
+
+/* Lightning bolt stays smaller when complete */
+.tier-unlock-icon.complete.tier-4 {
   font-size: 16px;
 }
 
@@ -878,7 +933,7 @@ onUnmounted(() => {
 }
 
 .reward-token {
-  font-size: 12px;
+  font-size: 16px;
   color: #5affff;
   text-shadow: 0 0 6px rgba(90, 255, 255, 0.6);
   animation: reward-float 1s ease-in-out infinite alternate;
@@ -965,6 +1020,75 @@ onUnmounted(() => {
   }
   75% {
     transform: translateX(1px);
+  }
+}
+
+/* ============================================
+   FRAGMENT BONUS PREVIEW
+   ============================================ */
+.fragment-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  padding-left: 4px;
+  border-left: 1px solid rgba(255, 200, 90, 0.2);
+  margin-left: 4px;
+}
+
+.fragment-preview.visible {
+  opacity: 1;
+}
+
+.fragment-token {
+  font-size: 13px;
+  line-height: 1;
+  transition: all 0.3s ease;
+}
+
+.fragment-token.empty {
+  color: rgba(255, 200, 90, 0.15);
+  text-shadow: none;
+}
+
+.fragment-token.filled {
+  color: #ffc85a;
+  text-shadow: 0 0 6px rgba(255, 200, 90, 0.6);
+  animation: fragment-glow 2s ease-in-out infinite;
+}
+
+/* Partial fragment container - stacks empty behind filled slice */
+.fragment-partial {
+  position: relative;
+  width: 13px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fragment-partial .fragment-token {
+  position: absolute;
+}
+
+/* Sliced icon - clips from bottom to show fill progress */
+.fragment-token.slice {
+  clip-path: inset(calc(100% - var(--fill-percent)) 0 0 0);
+}
+
+@keyframes fragment-glow {
+  0%,
+  100% {
+    filter: brightness(1);
+    text-shadow: 0 0 6px rgba(255, 200, 90, 0.6);
+  }
+  50% {
+    filter: brightness(1.2);
+    text-shadow: 0 0 10px rgba(255, 200, 90, 0.9);
   }
 }
 </style>

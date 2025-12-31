@@ -17,6 +17,7 @@ import PrestigeOrbit from './hud/PrestigeOrbit.vue'
 import BandwidthRow from './hud/BandwidthRow.vue'
 import WeightRow from './hud/WeightRow.vue'
 import AutomationRow from './hud/AutomationRow.vue'
+import SurgeRow from './hud/SurgeRow.vue'
 
 // ============================================
 // STAGED HUD VISIBILITY
@@ -43,6 +44,9 @@ const showEfficiency = computed(() => {
 })
 
 const showAutomation = computed(() => computed_ecosystemTier.value >= 2)
+
+// Surge unlocks after P2 (second prestige)
+const showSurge = computed(() => gameState.meta.totalPrestiges >= 2)
 
 // Check if we're inside a package scope
 const inPackageScope = computed(() => isInPackageScope())
@@ -84,6 +88,11 @@ const showPrestigeArea = computed(() => {
       >
         <!-- Bandwidth Row -->
         <BandwidthRow />
+
+        <!-- Surge Row (P2+) -->
+        <Transition name="fade">
+          <SurgeRow v-if="showSurge" />
+        </Transition>
 
         <!-- Weight Row -->
         <Transition name="fade">

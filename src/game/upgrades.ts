@@ -19,8 +19,17 @@ export interface UpgradeDefinition {
 // Combined effect functions
 const effects = {
   // Bandwidth: increases both regen and capacity
-  bandwidthRegen: (level: number) => 1 + level * 0.4, // +40% regen per level
-  bandwidthCapacity: (level: number) => 1000 + level * 400, // +400 capacity per level
+  // Regen uses mild exponential to keep pace with capacity scaling
+  bandwidthRegen: (level: number) => Math.pow(1.15, level), // ~8x at L15
+  // Capacity: exponential growth × tier × token bonus
+  // This matches the exponential cost scaling of upgrades
+  bandwidthCapacity: (level: number) => {
+    const base = 1000
+    const exponentialGrowth = Math.pow(1.25, level) // Exponential scaling
+    const tierMultiplier = gameState.meta.ecosystemTier // 1-5x from tier
+    const tokenBonus = 1 + Math.sqrt(gameState.meta.cacheTokens) * 0.4 // Token scaling
+    return Math.floor(base * exponentialGrowth * tierMultiplier * tokenBonus)
+  },
 
   // Efficiency: faster installs and lower costs
   installSpeed: (level: number) => 1 + level * 0.25, // +25% speed per level
@@ -78,6 +87,15 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     costMultiplier: 1.8,
     unlockAt: 0,
     tierRequirement: 3,
+  },
+  surge: {
+    id: 'surge',
+    icon: '◎', // Ripple/burst icon (placeholder, component uses SVG)
+    maxLevel: 9, // 1 base + 9 upgrades = 10 total segments
+    baseCost: 80,
+    costMultiplier: 1.5,
+    unlockAt: 0,
+    prestigeRequirement: 2, // Unlocks after P2
   },
 }
 
@@ -143,6 +161,10 @@ export function applyUpgradeEffects(): void {
   // Max bandwidth from bandwidth upgrade
   const bwLevel = getUpgradeLevel('bandwidth')
   gameState.resources.maxBandwidth = effects.bandwidthCapacity(bwLevel)
+
+  // Surge unlocked segments from surge upgrade
+  const surgeLevel = getUpgradeLevel('surge')
+  gameState.surge.unlockedSegments = 1 + surgeLevel
 }
 
 // Get effective values with upgrades applied
@@ -151,10 +173,10 @@ export function getEffectiveBandwidthRegen(): number {
   const bwLevel = getUpgradeLevel('bandwidth')
   const regenMultiplier = effects.bandwidthRegen(bwLevel)
 
-  // Cache token bonus from prestige (flattened: sqrt scaling instead of exponential)
-  // Old: 1.1^tokens → 17× at 30 tokens (breaks balance at P7+)
-  // New: 1 + sqrt(tokens) * 0.5 → 3.7× at 30 tokens (maintains sub-20s beats)
-  const cacheBonus = 1 + Math.sqrt(gameState.meta.cacheTokens) * 0.5
+  // Cache token bonus from prestige (sqrt scaling to match capacity growth)
+  // Higher coefficient (0.7) keeps fill time reasonable as capacity scales
+  // At 40 tokens: 1 + 6.32 * 0.7 = 5.4x multiplier
+  const cacheBonus = 1 + Math.sqrt(gameState.meta.cacheTokens) * 0.7
 
   return baseRegen * regenMultiplier * cacheBonus * gameState.meta.ecosystemTier
 }
@@ -205,6 +227,108 @@ export function getHoistDrainMultiplier(): number {
 export function getHoistSpeedMultiplier(): number {
   const level = getUpgradeLevel('hoistSpeed')
   return effects.speedBoost(level)
+}
+
+// ============================================
+// SURGE SYSTEM HELPERS
+// ============================================
+
+import {
+  SURGE_COST_PER_SEGMENT,
+  SURGE_SEGMENTS,
+  SURGE_CASCADE_BOOST,
+  SURGE_GOLDEN_BOOST,
+  SURGE_FRAGMENT_BOOST,
+} from './config'
+
+/**
+ * Get the bandwidth cost for a given number of surge segments
+ */
+export function getSurgeCost(segments: number): number {
+  return Math.floor(
+    gameState.resources.maxBandwidth * SURGE_COST_PER_SEGMENT * segments
+  )
+}
+
+/**
+ * Get the currently reserved bandwidth (for charged segments)
+ */
+export function getSurgeReserved(): number {
+  return getSurgeCost(gameState.surge.chargedSegments)
+}
+
+/**
+ * Get available bandwidth (total - reserved for surge)
+ */
+export function getAvailableBandwidth(): number {
+  return Math.max(0, gameState.resources.bandwidth - getSurgeReserved())
+}
+
+/**
+ * Check if surge is unlocked (P2+)
+ */
+export function isSurgeUnlocked(): boolean {
+  return gameState.meta.totalPrestiges >= 2
+}
+
+/**
+ * Set surge charge level (clamps to valid range)
+ * Returns true if change was made
+ */
+export function setSurgeCharge(segments: number): boolean {
+  const maxSegments = Math.min(gameState.surge.unlockedSegments, SURGE_SEGMENTS)
+  const newCharge = Math.max(0, Math.min(segments, maxSegments))
+
+  // Check if we can afford this charge level
+  const newCost = getSurgeCost(newCharge)
+  if (newCost > gameState.resources.bandwidth) {
+    // Can't afford - find max affordable
+    const maxAffordable = Math.floor(
+      gameState.resources.bandwidth /
+        (gameState.resources.maxBandwidth * SURGE_COST_PER_SEGMENT)
+    )
+    gameState.surge.chargedSegments = Math.min(maxAffordable, maxSegments)
+    return gameState.surge.chargedSegments !== newCharge
+  }
+
+  if (gameState.surge.chargedSegments !== newCharge) {
+    gameState.surge.chargedSegments = newCharge
+    return true
+  }
+  return false
+}
+
+/**
+ * Consume surge and return boost multipliers
+ * Called when cascade starts
+ */
+export function consumeSurge(): {
+  sizeMultiplier: number
+  goldenBoost: number
+  fragmentBoost: number
+} {
+  const segments = gameState.surge.chargedSegments
+
+  if (segments === 0) {
+    return { sizeMultiplier: 1, goldenBoost: 0, fragmentBoost: 0 }
+  }
+
+  // Consume the reserved bandwidth
+  const cost = getSurgeCost(segments)
+  gameState.resources.bandwidth = Math.max(
+    0,
+    gameState.resources.bandwidth - cost
+  )
+
+  // Reset charge
+  gameState.surge.chargedSegments = 0
+
+  // Calculate boosts
+  return {
+    sizeMultiplier: 1 + segments * SURGE_CASCADE_BOOST, // +8% per segment
+    goldenBoost: segments * SURGE_GOLDEN_BOOST, // +0.5% per segment
+    fragmentBoost: segments * SURGE_FRAGMENT_BOOST, // +0.4% per segment
+  }
 }
 
 // Check if an upgrade is unlocked based on package count, prestige, and tier

@@ -57,9 +57,9 @@ import {
   canHoist,
   isInDropZone,
   getDropZoneDistance,
-  hoistDep,
-  getHoistedDepForGhost,
+  hoistAllSharedDeps,
   getHoistedDeps,
+  findSharedDeps,
 } from '../game/hoisting'
 import { setAutoResolveCallback } from '../game/automation'
 import type { Package } from '../game/types'
@@ -360,6 +360,11 @@ function handleMouseDown(event: MouseEvent) {
     if (clickedPkg.hasCacheFragment) {
       if (collectCacheFragment(clickedPkg.id)) {
         effects.spawnRipple(rippleX, rippleY, Colors.cacheFragment)
+        // Spawn causal particle flying to prestige panel
+        if (spawnCausalParticle) {
+          const screenPos = renderer.worldToScreen(rippleX, rippleY)
+          spawnCausalParticle('fragment-collect', screenPos.x, screenPos.y)
+        }
         return
       }
     }
@@ -395,20 +400,21 @@ function handleMouseDown(event: MouseEvent) {
 
       // At root scope: Check if clicking a top-level package
       if (!isInPackageScope() && clickedPkg.parentId === gameState.rootId) {
-        // Check if this package can be hoisted (has shared deps across packages)
-        // Hoisting replaces the old cross-package symlink system
-        const hoistCheck = canHoist(clickedPkg.id)
-        if (hoistCheck.canHoist && hoistCheck.depName) {
+        // Check if there are ANY shared deps globally (for batch hoisting)
+        // Any top-level package can trigger the batch hoist
+        const sharedDeps = findSharedDeps()
+        if (sharedDeps.size > 0) {
           hoistDragSource = clickedPkg
           hoistDragStartPos = { x: worldPos.x, y: worldPos.y }
-          hoistableDepName = hoistCheck.depName
+          // Store first shared dep name (just for the condition check)
+          hoistableDepName = sharedDeps.keys().next().value ?? null
           isInHoistZone = false
           // Return here - don't enter scope on click
           // Scope entry happens on mouseUp if not dragged to hoist zone
           return
         }
 
-        // Enter this package's internal scope (only if not hoistable)
+        // Enter this package's internal scope (only if no shared deps to hoist)
         if (enterPackageScope(clickedPkg.id)) {
           // Smooth camera transition to center
           setCameraTarget(0, 0)
@@ -926,48 +932,68 @@ function handleMouseUp(event?: MouseEvent) {
     }
 
     if (isInHoistZone && hoistableDepName) {
-      // Execute hoist! (drop zone was reached)
+      // Execute BATCH hoist! (drop zone was reached - hoist ALL shared deps)
       const effects = renderer.getEffectsRenderer()
-      const sourceX = hoistDragSource.position.x
-      const sourceY = hoistDragSource.position.y
-      const hoistedId = hoistDep(hoistableDepName)
+      const nodeRenderer = renderer.getNodeRenderer()
 
-      if (hoistedId) {
-        // Get the hoisted dep's final position for animation
-        const hoistedDep = getHoistedDepForGhost(hoistedId)
-        if (hoistedDep) {
-          // Start the rising animation from source to ring
-          renderer
-            .getNodeRenderer()
-            .startHoistAnimation(
-              hoistedId,
-              sourceX,
-              sourceY,
-              hoistedDep.position.x,
-              hoistedDep.position.y
-            )
-        }
+      // Hoist all shared deps at once
+      const hoistResults = hoistAllSharedDeps()
 
-        // Success feedback
+      if (hoistResults.length > 0) {
+        // Get root for effects
         const root = gameState.rootId
           ? gameState.packages.get(gameState.rootId)
           : null
+
+        // Start staggered animations for each hoisted dep
+        hoistResults.forEach((result, index) => {
+          const delay = index * 80 // 80ms stagger between each
+
+          // Start arc animation from average source position to ring
+          nodeRenderer.startHoistAnimation(
+            result.hoistedId,
+            result.sourcePositions[0]?.x ?? 0,
+            result.sourcePositions[0]?.y ?? 0,
+            result.targetPosition.x,
+            result.targetPosition.y
+          )
+
+          // Spawn burst at each source position (staggered)
+          result.sourcePositions.forEach((pos, srcIndex) => {
+            setTimeout(
+              () => {
+                effects.spawnBurst(pos.x, pos.y, 0x8b5cf6)
+
+                // Spawn causal particles from each source
+                if (spawnCausalParticle) {
+                  const screenPos = renderer.worldToScreen(pos.x, pos.y)
+                  spawnCausalParticle('efficiency-up', screenPos.x, screenPos.y)
+                  if (srcIndex > 0) {
+                    // Weight saved from deduplication
+                    spawnCausalParticle('weight-loss', screenPos.x, screenPos.y)
+                  }
+                }
+              },
+              delay + srcIndex * 30
+            )
+          })
+        })
+
+        // Success feedback at root (after all animations start)
         if (root) {
-          effects.spawnBurst(root.position.x, root.position.y, 0x8b5cf6) // Purple burst
-          effects.spawnRipple(root.position.x, root.position.y, 0x8b5cf6)
+          const totalDelay = hoistResults.length * 80
+          setTimeout(() => {
+            effects.spawnBurst(root.position.x, root.position.y, 0x8b5cf6)
+          }, totalDelay)
         }
 
-        // Feedback at source package
-        effects.spawnBurst(sourceX, sourceY, 0x8b5cf6)
-
-        // Spawn causal particles
+        // Bandwidth gain particle from the dragged package
         if (spawnCausalParticle) {
-          const screenPos = renderer.worldToScreen(sourceX, sourceY)
+          const screenPos = renderer.worldToScreen(
+            hoistDragSource.position.x,
+            hoistDragSource.position.y
+          )
           spawnCausalParticle('bandwidth-gain', screenPos.x, screenPos.y)
-          // Hoisting improves efficiency by deduplication
-          spawnCausalParticle('efficiency-up', screenPos.x, screenPos.y)
-          // Weight is saved
-          spawnCausalParticle('weight-loss', screenPos.x, screenPos.y)
         }
       }
     } else if (!actuallyDragged) {

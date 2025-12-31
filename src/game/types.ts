@@ -77,6 +77,13 @@ export interface Upgrades {
   compressionLevel: number // Weight reduction (P3+)
   resolveSpeedLevel: number // Auto-resolve speed (Tier 2+)
   hoistSpeedLevel: number // Auto-hoist speed (Tier 3+)
+  surgeLevel: number // Unlocks more surge segments (P2+)
+}
+
+// Surge system - reserve bandwidth to boost cascades (P2+)
+export interface SurgeState {
+  chargedSegments: number // How many segments are currently charged (0-10)
+  unlockedSegments: number // How many segments can be charged (1 + surgeLevel)
 }
 
 export interface GameStats {
@@ -85,6 +92,7 @@ export interface GameStats {
   totalSymlinksCreated: number
   maxWeightReached: number
   currentEfficiency: number
+  currentStability: number
   // Depth rewards
   goldenPackagesFound: number
   cacheFragmentsCollected: number
@@ -191,6 +199,9 @@ export interface GameState {
 
   // Automation system (auto-resolve, auto-hoist)
   automation: AutomationState
+
+  // Surge system (P2+ - boost cascades by reserving bandwidth)
+  surge: SurgeState
 
   // Stats
   stats: GameStats

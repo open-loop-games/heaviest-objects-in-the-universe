@@ -39,13 +39,13 @@ export const DEPTH_COMPRESSION_MULT = [1.0, 0.75, 0.5, 0.25, 0.0] as const
 // ============================================
 
 // Per-dependency spawn cost (queued if unaffordable)
-export const DEP_SPAWN_COST = 5
+export const DEP_SPAWN_COST = 12
 
 // Conflict resolution cost (click wire to resolve)
-export const CONFLICT_RESOLVE_COST = 15
+export const CONFLICT_RESOLVE_COST = 30
 
 // Symlink merge cost (drag-merge action)
-export const SYMLINK_MERGE_COST = 8
+export const SYMLINK_MERGE_COST = 20
 
 // Automation drain per operation
 export const AUTO_RESOLVE_DRAIN = 2
@@ -53,6 +53,21 @@ export const AUTO_HOIST_DRAIN = 3
 
 // Maximum pending deps in queue
 export const MAX_PENDING_DEPS = 40
+
+// ============================================
+// SURGE SYSTEM (P2+)
+// ============================================
+
+// Total segments in surge bar
+export const SURGE_SEGMENTS = 10
+
+// Cost per segment (percentage of max bandwidth)
+export const SURGE_COST_PER_SEGMENT = 0.1 // 10% of max bandwidth per segment
+
+// Boost effects per segment
+export const SURGE_CASCADE_BOOST = 0.08 // +8% cascade size per segment
+export const SURGE_GOLDEN_BOOST = 0.005 // +0.5% absolute golden chance per segment
+export const SURGE_FRAGMENT_BOOST = 0.004 // +0.4% absolute fragment chance per segment
 
 // ============================================
 // DEPTH REWARDS
@@ -129,6 +144,7 @@ export function createInitialState(): GameState {
       compressionLevel: 0,
       resolveSpeedLevel: 0,
       hoistSpeedLevel: 0,
+      surgeLevel: 0,
     },
     onboarding: {
       introAnimationComplete: false,
@@ -175,12 +191,18 @@ export function createInitialState(): GameState {
       lastResolveTime: 0,
       lastHoistTime: 0,
     },
+    // Surge system (P2+ - boost cascades)
+    surge: {
+      chargedSegments: 0,
+      unlockedSegments: 1, // Start with 1 unlocked, upgrade for more
+    },
     stats: {
       totalPackagesInstalled: 0,
       totalConflictsResolved: 0,
       totalSymlinksCreated: 0,
       maxWeightReached: 0,
       currentEfficiency: 1,
+      currentStability: 1,
       goldenPackagesFound: 0,
       cacheFragmentsCollected: 0,
     },
