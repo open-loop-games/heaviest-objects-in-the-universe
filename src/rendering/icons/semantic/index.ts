@@ -10,6 +10,7 @@ import { DATABASE_ICONS } from './database'
 import { HTTP_ICONS } from './http'
 import { LEGACY_ICONS } from './legacy'
 import { UTILITY_ICONS } from './utility'
+import { INCREMENTAL_ICONS } from './incremental'
 
 // Combined registry of all semantic icons
 export const SEMANTIC_ICONS: Record<
@@ -24,6 +25,7 @@ export const SEMANTIC_ICONS: Record<
   ...HTTP_ICONS,
   ...LEGACY_ICONS,
   ...UTILITY_ICONS,
+  ...INCREMENTAL_ICONS,
 }
 
 /**
@@ -60,3 +62,4 @@ export { DATABASE_ICONS } from './database'
 export { HTTP_ICONS } from './http'
 export { LEGACY_ICONS } from './legacy'
 export { UTILITY_ICONS } from './utility'
+export { INCREMENTAL_ICONS } from './incremental'

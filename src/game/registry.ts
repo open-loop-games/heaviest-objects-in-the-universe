@@ -671,6 +671,75 @@ const LEGACY_PACKAGES: PackageIdentity[] = [
   },
 ]
 
+// Incremental game packages - meta packages for the incremental game genre
+// These are the tools of the trade! Easter egg: break_infinity/break_eternity always have fragments
+const INCREMENTAL_PACKAGES: PackageIdentity[] = [
+  {
+    name: 'break_infinity',
+    iconKey: 'npm', // Uses semantic icon (broken infinity)
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 8, // It's actually tiny
+    isHub: true, // Incrementals love it
+  },
+  {
+    name: 'break_eternity',
+    iconKey: 'npm', // Uses semantic icon (double broken infinity)
+    archetype: 'utility',
+    baseDeps: 1, // Conceptually builds on break_infinity
+    weight: 12,
+    isHub: true,
+  },
+  {
+    name: 'decimal.js',
+    iconKey: 'npm', // Uses semantic icon (precision rings)
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 30,
+    isHub: true,
+  },
+  {
+    name: 'profectus',
+    iconKey: 'npm', // Uses semantic icon (layered tree)
+    archetype: 'framework',
+    baseDeps: 8, // It's a full framework
+    weight: 150,
+    isHub: false,
+  },
+  {
+    name: 'modding-tree',
+    iconKey: 'npm', // Uses semantic icon (branching tree)
+    archetype: 'framework',
+    baseDeps: 5,
+    weight: 100,
+    isHub: false,
+  },
+  {
+    name: 'pixi.js',
+    iconKey: 'npm', // Uses semantic icon (pixel spark)
+    archetype: 'framework',
+    baseDeps: 3,
+    weight: 120,
+    isHub: false,
+  },
+  {
+    name: 'phaser',
+    iconKey: 'npm', // Uses semantic icon (comet)
+    archetype: 'framework',
+    baseDeps: 4,
+    weight: 200,
+    isHub: false,
+  },
+  {
+    name: 'three',
+    iconKey: 'npm', // Uses semantic icon (3D cube)
+    archetype: 'framework',
+    baseDeps: 0,
+    weight: 180,
+    isHub: false,
+  },
+]
+
 // Runtime packages - node polyfills, core utilities
 // Only 'node' gets the nodejs icon; others use procedural for visual distinction
 const RUNTIME_PACKAGES: PackageIdentity[] = [
@@ -1122,6 +1191,39 @@ const TIER2_DIRECT_INSTALL: PackageIdentity[] = [
     weight: 80,
     isHub: false,
   },
+  // Game engines (meta!)
+  {
+    name: 'pixi.js',
+    iconKey: 'npm', // Uses semantic icon
+    archetype: 'framework',
+    baseDeps: 3,
+    weight: 120,
+    isHub: false,
+  },
+  {
+    name: 'phaser',
+    iconKey: 'npm', // Uses semantic icon
+    archetype: 'framework',
+    baseDeps: 4,
+    weight: 200,
+    isHub: false,
+  },
+  {
+    name: 'three',
+    iconKey: 'npm', // Uses semantic icon
+    archetype: 'framework',
+    baseDeps: 0,
+    weight: 180,
+    isHub: false,
+  },
+  {
+    name: 'modding-tree',
+    iconKey: 'npm', // Uses semantic icon
+    archetype: 'framework',
+    baseDeps: 5,
+    weight: 100,
+    isHub: false,
+  },
 ]
 
 // Tier 3+: Heavy hitters - chaos mode (baseDeps 8-20)
@@ -1240,6 +1342,15 @@ const TIER3_DIRECT_INSTALL: PackageIdentity[] = [
     weight: 200,
     isHub: false,
   },
+  // Incremental game framework (meta!)
+  {
+    name: 'profectus',
+    iconKey: 'npm', // Uses semantic icon
+    archetype: 'framework',
+    baseDeps: 8,
+    weight: 150,
+    isHub: false,
+  },
 ]
 
 // Combined registry
@@ -1250,6 +1361,7 @@ export const PACKAGE_REGISTRY: PackageIdentity[] = [
   ...LEGACY_PACKAGES,
   ...RUNTIME_PACKAGES,
   ...LEAF_PACKAGES,
+  ...INCREMENTAL_PACKAGES,
 ]
 
 // Weighted distribution for realistic spawning
