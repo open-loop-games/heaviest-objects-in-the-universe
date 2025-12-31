@@ -27,7 +27,8 @@ interface IconManifest {
   [iconKey: string]: {
     original: boolean
     plain: boolean
-    hasGradient: boolean
+    originalHasGradient: boolean
+    plainHasGradient: boolean
   }
 }
 let iconManifest: IconManifest | null = null
@@ -65,11 +66,13 @@ function getDeviconPaths(iconKey: string): {
   const manifest = iconManifest?.[iconKey]
 
   // If manifest loaded, only return paths for variants that exist
-  // Skip original if it has gradients (Pixi can't parse them)
+  // Skip variants with gradients (Pixi can't parse them)
   const hasOriginal = manifest
-    ? manifest.original && !manifest.hasGradient
+    ? manifest.original && !manifest.originalHasGradient
     : true
-  const hasPlain = manifest ? manifest.plain : true
+  const hasPlain = manifest
+    ? manifest.plain && !manifest.plainHasGradient
+    : true
 
   return {
     original: hasOriginal ? `${base}-original.svg` : null,

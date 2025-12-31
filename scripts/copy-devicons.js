@@ -55,7 +55,13 @@ for (const icon of iconKeys) {
 
   mkdirSync(iconDestDir, { recursive: true })
 
-  const iconManifest = { original: false, plain: false, hasGradient: false }
+  // Track per-variant: exists and whether it has unsupported gradients
+  const iconManifest = {
+    original: false,
+    plain: false,
+    originalHasGradient: false,
+    plainHasGradient: false,
+  }
 
   // Copy both variants if they exist
   for (const variant of ['original', 'plain']) {
@@ -66,9 +72,8 @@ for (const icon of iconKeys) {
       const svgContent = readFileSync(srcFile, 'utf-8')
 
       // Check for gradients that Pixi can't handle
-      if (svgContent.includes('linearGradient') || svgContent.includes('radialGradient')) {
-        iconManifest.hasGradient = true
-      }
+      const hasGradient = svgContent.includes('linearGradient') || svgContent.includes('radialGradient')
+      iconManifest[`${variant}HasGradient`] = hasGradient
 
       copyFileSync(srcFile, destFile)
       iconManifest[variant] = true
