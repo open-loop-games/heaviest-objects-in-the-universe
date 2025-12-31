@@ -26,7 +26,7 @@ You are a dependency resolver. Your job: tame the chaos of nested node_modules.
 1. Click the root to spawn a package
 2. Each package contains its own `node_modules` - click to dive inside
 3. Dependencies cascade, conflicts erupt, duplicates multiply
-4. Resolve conflicts (prune or upgrade), merge duplicates (symlink)
+4. Resolve conflicts (prune), merge duplicates (symlink)
 5. Stabilize the scope, exit with satisfaction
 6. Go deeper. Unlock automation. Prestige into a black hole.
 

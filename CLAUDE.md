@@ -14,6 +14,13 @@ Core fantasy: Taming chaos through optimization. Watch a messy dependency tree s
 
 **Game Jam:** https://itch.io/jam/new-years-incremental-game-jam-2026
 
+## Code Conventions
+
+- **Jam mentality:** Ship fast, iterate, don't over-engineer
+- **No backwards compat:** Break things freely, no migration code
+- **Prefer editing:** Modify existing files over creating new ones
+- **Keep rendering pure:** Game logic in `game/`, visuals in `rendering/`
+
 ## Development Commands
 
 ```bash
@@ -101,10 +108,10 @@ This means **NO numbers, NO letters** anywhere in the game UI. Only:
 1. Click root → spawn top-level package (has internal scope)
 2. Click top-level package → enter scope, trigger cascade
 3. Cascade spawns dependencies with staggered timing + depth rewards
-4. Conflicts appear on wires → click wire to Prune or Upgrade
-5. Duplicates detected → drag to merge (symlink) or auto-hoist
+4. Conflicts appear on wires → click wire to Prune
+5. Duplicates detected → drag to merge (symlink)
 6. Stabilize scope → exit with satisfaction
-7. Weight accumulates → prestige at 100k → gain cache tokens
+7. Weight accumulates → prestige at threshold (5k first, then scaling) → gain cache tokens
 
 **Scope System:**
 - Top-level packages are "compressed" - they contain internal node_modules
@@ -121,13 +128,6 @@ This means **NO numbers, NO letters** anywhere in the game UI. Only:
 **Automation (Tier 2+):**
 - Auto-resolve: Automatically resolves conflicts when enabled
 - Auto-hoist: Automatically hoists duplicate deps to root
-
-## Code Conventions
-
-- **Jam mentality:** Ship fast, iterate, don't over-engineer
-- **No backwards compat:** Break things freely, no migration code
-- **Prefer editing:** Modify existing files over creating new ones
-- **Keep rendering pure:** Game logic in `game/`, visuals in `rendering/`
 
 ## Current Implementation Status
 
