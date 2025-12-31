@@ -1,16 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { gameState } from '../../game/state'
-import { calculateStabilityRatio } from '../../game/formulas'
 
-// Efficiency as visual (0-1)
+// Efficiency as visual (0-1) - updated in game loop
 const efficiencyValue = computed(() => {
   return gameState.stats.currentEfficiency
 })
 
-// Stability ratio for prestige quality
+// Stability ratio for prestige quality - updated in game loop
 const stabilityValue = computed(() => {
-  return calculateStabilityRatio(gameState)
+  return gameState.stats.currentStability
 })
 
 // Efficiency warning: too many duplicates

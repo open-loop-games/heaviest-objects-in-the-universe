@@ -12,6 +12,7 @@ export type ParticleType =
   | 'efficiency-down' // Efficiency dropping (duplicate detected - red/orange warning)
   | 'stability-up' // Stability improving (conflict resolved - flies TO stability bar, green)
   | 'stability-down' // Stability dropping (conflict appeared - red warning)
+  | 'fragment-collect' // Cache fragment collected (flies TO prestige panel fragment area)
 
 interface Particle {
   id: number
@@ -37,6 +38,7 @@ const hudPositions = ref<Record<string, { x: number; y: number }>>({
   gravity: { x: window.innerWidth - 200, y: window.innerHeight - 36 },
   efficiency: { x: 220, y: 60 },
   stability: { x: 320, y: 60 },
+  fragment: { x: window.innerWidth - 100, y: 36 },
 })
 
 // Update HUD positions based on actual element locations
@@ -94,6 +96,16 @@ function updateHudPositions() {
       y: rect.top + rect.height / 2,
     }
   }
+
+  // Fragment preview (prestige panel)
+  const fragmentEl = document.querySelector('.fragment-preview')
+  if (fragmentEl) {
+    const rect = fragmentEl.getBoundingClientRect()
+    hudPositions.value.fragment = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    }
+  }
 }
 
 // Spawn a causal particle
@@ -145,6 +157,11 @@ function spawnParticle(type: ParticleType, fromX: number, fromY: number) {
       // Stability dropped - warning particle stays near source
       target = { x: fromX - 30, y: fromY - 20 }
       duration = 500
+      break
+    case 'fragment-collect':
+      // Fragment collected - flies to prestige panel fragment area
+      target = hudPositions.value.fragment
+      duration = 550
       break
     default:
       return
@@ -255,6 +272,8 @@ function getParticleClass(type: ParticleType): string {
       return 'particle-stability-up'
     case 'stability-down':
       return 'particle-stability-down'
+    case 'fragment-collect':
+      return 'particle-fragment'
     default:
       return ''
   }
@@ -281,6 +300,8 @@ function getParticleIcon(type: ParticleType): string {
       return '✓'
     case 'stability-down':
       return '!'
+    case 'fragment-collect':
+      return '✦'
     default:
       return '•'
   }
@@ -444,6 +465,32 @@ onUnmounted(() => {
   );
   box-shadow: 0 0 14px rgba(255, 90, 90, 0.8);
   animation: particle-warn-shake 0.08s linear infinite;
+}
+
+/* Fragment collect - golden/amber glow flying to prestige */
+.particle-fragment {
+  color: #ffc85a;
+  background: radial-gradient(
+    circle,
+    rgba(255, 200, 90, 0.6) 0%,
+    rgba(255, 170, 60, 0.3) 50%,
+    transparent 70%
+  );
+  box-shadow:
+    0 0 16px rgba(255, 200, 90, 0.9),
+    0 0 32px rgba(255, 170, 60, 0.4);
+  animation: particle-fragment-sparkle 0.12s ease-in-out infinite alternate;
+}
+
+@keyframes particle-fragment-sparkle {
+  from {
+    transform: scale(1) rotate(0deg);
+    filter: brightness(1);
+  }
+  to {
+    transform: scale(1.2) rotate(15deg);
+    filter: brightness(1.3);
+  }
 }
 
 @keyframes particle-pulse {

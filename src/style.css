@@ -30,6 +30,8 @@
   --hud-warning-orange: #ffaa5a;
   --hud-prestige: #7a5aff;
   --hud-prestige-light: #9a7aff;
+  --hud-surge: #f0a040;
+  --hud-surge-dark: #c08020;
 
   /* Tier colors */
   --hud-tier2: #5aaaff;
