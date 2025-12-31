@@ -10,10 +10,10 @@ import { isInPackageScope } from '../game/scope'
 // Extracted HUD sub-components
 import ScopeNavigation from './hud/ScopeNavigation.vue'
 import SettingsPanel from './hud/SettingsPanel.vue'
-import QualityMetrics from './hud/QualityMetrics.vue'
+import QualityHero from './hud/QualityHero.vue'
 import PrestigeOrbit from './hud/PrestigeOrbit.vue'
 
-// New Phase 5 components
+// Resource row components
 import BandwidthRow from './hud/BandwidthRow.vue'
 import WeightRow from './hud/WeightRow.vue'
 import AutomationRow from './hud/AutomationRow.vue'
@@ -86,6 +86,14 @@ const showPrestigeArea = computed(() => {
         class="hud-panel"
         :class="{ 'prestige-ready': prestigeProgress >= 1 }"
       >
+        <!-- Quality Hero (PROMOTED - shows efficiency & stability prominently) -->
+        <Transition name="fade">
+          <QualityHero v-if="showEfficiency" />
+        </Transition>
+
+        <!-- Separator between quality and resources -->
+        <div v-if="showEfficiency" class="hud-separator" />
+
         <!-- Bandwidth Row -->
         <BandwidthRow />
 
@@ -94,14 +102,9 @@ const showPrestigeArea = computed(() => {
           <SurgeRow v-if="showSurge" />
         </Transition>
 
-        <!-- Weight Row -->
+        <!-- Weight Row (DEMOTED - secondary indicator) -->
         <Transition name="fade">
           <WeightRow v-if="showWeight" />
-        </Transition>
-
-        <!-- Quality Metrics -->
-        <Transition name="fade">
-          <QualityMetrics v-if="showEfficiency" />
         </Transition>
 
         <!-- Automation Row -->
@@ -161,6 +164,18 @@ const showPrestigeArea = computed(() => {
   border-radius: 12px;
   border: 2px solid var(--hud-border);
   transition: all var(--hud-t-normal) ease;
+}
+
+.hud-separator {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(90, 255, 255, 0.3) 20%,
+    rgba(90, 255, 255, 0.3) 80%,
+    transparent 100%
+  );
+  margin: 2px 0;
 }
 
 .hud-panel.prestige-ready {
