@@ -200,6 +200,11 @@ export function resolveWireConflict(wireId: string): boolean {
     gameState.stats.totalConflictsResolved++
   }
 
+  // Mark first inner conflict as seen for onboarding
+  if (isInPackageScope() && !gameState.onboarding.firstInnerConflictSeen) {
+    gameState.onboarding.firstInnerConflictSeen = true
+  }
+
   // Recalculate scope state
   if (isInPackageScope()) {
     recalculateStateAtPath([...gameState.scopeStack])

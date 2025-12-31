@@ -385,6 +385,15 @@ export function exitPackageScope(): void {
   // Recalculate state before exiting (at current depth)
   if (gameState.scopeStack.length > 0) {
     recalculateStateAtPath([...gameState.scopeStack])
+
+    // Track first stable scope exit for onboarding
+    const pkg = getPackageAtPath(gameState.scopeStack)
+    if (
+      pkg?.internalState === 'stable' &&
+      !gameState.onboarding.firstScopeExited
+    ) {
+      gameState.onboarding.firstScopeExited = true
+    }
   }
 
   exitScope()

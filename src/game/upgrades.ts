@@ -52,6 +52,7 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     baseCost: 40,
     costMultiplier: 1.6,
     unlockAt: 3,
+    prestigeRequirement: 1, // Gate behind first prestige to prevent poor early states
   },
   efficiency: {
     id: 'efficiency',

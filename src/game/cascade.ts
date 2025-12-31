@@ -2,7 +2,12 @@
 // Creates the "explosion inside" experience when entering packages
 // Supports arbitrary depth using scope paths
 
-import { gameState, getCompressionChance, getMaxCompressedDepth } from './state'
+import {
+  gameState,
+  getCompressionChance,
+  getMaxCompressedDepth,
+  setCascadeStarved,
+} from './state'
 import {
   DEP_SPAWN_COST,
   MAX_PENDING_DEPS,
@@ -26,6 +31,7 @@ import {
   pickRandomIdentity,
   areIncompatible,
   STARTER_KIT_INTERNAL_DEPS,
+  LODASH_IDENTITY,
   type PackageIdentity,
 } from './registry'
 import { getPackageAtPath } from './scope'
@@ -122,6 +128,16 @@ export function startCascade(scopePath: string[]): void {
     : []
 
   if (!isStarterKit) {
+    // Check if this is the second top-level package before first prestige
+    // Inject lodash to guarantee a hoist teaching opportunity
+    const isSecondPackageBeforePrestige =
+      depth === 1 && gameState.meta.totalPrestiges === 0
+
+    if (isSecondPackageBeforePrestige) {
+      // Inject lodash at position 0 - will pair with lodash from starter-kit for hoisting
+      depIdentities.push(LODASH_IDENTITY)
+    }
+
     let count: number
     if (pkg.identity && pkg.identity.baseDeps > 0) {
       const variance = Math.floor(Math.random() * 5) - 2
@@ -150,7 +166,10 @@ export function startCascade(scopePath: string[]): void {
     count = Math.min(count, 40)
     count = Math.max(count, 3)
 
-    for (let i = 0; i < count; i++) {
+    // If we injected lodash, reduce count by 1 to keep total similar
+    const randomCount = isSecondPackageBeforePrestige ? count - 1 : count
+
+    for (let i = 0; i < randomCount; i++) {
       depIdentities.push(pickRandomIdentity())
     }
   }
@@ -360,11 +379,16 @@ function spawnNextFromQueue(): void {
       spawn.awaitingBandwidth = true
       spawn.queuedAt = Date.now()
     }
+    // Signal starved state to UI
+    setCascadeStarved(true)
     // Don't spawn, wait for bandwidth to regenerate
     return
   }
 
-  // Can afford - remove from queue and deduct bandwidth
+  // Can afford - clear starved state
+  setCascadeStarved(false)
+
+  // Remove from queue and deduct bandwidth
   cascade.pendingSpawns.shift()
   gameState.resources.bandwidth -= DEP_SPAWN_COST
 
@@ -522,6 +546,9 @@ function endCascade(): void {
   gameState.cascade.active = false
   gameState.cascade.scopePackageId = null
   gameState.cascade.pendingSpawns = []
+
+  // Clear starved state
+  setCascadeStarved(false)
 
   // Clear cascade data
   const cd = gameState.cascade as Record<string, unknown>

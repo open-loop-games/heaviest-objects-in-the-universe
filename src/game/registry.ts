@@ -28,8 +28,21 @@ export const STARTER_KIT_IDENTITY: PackageIdentity = {
 // - 2 conflicts to resolve (moment/date-fns, jest/mocha)
 // - 2 duplicates to merge (lodash appears twice)
 // - Mix of weights for visual variety
+//
+// IMPORTANT: Order matters for spawn positions!
+// With 8 packages, each gets 45° of the circle.
+// Duplicates (lodash) are at indices 0 and 4 to spawn 180° apart.
 export const STARTER_KIT_INTERNAL_DEPS: PackageIdentity[] = [
-  // Conflict pair 1: moment vs date-fns (legacy vs modern)
+  // Index 0: First lodash (duplicate) - spawns at top
+  {
+    name: 'lodash',
+    iconKey: 'lodash',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 70,
+    isHub: true,
+  },
+  // Index 1: moment (conflicts with date-fns at index 5)
   {
     name: 'moment',
     iconKey: 'npm',
@@ -38,16 +51,7 @@ export const STARTER_KIT_INTERNAL_DEPS: PackageIdentity[] = [
     weight: 300,
     isHub: false,
   },
-  {
-    name: 'date-fns',
-    iconKey: 'npm',
-    archetype: 'utility',
-    baseDeps: 0,
-    weight: 40,
-    isHub: false,
-  },
-
-  // Conflict pair 2: jest vs mocha (test runner war)
+  // Index 2: jest (conflicts with mocha at index 6)
   {
     name: 'jest',
     iconKey: 'jest',
@@ -56,34 +60,7 @@ export const STARTER_KIT_INTERNAL_DEPS: PackageIdentity[] = [
     weight: 200,
     isHub: false,
   },
-  {
-    name: 'mocha',
-    iconKey: 'mocha',
-    archetype: 'tooling',
-    baseDeps: 0,
-    weight: 80,
-    isHub: false,
-  },
-
-  // Duplicate pair: lodash (common hub, shows symlink mechanic)
-  {
-    name: 'lodash',
-    iconKey: 'lodash',
-    archetype: 'utility',
-    baseDeps: 0,
-    weight: 70,
-    isHub: true,
-  },
-  {
-    name: 'lodash',
-    iconKey: 'lodash',
-    archetype: 'utility',
-    baseDeps: 0,
-    weight: 70,
-    isHub: true,
-  },
-
-  // Additional deps to fill out the tree
+  // Index 3: debug (filler)
   {
     name: 'debug',
     iconKey: 'npm',
@@ -92,6 +69,34 @@ export const STARTER_KIT_INTERNAL_DEPS: PackageIdentity[] = [
     weight: 15,
     isHub: true,
   },
+  // Index 4: Second lodash (duplicate) - spawns at bottom (180° from index 0)
+  {
+    name: 'lodash',
+    iconKey: 'lodash',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 70,
+    isHub: true,
+  },
+  // Index 5: date-fns (conflicts with moment at index 1)
+  {
+    name: 'date-fns',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 40,
+    isHub: false,
+  },
+  // Index 6: mocha (conflicts with jest at index 2)
+  {
+    name: 'mocha',
+    iconKey: 'mocha',
+    archetype: 'tooling',
+    baseDeps: 0,
+    weight: 80,
+    isHub: false,
+  },
+  // Index 7: chalk (filler)
   {
     name: 'chalk',
     iconKey: 'npm',
@@ -111,16 +116,19 @@ export interface PackageIdentity {
   isHub: boolean // High symlink attraction (like lodash)
 }
 
+// Lodash identity - exported for injection into second package cascade
+export const LODASH_IDENTITY: PackageIdentity = {
+  name: 'lodash',
+  iconKey: 'lodash',
+  archetype: 'utility',
+  baseDeps: 0,
+  weight: 70,
+  isHub: true,
+}
+
 // Hub packages - ubiquitous utilities that everything depends on
 const HUB_PACKAGES: PackageIdentity[] = [
-  {
-    name: 'lodash',
-    iconKey: 'lodash',
-    archetype: 'utility',
-    baseDeps: 0,
-    weight: 70,
-    isHub: true,
-  },
+  LODASH_IDENTITY,
   {
     name: 'axios',
     iconKey: 'axios',

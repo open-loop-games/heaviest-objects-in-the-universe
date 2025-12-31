@@ -105,9 +105,6 @@ export const DEFAULT_CONFIG: GameConfig = {
   maxDependencies: 5,
   dependencyDepthLimit: 4,
 
-  // Prestige
-  prestigeWeightThreshold: 100000,
-
   // Physics
   nodeRepulsion: 150, // Lower = nodes slide past each other easier
   wireAttraction: 0.01,
@@ -151,6 +148,9 @@ export function createInitialState(): GameState {
       firstClickComplete: false,
       firstConflictSeen: false,
       firstSymlinkSeen: false,
+      firstInnerConflictSeen: false,
+      firstScopeExited: false,
+      firstHoistSeen: false,
       firstPrestigeComplete: false,
       weightSeen: false,
       efficiencySeen: false,

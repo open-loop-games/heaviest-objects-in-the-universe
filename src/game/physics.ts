@@ -7,6 +7,7 @@ import {
   gameConfig,
   collapseState,
   markPackageAbsorbed,
+  dragState,
 } from './state'
 import type { Package } from './types'
 import { getAllDuplicateGroups } from './symlinks'
@@ -365,11 +366,23 @@ export function updatePhysics(deltaTime: number): void {
   const anchorStrength = getAnchorStrength()
   const chaosAmount = 1 - cleanliness
 
+  // Check if we're dragging a package at root level (for hoist)
+  const isRootDragging =
+    dragState.value.packageId !== null && !dragState.value.isInternalScope
+  const rootDraggedId = dragState.value.packageId
+
   for (const pkg of packages) {
     // Root stays anchored at origin
     if (pkg.parentId === null) {
       pkg.position.x = 0
       pkg.position.y = 0
+      pkg.velocity.vx = 0
+      pkg.velocity.vy = 0
+      continue
+    }
+
+    // Skip physics for dragged package at root level (hoist drag)
+    if (isRootDragging && pkg.id === rootDraggedId) {
       pkg.velocity.vx = 0
       pkg.velocity.vy = 0
       continue
@@ -649,10 +662,25 @@ export function updateInternalPhysics(
   // The scope root ID is the last element in the path
   const scopeRootId = scopePath[scopePath.length - 1]!
 
+  // Check if a node is being dragged in this scope - freeze all other nodes
+  const isDragging =
+    dragState.value.packageId !== null && dragState.value.isInternalScope
+  const draggedId = dragState.value.packageId
+
   // Compute tree-aware anchor positions (deterministic, stable)
   computeInternalAnchors(internalPackages, scopeRootId)
 
   for (const pkg of packages) {
+    // If dragging, skip physics for ALL nodes (dragged node is moved by mouse)
+    if (isDragging) {
+      // Zero out velocity to prevent drift when drag ends
+      if (pkg.id !== draggedId) {
+        pkg.velocity.vx = 0
+        pkg.velocity.vy = 0
+      }
+      continue
+    }
+
     let fx = 0
     let fy = 0
 

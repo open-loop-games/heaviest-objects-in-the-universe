@@ -7,6 +7,54 @@ import {
   isInPackageScope,
 } from './scope'
 import type { Package, Position } from './types'
+import { getNodeRadius } from '../rendering/nodes'
+
+/**
+ * Check if position hits any badge on a package
+ * Badges: drill-down (bottom), hoistable (top), cache fragment (left)
+ */
+function hitsBadge(
+  pos: Position,
+  pkgX: number,
+  pkgY: number,
+  pkg: Package
+): boolean {
+  const nodeRadius = getNodeRadius(pkg)
+  const badgeRadius = 10 // Slightly generous for easier clicking
+
+  // Drill-down badge (bottom) - for packages with internal scope
+  if (pkg.internalPackages !== null) {
+    const badgeY = pkgY + nodeRadius + 6
+    const dx = pkgX - pos.x
+    const dy = badgeY - pos.y
+    if (Math.sqrt(dx * dx + dy * dy) <= badgeRadius) {
+      return true
+    }
+  }
+
+  // Hoistable badge (top) - check if package could be hoistable
+  // (simplified check - actual hoistability computed elsewhere)
+  if (pkg.parentId !== null && pkg.internalPackages !== null) {
+    const badgeY = pkgY - nodeRadius - 6
+    const dx = pkgX - pos.x
+    const dy = badgeY - pos.y
+    if (Math.sqrt(dx * dx + dy * dy) <= badgeRadius) {
+      return true
+    }
+  }
+
+  // Cache fragment badge (left)
+  if (pkg.hasCacheFragment) {
+    const badgeX = pkgX - nodeRadius - 6
+    const dx = badgeX - pos.x
+    const dy = pkgY - pos.y
+    if (Math.sqrt(dx * dx + dy * dy) <= badgeRadius) {
+      return true
+    }
+  }
+
+  return false
+}
 
 /**
  * Find package at screen position (for click detection)
@@ -24,7 +72,7 @@ export function findPackageAtPosition(
       const dx = 0 - pos.x
       const dy = 0 - pos.y
       const dist = Math.sqrt(dx * dx + dy * dy)
-      if (dist <= radius) {
+      if (dist <= radius || hitsBadge(pos, 0, 0, scopeRoot)) {
         return scopeRoot
       }
     }
@@ -35,7 +83,10 @@ export function findPackageAtPosition(
       const dx = pkg.position.x - pos.x
       const dy = pkg.position.y - pos.y
       const dist = Math.sqrt(dx * dx + dy * dy)
-      if (dist <= radius) {
+      if (
+        dist <= radius ||
+        hitsBadge(pos, pkg.position.x, pkg.position.y, pkg)
+      ) {
         return pkg
       }
     }
@@ -48,7 +99,7 @@ export function findPackageAtPosition(
     const dy = pkg.position.y - pos.y
     const dist = Math.sqrt(dx * dx + dy * dy)
 
-    if (dist <= radius) {
+    if (dist <= radius || hitsBadge(pos, pkg.position.x, pkg.position.y, pkg)) {
       return pkg
     }
   }

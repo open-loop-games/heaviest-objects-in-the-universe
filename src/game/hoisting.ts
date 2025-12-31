@@ -281,6 +281,11 @@ export function hoistDep(depName: string): string | null {
   // Add hoisted weight (deduplicated, with compression)
   addWeight(hoistedDep.weight)
 
+  // Mark first hoist for onboarding
+  if (!gameState.onboarding.firstHoistSeen) {
+    gameState.onboarding.firstHoistSeen = true
+  }
+
   return hoistedId
 }
 

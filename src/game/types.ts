@@ -128,6 +128,9 @@ export interface OnboardingState {
   firstClickComplete: boolean // Player has clicked root at least once
   firstConflictSeen: boolean // Player has seen a conflict
   firstSymlinkSeen: boolean // Player has seen duplicates (symlink opportunity)
+  firstInnerConflictSeen: boolean // Player has seen a conflict inside a package scope
+  firstScopeExited: boolean // Player has exited a stable scope (exit teaching complete)
+  firstHoistSeen: boolean // Player has seen hoistable packages (cross-package duplicates)
   firstPrestigeComplete: boolean // Player has prestiged at least once
   // Sticky UI visibility (persists across prestiges)
   weightSeen: boolean // Weight indicator has been shown
@@ -227,9 +230,6 @@ export interface GameConfig {
   minDependencies: number
   maxDependencies: number
   dependencyDepthLimit: number
-
-  // Prestige
-  prestigeWeightThreshold: number
 
   // Physics
   nodeRepulsion: number
