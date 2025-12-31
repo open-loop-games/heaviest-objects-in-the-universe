@@ -9,7 +9,6 @@ import {
   getCurrentScopeRoot,
 } from '../game/scope'
 import { getAllDuplicateGroups } from '../game/symlinks'
-import { findSharedDeps } from '../game/hoisting'
 import { Colors } from '../rendering/colors'
 import * as tutorialState from './tutorial-state'
 
@@ -588,80 +587,6 @@ export function getFirstSpawnedIndicators(
 }
 
 // ============================================
-// HOISTING TEACHING
-// ============================================
-
-export function getHoistIndicators(
-  bounds: ScreenBounds,
-  worldToScreen: WorldToScreenFn
-): { indicators: EdgeIndicator[]; vignettes: Vignette[] } {
-  const indicators: EdgeIndicator[] = []
-  const vignettes: Vignette[] = []
-
-  // Only show at root scope, before first hoist seen
-  if (isInPackageScope() || gameState.onboarding.firstHoistSeen) {
-    return { indicators, vignettes }
-  }
-
-  // Check for hoistable packages
-  const sharedDeps = findSharedDeps()
-  if (sharedDeps.size === 0) {
-    return { indicators, vignettes }
-  }
-
-  // Find packages that have hoistable deps and point to them
-  const hoistablePackageIds = new Set<string>()
-  for (const [, sourcePackageIds] of sharedDeps) {
-    for (const pkgId of sourcePackageIds) {
-      hoistablePackageIds.add(pkgId)
-    }
-  }
-
-  // Find up to 2 hoistable packages to highlight
-  let count = 0
-  for (const pkgId of hoistablePackageIds) {
-    if (count >= 2) break
-
-    const pkg = gameState.packages.get(pkgId)
-    if (!pkg) continue
-
-    const screenPos = worldToScreen(pkg.position.x, pkg.position.y)
-    const { edgeX, edgeY } = findClosestEdgePoint(
-      screenPos.x,
-      screenPos.y,
-      bounds
-    )
-
-    indicators.push({
-      worldX: pkg.position.x,
-      worldY: pkg.position.y,
-      color: 0x8b5cf6, // Purple for hoisting
-      size: 24,
-      pulseRate: 1.5,
-      persistent: true,
-      id: `hoist-teach-${count}`,
-      screenX: edgeX,
-      screenY: edgeY,
-      pointTowardX: screenPos.x,
-      pointTowardY: screenPos.y,
-      targetRadius: 50,
-    })
-
-    count++
-  }
-
-  if (indicators.length > 0) {
-    vignettes.push({
-      color: 0x8b5cf6,
-      alpha: 0.1,
-      edges: ['top', 'bottom', 'left', 'right'],
-    })
-  }
-
-  return { indicators, vignettes }
-}
-
-// ============================================
 // PRESTIGE TEACHING
 // ============================================
 
@@ -764,7 +689,6 @@ export function getAllIndicators(
   addResults(getConflictIndicators(bounds, worldToScreen, now))
   addResults(getInnerConflictIndicators(bounds, worldToScreen, now))
   addResults(getDuplicateIndicators(bounds, worldToScreen, now))
-  addResults(getHoistIndicators(bounds, worldToScreen))
   addResults(getScopeExitIndicators(bounds))
   addResults(getFirstSpawnedIndicators(bounds, worldToScreen, now))
   addResults(getPrestigeIndicators(bounds, worldToScreen))

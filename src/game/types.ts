@@ -37,10 +37,10 @@ export interface Package {
   internalWires: Map<string, Wire> | null
   internalState: InternalState | null // null for inner deps
 
-  // Ghost status (for symlinked-away or hoisted nodes)
+  // Ghost status (for symlinked-away nodes)
   isGhost: boolean
-  ghostTargetId: string | null // Package ID where real node lives, or hoisted dep ID
-  ghostTargetScope: 'hoisted' | string | null // 'hoisted' for root ring, or package ID for scope
+  ghostTargetId: string | null // Package ID where real node lives
+  ghostTargetScope: string | null // Package ID for scope
 
   // Depth rewards
   isGolden: boolean // Golden package (4x weight, only spawns at depth 3+)
@@ -76,7 +76,6 @@ export interface Upgrades {
   efficiencyLevel: number // Combined: speed + cost reduction
   compressionLevel: number // Weight reduction (P3+)
   resolveSpeedLevel: number // Auto-resolve speed (Tier 2+)
-  hoistSpeedLevel: number // Auto-hoist speed (Tier 3+)
   surgeLevel: number // Unlocks more surge segments (P2+)
 }
 
@@ -130,45 +129,26 @@ export interface OnboardingState {
   firstSymlinkSeen: boolean // Player has seen duplicates (symlink opportunity)
   firstInnerConflictSeen: boolean // Player has seen a conflict inside a package scope
   firstScopeExited: boolean // Player has exited a stable scope (exit teaching complete)
-  firstHoistSeen: boolean // Player has seen hoistable packages (cross-package duplicates)
   firstPrestigeComplete: boolean // Player has prestiged at least once
   // Sticky UI visibility (persists across prestiges)
   weightSeen: boolean // Weight indicator has been shown
   efficiencySeen: boolean // Efficiency indicator has been shown
 }
 
-// Automation state for auto-resolve and auto-hoist
+// Automation state for auto-resolve
 // Note: Auto-dedup removed - merging stays manual for gameplay
 export interface AutomationState {
   // Toggle states (user-controllable)
   resolveEnabled: boolean // Auto-resolve toggle
-  hoistEnabled: boolean // Auto-hoist toggle
 
   // Auto-resolve (unlocks at tier 2)
   resolveActive: boolean // Currently processing a resolve
   resolveTargetWireId: string | null // Wire being auto-resolved
   resolveTargetScope: string[] | null // Scope path where wire lives
 
-  // Auto-hoist (unlocks at tier 3)
-  hoistActive: boolean // Currently processing a hoist
-  hoistTargetDepName: string | null // Dependency name being hoisted
-  hoistTargetSources: string[] | null // Source package IDs
-
   // Timing
   processStartTime: number // When current process started (for animation)
   lastResolveTime: number // Last time auto-resolve fired
-  lastHoistTime: number // Last time auto-hoist fired
-}
-
-// Hoisted dependency (deduped to root level)
-export interface HoistedDep {
-  id: string
-  identity: PackageIdentity
-  sourcePackages: string[] // Package IDs that share this dep
-  position: Position // Orbit position around root
-  orbitAngle: number // Angle in radians for orbit positioning
-  weight: number // Combined weight (deduplicated)
-  ringIndex: number // 0 = inner ring, 1 = outer ring
 }
 
 export interface GameState {
@@ -189,9 +169,6 @@ export interface GameState {
   wires: Map<string, Wire>
   rootId: string | null
 
-  // Hoisting system (deduped deps at root)
-  hoistedDeps: Map<string, HoistedDep>
-
   // Scope system
   currentScope: 'root' | string // 'root' or package ID (derived from scopeStack)
   scopeStack: string[] // [] = root, [pkgId] = layer 1, [pkgId, internalId] = layer 2
@@ -200,7 +177,7 @@ export interface GameState {
   // Cascade system (staggered spawning)
   cascade: CascadeState
 
-  // Automation system (auto-resolve, auto-hoist)
+  // Automation system (auto-resolve)
   automation: AutomationState
 
   // Surge system (P2+ - boost cascades by reserving bandwidth)

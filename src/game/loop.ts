@@ -163,7 +163,7 @@ function tick(): void {
     updateStability()
   }
 
-  // Update automation (auto-resolve, auto-dedup, auto-hoist)
+  // Update automation (auto-resolve)
   updateAutomation(now, deltaTime)
 
   // Call registered callbacks

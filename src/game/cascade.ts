@@ -31,7 +31,6 @@ import {
   pickRandomIdentity,
   areIncompatible,
   STARTER_KIT_INTERNAL_DEPS,
-  LODASH_IDENTITY,
   type PackageIdentity,
 } from './registry'
 import { getPackageAtPath } from './scope'
@@ -136,16 +135,6 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
     : []
 
   if (!isStarterKit) {
-    // Check if this is the second top-level package before first prestige
-    // Inject lodash to guarantee a hoist teaching opportunity
-    const isSecondPackageBeforePrestige =
-      depth === 1 && gameState.meta.totalPrestiges === 0
-
-    if (isSecondPackageBeforePrestige) {
-      // Inject lodash at position 0 - will pair with lodash from starter-kit for hoisting
-      depIdentities.push(LODASH_IDENTITY)
-    }
-
     let count: number
     if (pkg.identity && pkg.identity.baseDeps > 0) {
       const variance = Math.floor(Math.random() * 5) - 2
@@ -174,10 +163,7 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
     count = Math.min(count, 40)
     count = Math.max(count, 3)
 
-    // If we injected lodash, reduce count by 1 to keep total similar
-    const randomCount = isSecondPackageBeforePrestige ? count - 1 : count
-
-    for (let i = 0; i < randomCount; i++) {
+    for (let i = 0; i < count; i++) {
       depIdentities.push(pickRandomIdentity())
     }
   }

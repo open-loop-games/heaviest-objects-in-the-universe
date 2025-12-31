@@ -1,20 +1,17 @@
-// Automation system for auto-resolve and auto-hoist
-// Unlocks at tier 2 (resolve) and tier 3 (hoist)
+// Automation system for auto-resolve
+// Unlocks at tier 2
 // Note: Auto-dedup intentionally removed - merging stays manual for gameplay
 
 import { toRaw } from 'vue'
 import { gameState, getEcosystemTier } from './state'
 import { getPackageAtPath, getPackagesAtPath, getWiresAtPath } from './scope'
-import { findSharedDeps, hoistDep } from './hoisting'
 import { hasDuplicatesInScope, hasConflictsInScope } from './formulas'
 import { getCascadeScopePath, isCascadeActive } from './cascade'
 import {
   getResolveDrainMultiplier,
   getResolveSpeedMultiplier,
-  getHoistDrainMultiplier,
-  getHoistSpeedMultiplier,
 } from './upgrades'
-import { AUTO_RESOLVE_DRAIN, AUTO_HOIST_DRAIN } from './config'
+import { AUTO_RESOLVE_DRAIN } from './config'
 import type { Package } from './types'
 
 // ============================================
@@ -31,18 +28,6 @@ const RESOLVE_INTERVALS = [
   2000, // Tier 3: 2s
   1000, // Tier 4: 1s
   500, // Tier 5: 0.5s
-] as const
-
-// Interval between auto-hoists by tier (ms)
-// Index 0 unused, Index 1-5 = Tiers 1-5
-// Tier 1-2 = no automation, Tier 3 = 4s, Tier 4 = 2.5s, Tier 5 = 1.5s
-const HOIST_INTERVALS = [
-  Infinity, // unused (index 0)
-  Infinity, // Tier 1: no automation
-  Infinity, // Tier 2: no automation
-  4000, // Tier 3: 4s
-  2500, // Tier 4: 2.5s
-  1500, // Tier 5: 1.5s
 ] as const
 
 // Duration of "processing" animation before completion (ms)
@@ -203,9 +188,6 @@ function recalculateInternalStateAtPath(scopePath: string[]): void {
 let onAutoResolveComplete:
   | ((scopePath: string[], position: { x: number; y: number }) => void)
   | null = null
-const onAutoHoistComplete:
-  | ((depName: string, position: { x: number; y: number }) => void)
-  | null = null
 
 export function setAutoResolveCallback(
   callback: (scopePath: string[], position: { x: number; y: number }) => void
@@ -302,94 +284,6 @@ export function updateAutomation(now: number, _deltaTime: number = 0): void {
     auto.resolveTargetWireId = null
     auto.resolveTargetScope = null
   }
-
-  // ============================================
-  // AUTO-HOIST (Tier 3+, requires toggle enabled)
-  // Momentum loop: Fixed drain per operation (not continuous)
-  // ============================================
-  if (tier >= 3 && auto.hoistEnabled) {
-    // Apply speed upgrade to interval (faster with upgrades)
-    const baseInterval = HOIST_INTERVALS[tier] ?? Infinity
-    const hoistInterval = baseInterval / getHoistSpeedMultiplier()
-
-    // Check if we should start a new hoist
-    if (!auto.hoistActive && now - auto.lastHoistTime >= hoistInterval) {
-      // Find shared deps that can be hoisted
-      const sharedDeps = findSharedDeps()
-      if (sharedDeps.size > 0) {
-        // Get first shared dep
-        const [depName, sources] = sharedDeps.entries().next().value as [
-          string,
-          string[],
-        ]
-        if (depName && sources && sources.length >= 2) {
-          // Check if we can afford the fixed drain cost
-          const drainCost = AUTO_HOIST_DRAIN * getHoistDrainMultiplier()
-          if (gameState.resources.bandwidth >= drainCost) {
-            // Start processing
-            auto.hoistActive = true
-            auto.hoistTargetDepName = depName
-            auto.hoistTargetSources = sources
-            auto.processStartTime = now
-          }
-          // If can't afford, don't start - will try again next interval
-        }
-      }
-      auto.lastHoistTime = now
-    }
-
-    // Check if current hoist should complete
-    if (
-      auto.hoistActive &&
-      auto.hoistTargetDepName &&
-      auto.hoistTargetSources
-    ) {
-      if (now - auto.processStartTime >= PROCESS_DURATION) {
-        const depName = auto.hoistTargetDepName
-        const sources = auto.hoistTargetSources
-
-        // Get position for effect (average of source package positions)
-        const effectPosition = { x: 0, y: 0 }
-        let count = 0
-        for (const srcId of sources) {
-          const pkg = gameState.packages.get(srcId)
-          if (pkg) {
-            effectPosition.x += pkg.position.x
-            effectPosition.y += pkg.position.y
-            count++
-          }
-        }
-        if (count > 0) {
-          effectPosition.x /= count
-          effectPosition.y /= count
-        }
-
-        // Deduct fixed drain cost on completion (momentum loop)
-        const drainCost = AUTO_HOIST_DRAIN * getHoistDrainMultiplier()
-        gameState.resources.bandwidth = Math.max(
-          0,
-          gameState.resources.bandwidth - drainCost
-        )
-
-        // Complete the hoist (no momentum generation - automation doesn't reward)
-        const success = hoistDep(depName)
-
-        if (success && onAutoHoistComplete) {
-          onAutoHoistComplete(depName, effectPosition)
-        }
-
-        // Reset state
-        auto.hoistActive = false
-        auto.hoistTargetDepName = null
-        auto.hoistTargetSources = null
-      }
-    }
-  } else if (auto.hoistActive) {
-    // Toggle turned off while processing - cancel
-    auto.hoistActive = false
-    auto.hoistTargetDepName = null
-    auto.hoistTargetSources = null
-  }
 }
 
 // ============================================
@@ -400,14 +294,13 @@ export function updateAutomation(now: number, _deltaTime: number = 0): void {
  * Check if automation is currently processing anything
  */
 export function isAutomationProcessing(): boolean {
-  return gameState.automation.resolveActive || gameState.automation.hoistActive
+  return gameState.automation.resolveActive
 }
 
 /**
  * Get the type of automation currently processing
  */
-export function getAutomationProcessingType(): 'resolve' | 'hoist' | null {
+export function getAutomationProcessingType(): 'resolve' | null {
   if (gameState.automation.resolveActive) return 'resolve'
-  if (gameState.automation.hoistActive) return 'hoist'
   return null
 }

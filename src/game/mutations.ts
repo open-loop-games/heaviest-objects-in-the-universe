@@ -34,8 +34,16 @@ import {
   getCurrentScopeWires,
   isInPackageScope,
 } from './scope'
-import { recalculateStateAtPath } from './packages'
 import { saveToLocalStorage, clearSavedGame } from './persistence'
+
+// Callback to avoid circular dependency with packages.ts
+let _recalculateStateAtPath: ((scopePath: string[]) => void) | null = null
+
+export function setMutationsRecalculateCallback(
+  fn: (scopePath: string[]) => void
+): void {
+  _recalculateStateAtPath = fn
+}
 import { getCompressionMultiplier, getStabilizationBonus } from './upgrades'
 import {
   getEfficiencyTier,
@@ -455,8 +463,8 @@ export function resolveWireConflict(wireId: string): boolean {
   }
 
   // Recalculate scope state
-  if (isInPackageScope()) {
-    recalculateStateAtPath([...gameState.scopeStack])
+  if (isInPackageScope() && _recalculateStateAtPath) {
+    _recalculateStateAtPath([...gameState.scopeStack])
   }
 
   return true
@@ -526,7 +534,6 @@ export function performPrestige(): void {
   // Reset current run
   gameState.packages.clear()
   gameState.wires.clear()
-  gameState.hoistedDeps.clear()
   gameState.rootId = null
 
   // Reset scope system
@@ -541,16 +548,11 @@ export function performPrestige(): void {
 
   // Reset automation system (toggles reset to off each run)
   gameState.automation.resolveEnabled = false
-  gameState.automation.hoistEnabled = false
   gameState.automation.resolveActive = false
   gameState.automation.resolveTargetWireId = null
   gameState.automation.resolveTargetScope = null
-  gameState.automation.hoistActive = false
-  gameState.automation.hoistTargetDepName = null
-  gameState.automation.hoistTargetSources = null
   gameState.automation.processStartTime = 0
   gameState.automation.lastResolveTime = 0
-  gameState.automation.lastHoistTime = 0
 
   // Reset surge (charge resets, unlocked segments preserved via upgrade)
   gameState.surge.chargedSegments = 0
@@ -601,7 +603,6 @@ export function softReset(): void {
   // Clear current run state
   gameState.packages.clear()
   gameState.wires.clear()
-  gameState.hoistedDeps.clear()
   gameState.rootId = null
 
   // Reset scope

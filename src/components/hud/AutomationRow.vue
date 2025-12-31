@@ -7,7 +7,7 @@ import {
   purchaseUpgrade,
   setPreviewedUpgrade,
 } from '../../game/upgrades'
-import { AUTO_RESOLVE_DRAIN, AUTO_HOIST_DRAIN } from '../../game/config'
+import { AUTO_RESOLVE_DRAIN } from '../../game/config'
 
 // ============================================
 // TIER & VISIBILITY
@@ -43,14 +43,6 @@ const resolveState = computed<ToggleState>(() =>
   )
 )
 
-const hoistState = computed<ToggleState>(() =>
-  getToggleState(
-    gameState.automation.hoistEnabled,
-    gameState.automation.hoistActive,
-    AUTO_HOIST_DRAIN
-  )
-)
-
 // ============================================
 // TOGGLE HANDLERS
 // ============================================
@@ -59,21 +51,13 @@ function toggleResolve() {
   gameState.automation.resolveEnabled = !gameState.automation.resolveEnabled
 }
 
-function toggleHoist() {
-  gameState.automation.hoistEnabled = !gameState.automation.hoistEnabled
-}
-
 // ============================================
 // SPEED UPGRADE PIPS
 // ============================================
 
-// Note: These upgrades may not exist yet in upgrades.ts
-// Using placeholder logic that will work once upgrades are added
 const resolveSpeedLevel = computed(() => getUpgradeLevel('resolveSpeed') || 0)
-const hoistSpeedLevel = computed(() => getUpgradeLevel('hoistSpeed') || 0)
 
 const canAffordResolveSpeed = computed(() => canPurchaseUpgrade('resolveSpeed'))
-const canAffordHoistSpeed = computed(() => canPurchaseUpgrade('hoistSpeed'))
 
 const MAX_SPEED_LEVEL = 5
 
@@ -90,22 +74,6 @@ function handleResolveSpeedEnter() {
 }
 function handleResolveSpeedLeave() {
   isHoveringResolve.value = false
-  setPreviewedUpgrade(null)
-}
-
-// Container handlers for hoist speed
-const isHoveringHoist = ref(false)
-function handleHoistSpeedClick() {
-  if (canAffordHoistSpeed.value) {
-    purchaseUpgrade('hoistSpeed')
-  }
-}
-function handleHoistSpeedEnter() {
-  isHoveringHoist.value = true
-  setPreviewedUpgrade('hoistSpeed')
-}
-function handleHoistSpeedLeave() {
-  isHoveringHoist.value = false
   setPreviewedUpgrade(null)
 }
 </script>
@@ -133,33 +101,6 @@ function handleHoistSpeedLeave() {
               filled: i <= resolveSpeedLevel,
               affordable: i === resolveSpeedLevel + 1 && canAffordResolveSpeed,
               'next-level': i === resolveSpeedLevel + 1,
-            }"
-          />
-        </div>
-      </div>
-    </div>
-
-    <!-- Auto-hoist (Tier 3+) -->
-    <div v-if="tier >= 3" class="auto-group">
-      <button class="auto-toggle" :class="hoistState" @click="toggleHoist">
-        <span class="auto-icon">⤴</span>
-        <span class="toggle-dot" :class="hoistState">●</span>
-      </button>
-      <div
-        class="upgrade-pips-container"
-        @mouseenter="handleHoistSpeedEnter"
-        @mouseleave="handleHoistSpeedLeave"
-        @click="handleHoistSpeedClick"
-      >
-        <div class="upgrade-pips mini">
-          <span
-            v-for="i in MAX_SPEED_LEVEL"
-            :key="i"
-            class="pip"
-            :class="{
-              filled: i <= hoistSpeedLevel,
-              affordable: i === hoistSpeedLevel + 1 && canAffordHoistSpeed,
-              'next-level': i === hoistSpeedLevel + 1,
             }"
           />
         </div>

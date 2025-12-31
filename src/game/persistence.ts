@@ -90,7 +90,6 @@ export function saveGame(): string {
       serializePackageForSave(pkg),
     ]),
     wires: Array.from(gameState.wires.entries()),
-    hoistedDeps: Array.from(gameState.hoistedDeps.entries()),
   }
   return JSON.stringify(saveData)
 }
@@ -116,9 +115,6 @@ export function loadGame(saveString: string): boolean {
 
     // Restore wires
     data.wires = new Map(data.wires)
-
-    // Restore hoistedDeps
-    data.hoistedDeps = new Map(data.hoistedDeps)
 
     // Remove version from data before assigning (not part of GameState)
     delete data.version

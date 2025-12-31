@@ -303,10 +303,7 @@ export function getCursorHintState(): {
   }
 
   // Scenario 2: First scope exited but second package not spawned
-  if (
-    gameState.onboarding.firstScopeExited &&
-    !gameState.onboarding.firstHoistSeen
-  ) {
+  if (gameState.onboarding.firstScopeExited) {
     // Count top-level packages (excluding root)
     let topLevelCount = 0
     for (const pkg of gameState.packages.values()) {

@@ -366,7 +366,7 @@ export function updatePhysics(deltaTime: number): void {
   const anchorStrength = getAnchorStrength()
   const chaosAmount = 1 - cleanliness
 
-  // Check if we're dragging a package at root level (for hoist)
+  // Check if we're dragging a package at root level
   const isRootDragging =
     dragState.value.packageId !== null && !dragState.value.isInternalScope
   const rootDraggedId = dragState.value.packageId
@@ -381,7 +381,7 @@ export function updatePhysics(deltaTime: number): void {
       continue
     }
 
-    // Skip physics for dragged package at root level (hoist drag)
+    // Skip physics for dragged package at root level
     if (isRootDragging && pkg.id === rootDraggedId) {
       pkg.velocity.vx = 0
       pkg.velocity.vy = 0

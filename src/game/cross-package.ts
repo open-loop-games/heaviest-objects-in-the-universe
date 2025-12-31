@@ -6,7 +6,6 @@ import { gameState } from './state'
 import type { Package, Wire } from './types'
 import { areIncompatible } from './registry'
 import { HALO_COLORS } from './symlinks'
-import { isDepHoisted } from './hoisting'
 
 // ============================================
 // CROSS-PACKAGE CONFLICTS (Phase 4)
@@ -229,12 +228,8 @@ export function updateCrossPackageDuplicates(): void {
   }
 
   // Find identities that appear in multiple top-level packages
-  // Skip deps that are already hoisted (they're handled by the hoisting system)
   let colorIndex = 0
   for (const [identityName, locations] of identityToPackages) {
-    // Skip if this dep is already hoisted
-    if (isDepHoisted(identityName)) continue
-
     // Get unique package IDs
     const uniquePackageIds = [...new Set(locations.map((l) => l.packageId))]
 

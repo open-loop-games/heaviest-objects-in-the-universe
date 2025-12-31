@@ -59,14 +59,6 @@ import {
   performCrossPackageSymlink,
   getSharedInternalDeps,
 } from '../game/cross-package'
-import {
-  canHoist,
-  isInDropZone,
-  getDropZoneDistance,
-  hoistAllSharedDeps,
-  getHoistedDeps,
-  findSharedDeps,
-} from '../game/hoisting'
 import { setAutoResolveCallback } from '../game/automation'
 import { onConflictResolved } from '../game/mutations'
 import type { Package } from '../game/types'
@@ -99,17 +91,6 @@ let symlinkDragSource: Package | null = null
 let symlinkDragStartPos: { x: number; y: number } | null = null
 let symlinkDropTarget: Package | null = null
 let isDraggingSymlink = false
-
-// Hoist drag state
-let hoistDragSource: Package | null = null
-let hoistDragStartPos: { x: number; y: number } | null = null
-let isInHoistZone = false
-let hoistableDepName: string | null = null
-
-// Non-hoistable package click state (for wiggle-on-drag-attempt)
-let pendingEnterPackage: Package | null = null
-let pendingEnterStartPos: { x: number; y: number } | null = null
-let didWiggle = false
 
 // Computed: selected wire data (scope-aware, including sibling wires)
 const selectedWire = computed(() => {
@@ -213,9 +194,8 @@ onMounted(async () => {
         exitToRoot()
         renderer.getBlackHoleRenderer().startCollapse(onComplete)
       },
-      // After prestige: clear visuals and create new root package
+      // After prestige: create new root package
       () => {
-        renderer.clearHoistedDeps()
         createRootPackage()
         previousPackageStates.clear()
       }
@@ -417,35 +397,8 @@ function handleMouseDown(event: MouseEvent) {
         return // Don't install on click for duplicates
       }
 
-      // At root scope: Check if clicking a top-level package
+      // At root scope: Check if clicking a top-level package - enter its scope
       if (!isInPackageScope() && clickedPkg.parentId === gameState.rootId) {
-        // Check if THIS package specifically is hoistable (has shared deps)
-        const hoistInfo = canHoist(clickedPkg.id)
-        if (hoistInfo.canHoist) {
-          // This package can be hoisted - start hoist drag
-          hoistDragSource = clickedPkg
-          hoistDragStartPos = { x: worldPos.x, y: worldPos.y }
-          hoistableDepName = hoistInfo.depName ?? null
-          isInHoistZone = false
-          // Signal physics to freeze this package (root-level drag, not internal scope)
-          startDrag(clickedPkg.id, false)
-          // Return here - don't enter scope on click
-          // Scope entry happens on mouseUp if not dragged to hoist zone
-          return
-        }
-
-        // Not hoistable - check if there are ANY shared deps globally
-        const sharedDeps = findSharedDeps()
-        if (sharedDeps.size > 0) {
-          // There are hoistable packages, but not this one
-          // Set up pending enter - will wiggle if they try to drag, enter if they just click
-          pendingEnterPackage = clickedPkg
-          pendingEnterStartPos = { x: worldPos.x, y: worldPos.y }
-          didWiggle = false
-          return
-        }
-
-        // No hoistable packages at all - just enter scope normally
         if (enterPackageScope(clickedPkg.id)) {
           // Smooth camera transition to center
           setCameraTarget(0, 0)
@@ -766,55 +719,6 @@ function handleMouseMove(event: MouseEvent) {
   const worldPos = getWorldPos(event)
   if (!worldPos) return
 
-  // Handle pending enter (non-hoistable package) - wiggle on drag attempt
-  if (pendingEnterPackage && pendingEnterStartPos) {
-    const dx = worldPos.x - pendingEnterStartPos.x
-    const dy = worldPos.y - pendingEnterStartPos.y
-    const dragDist = Math.sqrt(dx * dx + dy * dy)
-
-    if (dragDist > 10 / gameState.camera.zoom && !didWiggle) {
-      // They tried to drag a non-hoistable package - wiggle it
-      triggerWiggle(pendingEnterPackage.id)
-      didWiggle = true
-    }
-    return
-  }
-
-  // Handle hoist drag
-  if (hoistDragSource && hoistDragStartPos) {
-    // Check drag threshold (10 pixels in world space)
-    const dx = worldPos.x - hoistDragStartPos.x
-    const dy = worldPos.y - hoistDragStartPos.y
-    const dragDist = Math.sqrt(dx * dx + dy * dy)
-
-    if (dragDist > 10 / gameState.camera.zoom) {
-      // Actually move the package position (physics is frozen via startDrag)
-      hoistDragSource.position.x = worldPos.x
-      hoistDragSource.position.y = worldPos.y
-      // Zero velocity so it doesn't fly off when released
-      hoistDragSource.velocity.vx = 0
-      hoistDragSource.velocity.vy = 0
-
-      // Check if we're in the drop zone (near root)
-      isInHoistZone = isInDropZone(worldPos.x, worldPos.y)
-
-      // Get root for drop zone rendering
-      const root = gameState.rootId
-        ? gameState.packages.get(gameState.rootId)
-        : null
-      if (root) {
-        const distance = getDropZoneDistance(worldPos.x, worldPos.y)
-        renderer.getNodeRenderer().updateDropZone(root.position, true, distance)
-      }
-
-      // Update cursor
-      if (canvasRef.value) {
-        canvasRef.value.style.cursor = isInHoistZone ? 'copy' : 'grabbing'
-      }
-    }
-    return
-  }
-
   // Handle symlink drag
   if (symlinkDragSource && symlinkDragStartPos) {
     // Check drag threshold (10 pixels in world space)
@@ -927,31 +831,16 @@ function handleMouseMove(event: MouseEvent) {
     ) {
       // Duplicate package - show grab cursor to indicate draggable
       canvasRef.value.style.cursor = 'grab'
-      renderer.setHoveredHoistable(null)
       renderer.setHoveredDuplicate(hoveredPkg.id)
       setActionPreview('symlink') // Show symlink cost on bandwidth bar
-    } else if (
-      hoveredPkg &&
-      hoveredPkg.state === 'ready' &&
-      !isInPackageScope() &&
-      hoveredPkg.parentId === gameState.rootId &&
-      canHoist(hoveredPkg.id).canHoist
-    ) {
-      // Top-level package with hoistable shared deps - show grab cursor and highlight guide
-      canvasRef.value.style.cursor = 'grab'
-      renderer.setHoveredHoistable(hoveredPkg.id)
-      renderer.setHoveredDuplicate(null)
-      setActionPreview(null)
     } else if (hoveredWire && hoveredWire.conflicted) {
       // Hovering over conflict wire - show conflict cost on bandwidth bar
       canvasRef.value.style.cursor = 'pointer'
-      renderer.setHoveredHoistable(null)
       renderer.setHoveredDuplicate(null)
       setActionPreview('conflict')
     } else if (hoveredPkg && hoveredPkg.state === 'conflict') {
       // Conflict - show pointer for resolution
       canvasRef.value.style.cursor = 'pointer'
-      renderer.setHoveredHoistable(null)
       renderer.setHoveredDuplicate(null)
       setActionPreview('conflict') // Show conflict cost on bandwidth bar
     } else if (
@@ -961,167 +850,17 @@ function handleMouseMove(event: MouseEvent) {
     ) {
       // Root node - show pointer for installing
       canvasRef.value.style.cursor = 'pointer'
-      renderer.setHoveredHoistable(null)
       renderer.setHoveredDuplicate(null)
       setActionPreview(null)
     } else {
       canvasRef.value.style.cursor = 'default'
-      renderer.setHoveredHoistable(null)
       renderer.setHoveredDuplicate(null)
       setActionPreview(null)
     }
   }
-
-  // Check for hoisted dep hover (for ephemeral lines)
-  if (!isInPackageScope()) {
-    const hoistedDeps = getHoistedDeps()
-    let foundHoveredHoisted = false
-
-    for (const hoisted of hoistedDeps) {
-      const dx = worldPos.x - hoisted.position.x
-      const dy = worldPos.y - hoisted.position.y
-      const dist = Math.sqrt(dx * dx + dy * dy)
-
-      if (dist < 25 / gameState.camera.zoom) {
-        renderer.setHoveredHoistedDep(hoisted.id)
-        foundHoveredHoisted = true
-        if (canvasRef.value) {
-          canvasRef.value.style.cursor = 'pointer'
-        }
-        break
-      }
-    }
-
-    if (!foundHoveredHoisted) {
-      renderer.setHoveredHoistedDep(null)
-    }
-  }
 }
 
-function handleMouseUp(event?: MouseEvent) {
-  // Handle pending enter completion (non-hoistable package click)
-  if (pendingEnterPackage) {
-    // If they didn't wiggle (didn't try to drag), enter the scope
-    if (!didWiggle) {
-      if (enterPackageScope(pendingEnterPackage.id)) {
-        setCameraTarget(0, 0)
-        const effects = renderer.getEffectsRenderer()
-        effects.spawnRipple(0, 0, Colors.borderInstalling)
-      }
-    }
-    // Clear pending enter state
-    pendingEnterPackage = null
-    pendingEnterStartPos = null
-    didWiggle = false
-    return
-  }
-
-  // Handle hoist drag completion
-  if (hoistDragSource) {
-    // Check if we actually dragged (mouse moved from start position)
-    let actuallyDragged = false
-    if (event && hoistDragStartPos) {
-      const worldPos = renderer.screenToWorld(event.clientX, event.clientY)
-      if (worldPos) {
-        const dx = worldPos.x - hoistDragStartPos.x
-        const dy = worldPos.y - hoistDragStartPos.y
-        const dragDist = Math.sqrt(dx * dx + dy * dy)
-        actuallyDragged = dragDist > 10 / gameState.camera.zoom
-      }
-    }
-
-    if (isInHoistZone && hoistableDepName) {
-      // Execute BATCH hoist! (drop zone was reached - hoist ALL shared deps)
-      const effects = renderer.getEffectsRenderer()
-      const nodeRenderer = renderer.getNodeRenderer()
-
-      // Hoist all shared deps at once
-      const hoistResults = hoistAllSharedDeps()
-
-      if (hoistResults.length > 0) {
-        // Get root for effects
-        const root = gameState.rootId
-          ? gameState.packages.get(gameState.rootId)
-          : null
-
-        // Start staggered animations for each hoisted dep
-        hoistResults.forEach((result, index) => {
-          const delay = index * 80 // 80ms stagger between each
-
-          // Start arc animation from average source position to ring
-          nodeRenderer.startHoistAnimation(
-            result.hoistedId,
-            result.sourcePositions[0]?.x ?? 0,
-            result.sourcePositions[0]?.y ?? 0,
-            result.targetPosition.x,
-            result.targetPosition.y
-          )
-
-          // Spawn burst at each source position (staggered)
-          result.sourcePositions.forEach((pos, srcIndex) => {
-            setTimeout(
-              () => {
-                effects.spawnBurst(pos.x, pos.y, 0x8b5cf6)
-
-                // Spawn causal particles from each source
-                if (spawnCausalParticle) {
-                  const screenPos = renderer.worldToScreen(pos.x, pos.y)
-                  spawnCausalParticle('efficiency-up', screenPos.x, screenPos.y)
-                  if (srcIndex > 0) {
-                    // Weight saved from deduplication
-                    spawnCausalParticle('weight-loss', screenPos.x, screenPos.y)
-                  }
-                }
-              },
-              delay + srcIndex * 30
-            )
-          })
-        })
-
-        // Success feedback at root (after all animations start)
-        if (root) {
-          const totalDelay = hoistResults.length * 80
-          setTimeout(() => {
-            effects.spawnBurst(root.position.x, root.position.y, 0x8b5cf6)
-          }, totalDelay)
-        }
-
-        // Bandwidth gain particle from the dragged package
-        if (spawnCausalParticle) {
-          const screenPos = renderer.worldToScreen(
-            hoistDragSource.position.x,
-            hoistDragSource.position.y
-          )
-          spawnCausalParticle('bandwidth-gain', screenPos.x, screenPos.y)
-        }
-      }
-    } else if (!actuallyDragged) {
-      // Was just a click, not a drag - enter the package scope
-      if (enterPackageScope(hoistDragSource.id)) {
-        setCameraTarget(0, 0)
-        const effects = renderer.getEffectsRenderer()
-        effects.spawnRipple(0, 0, Colors.borderInstalling)
-      }
-    }
-    // If dragged but not to hoist zone, just cancel (don't enter scope)
-
-    // Clear hoist drag state
-    renderer.getNodeRenderer().hideDropZone()
-    hoistDragSource = null
-    hoistDragStartPos = null
-    hoistableDepName = null
-    isInHoistZone = false
-
-    // End physics drag freeze
-    endDrag()
-
-    // Reset cursor
-    if (canvasRef.value) {
-      canvasRef.value.style.cursor = 'default'
-    }
-    return
-  }
-
+function handleMouseUp(_event?: MouseEvent) {
   // Handle symlink drag completion
   if (symlinkDragSource) {
     if (isDraggingSymlink && symlinkDropTarget) {

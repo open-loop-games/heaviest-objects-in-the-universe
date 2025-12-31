@@ -81,15 +81,6 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     unlockAt: 0,
     tierRequirement: 2,
   },
-  hoistSpeed: {
-    id: 'hoistSpeed',
-    icon: '⤴+',
-    maxLevel: 5,
-    baseCost: 120,
-    costMultiplier: 1.4,
-    unlockAt: 0,
-    tierRequirement: 3,
-  },
   surge: {
     id: 'surge',
     icon: '◎', // Ripple/burst icon (placeholder, component uses SVG)
@@ -222,18 +213,6 @@ export function getResolveDrainMultiplier(): number {
 // Get speed boost for auto-resolve
 export function getResolveSpeedMultiplier(): number {
   const level = getUpgradeLevel('resolveSpeed')
-  return effects.speedBoost(level)
-}
-
-// Get drain reduction for auto-hoist
-export function getHoistDrainMultiplier(): number {
-  const level = getUpgradeLevel('hoistSpeed')
-  return effects.drainReduction(level)
-}
-
-// Get speed boost for auto-hoist
-export function getHoistSpeedMultiplier(): number {
-  const level = getUpgradeLevel('hoistSpeed')
   return effects.speedBoost(level)
 }
 

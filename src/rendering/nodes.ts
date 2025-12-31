@@ -1,12 +1,11 @@
 // Node rendering with Pixi.js
 
 import { Graphics, Container, type Application } from 'pixi.js'
-import type { Package, HoistedDep, PendingSpawn } from '../game/types'
+import type { Package, PendingSpawn } from '../game/types'
 import { DEP_SPAWN_COST } from '../game/config'
 import { Colors, getNodeColor, getBorderColor } from './colors'
 import { createPackageIcon, isIconReady } from './icons'
 import { prefersReducedMotion } from './accessibility'
-import { HoistedRenderer } from './hoisted'
 import {
   getSpaghettification,
   isCollapseActive,
@@ -39,8 +38,6 @@ export interface NodeEffects {
   // Ghost node rendering (cross-package symlink)
   isGhost?: boolean
   ghostTargetScope?: string | null // Package ID where real node lives
-  // Hoistable indicator (has shared deps that can be hoisted)
-  isHoistable?: boolean
   // Depth rewards
   isGolden?: boolean // Golden package glow
   hasCacheFragment?: boolean // Cache fragment indicator
@@ -81,7 +78,6 @@ export class NodeRenderer {
   private nodesLayer: Container
   private nodeContainers: Map<string, NodeContainer> = new Map()
   private queuedDepsGraphics: Graphics
-  private hoistedRenderer: HoistedRenderer
 
   constructor(app: Application) {
     this.app = app
@@ -93,9 +89,6 @@ export class NodeRenderer {
     this.queuedDepsGraphics = new Graphics()
     this.queuedDepsGraphics.label = 'queued-deps'
     this.nodesLayer.addChild(this.queuedDepsGraphics)
-
-    // Hoisted dep renderer (handles orbit deps around root)
-    this.hoistedRenderer = new HoistedRenderer(this.nodesLayer)
   }
 
   /**
@@ -311,8 +304,8 @@ export class NodeRenderer {
     // Portal rings for top-level packages (drawn on top of main circle)
     if (effects?.internalState) {
       this.drawPortalRings(graphics, radius, effects.internalState)
-      // Drill-down badge with down arrow (only if not hoistable and not stable)
-      if (!effects?.isHoistable && effects.internalState !== 'stable') {
+      // Drill-down badge with down arrow (only if not stable)
+      if (effects.internalState !== 'stable') {
         this.drawDrillDownIndicator(graphics, radius, effects.internalState)
       }
     }
@@ -343,11 +336,6 @@ export class NodeRenderer {
     if (pkg.state === 'conflict') {
       graphics.circle(0, 0, radius + 3)
       graphics.stroke({ color: Colors.borderConflict, width: 2, alpha: 0.7 })
-    }
-
-    // Hoistable indicator - purple badge with upward arrow at top of node
-    if (effects?.isHoistable) {
-      this.drawHoistableIndicator(graphics, radius)
     }
 
     // Cache fragment indicator - purple diamond pip at bottom
@@ -638,45 +626,6 @@ export class NodeRenderer {
   }
 
   /**
-   * Draw hoistable indicator - purple badge at top of node with upward arrow
-   * Indicates this package has shared deps that can be hoisted to root
-   */
-  private drawHoistableIndicator(graphics: Graphics, radius: number): void {
-    const reducedMotion = prefersReducedMotion()
-    const time = Date.now() * 0.004
-    const pulse = reducedMotion ? 0.5 : (Math.sin(time) + 1) / 2
-
-    const color = 0x8b5cf6 // Purple (same as hoist lines)
-    const badgeRadius = 8
-    const badgeY = -radius - 6 // Position above the node
-
-    // Badge background circle with pulsing glow
-    const glowAlpha = 0.3 + pulse * 0.2
-    graphics.circle(0, badgeY, badgeRadius + 3)
-    graphics.fill({ color, alpha: glowAlpha })
-
-    // Badge circle
-    graphics.circle(0, badgeY, badgeRadius)
-    graphics.fill({ color: 0x1a1a2e })
-    graphics.stroke({ color, width: 2, alpha: 0.9 })
-
-    // Upward arrow inside badge
-    const arrowSize = 4
-    const arrowY = badgeY
-
-    // Arrow stem
-    graphics.moveTo(0, arrowY + arrowSize - 1)
-    graphics.lineTo(0, arrowY - arrowSize + 2)
-    graphics.stroke({ color, width: 2, alpha: 1 })
-
-    // Arrow head (chevron pointing up)
-    graphics.moveTo(-arrowSize + 1, arrowY - 1)
-    graphics.lineTo(0, arrowY - arrowSize)
-    graphics.lineTo(arrowSize - 1, arrowY - 1)
-    graphics.stroke({ color, width: 2, alpha: 1 })
-  }
-
-  /**
    * Draw golden package ring
    * For rare packages that spawn at depth 3+ (4x weight)
    * Simple gold ring just inside the node's border
@@ -929,7 +878,6 @@ export class NodeRenderer {
     }
     this.nodeContainers.clear()
     this.queuedDepsGraphics.clear()
-    this.hoistedRenderer.clear()
     this.nodesLayer.removeChildren()
     // Re-add the queued deps graphics after clearing
     this.nodesLayer.addChild(this.queuedDepsGraphics)
@@ -1004,70 +952,5 @@ export class NodeRenderer {
         this.queuedDepsGraphics.fill({ color: 0x5a7aff, alpha: pulseAlpha })
       }
     }
-  }
-
-  // ============================================
-  // HOISTED DEP RENDERING (delegated to HoistedRenderer)
-  // ============================================
-
-  startHoistAnimation(
-    hoistedId: string,
-    fromX: number,
-    fromY: number,
-    toX: number,
-    toY: number
-  ): void {
-    this.hoistedRenderer.startHoistAnimation(hoistedId, fromX, fromY, toX, toY)
-  }
-
-  updateHoistedDep(hoisted: HoistedDep): void {
-    this.hoistedRenderer.updateHoistedDep(hoisted)
-  }
-
-  removeHoistedDep(id: string): void {
-    this.hoistedRenderer.removeHoistedDep(id)
-  }
-
-  getHoistedDepGraphics(id: string): Container | undefined {
-    return this.hoistedRenderer.getHoistedDepGraphics(id)
-  }
-
-  getAllHoistedDepIds(): Set<string> {
-    return this.hoistedRenderer.getAllHoistedDepIds()
-  }
-
-  setHoveredHoistedDep(hoistedId: string | null): void {
-    this.hoistedRenderer.setHoveredHoistedDep(hoistedId)
-  }
-
-  drawEphemeralLines(
-    hoisted: HoistedDep | null,
-    sourcePositions: { x: number; y: number }[]
-  ): void {
-    this.hoistedRenderer.drawEphemeralLines(hoisted, sourcePositions)
-  }
-
-  getHoveredHoistedId(): string | null {
-    return this.hoistedRenderer.getHoveredHoistedId()
-  }
-
-  updateDropZone(
-    rootPosition: { x: number; y: number },
-    active: boolean,
-    proximity: number
-  ): void {
-    this.hoistedRenderer.updateDropZone(rootPosition, active, proximity)
-  }
-
-  hideDropZone(): void {
-    this.hoistedRenderer.hideDropZone()
-  }
-
-  clearHoistedDeps(): void {
-    this.hoistedRenderer.clear()
-  }
-
-  setHoistedDepsVisible(visible: boolean): void {
-    this.hoistedRenderer.setVisible(visible)
   }
 }

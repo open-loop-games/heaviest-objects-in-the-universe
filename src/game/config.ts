@@ -8,7 +8,7 @@ import type { GameConfig, GameState } from './types'
 
 // Cache token thresholds for each ecosystem tier (1-5)
 // Tier is derived from cache tokens, not tracked separately
-// Unlocks: Tier 2 = auto-resolve, Tier 3 = auto-hoist, Tier 4/5 = faster
+// Unlocks: Tier 2 = auto-resolve, Tier 3+ = faster automation
 export const TIER_THRESHOLDS = [0, 9, 21, 42, 63] as const
 
 // Max depth allowed at each tier (tier N = depth N)
@@ -54,7 +54,6 @@ export const SYMLINK_MERGE_COST = 0
 
 // Automation fixed drain per operation (momentum loop)
 export const AUTO_RESOLVE_DRAIN = 8
-export const AUTO_HOIST_DRAIN = 12
 
 // Maximum pending deps in queue
 export const MAX_PENDING_DEPS = 40
@@ -172,7 +171,6 @@ export function createInitialState(): GameState {
       efficiencyLevel: 0,
       compressionLevel: 0,
       resolveSpeedLevel: 0,
-      hoistSpeedLevel: 0,
       surgeLevel: 0,
     },
     onboarding: {
@@ -182,7 +180,6 @@ export function createInitialState(): GameState {
       firstSymlinkSeen: false,
       firstInnerConflictSeen: false,
       firstScopeExited: false,
-      firstHoistSeen: false,
       firstPrestigeComplete: false,
       weightSeen: false,
       efficiencySeen: false,
@@ -190,8 +187,6 @@ export function createInitialState(): GameState {
     packages: new Map(),
     wires: new Map(),
     rootId: null,
-    // Hoisting system
-    hoistedDeps: new Map(),
     // Scope system
     currentScope: 'root',
     scopeStack: [], // Empty = root scope
@@ -209,19 +204,13 @@ export function createInitialState(): GameState {
     automation: {
       // Toggle states (default off, user enables)
       resolveEnabled: false,
-      hoistEnabled: false,
       // Auto-resolve
       resolveActive: false,
       resolveTargetWireId: null,
       resolveTargetScope: null,
-      // Auto-hoist
-      hoistActive: false,
-      hoistTargetDepName: null,
-      hoistTargetSources: null,
       // Timing
       processStartTime: 0,
       lastResolveTime: 0,
-      lastHoistTime: 0,
     },
     // Surge system (P2+ - boost cascades)
     surge: {

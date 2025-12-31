@@ -25,7 +25,7 @@ import {
   type PackageIdentity,
 } from './registry'
 import { setRecalculateCallback } from './symlinks'
-import { onScopeStabilized } from './mutations'
+import { onScopeStabilized, setMutationsRecalculateCallback } from './mutations'
 
 // Re-export ID initialization for save/load
 export { initIdCounterFromState } from './id-generator'
@@ -464,4 +464,5 @@ function handleCascadeEnd(scopePath: string[]): void {
 
 // Register callbacks
 setRecalculateCallback(recalculateStateAtPath)
+setMutationsRecalculateCallback(recalculateStateAtPath)
 setCascadeEndCallback(handleCascadeEnd)

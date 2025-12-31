@@ -44,8 +44,7 @@ src/
 │   ├── packages.ts       # Package creation, dependency spawning
 │   ├── cascade.ts        # Staggered spawn system with depth rewards
 │   ├── scope.ts          # Scope navigation (dive into packages)
-│   ├── automation.ts     # Auto-resolve, auto-hoist (tier-gated)
-│   ├── hoisting.ts       # Deduplication to root level
+│   ├── automation.ts     # Auto-resolve (tier-gated)
 │   ├── symlinks.ts       # Duplicate detection + merge logic
 │   ├── registry.ts       # Real npm package identities + archetypes
 │   ├── upgrades.ts       # Cache token upgrades + tier system
@@ -122,12 +121,11 @@ This means **NO numbers, NO letters** anywhere in the game UI. Only:
 **Progression (Tiers 1-5):**
 - Tier 1: Base game, depth 1 only
 - Tier 2: Depth 2 unlocked, auto-resolve available
-- Tier 3: Depth 3+, auto-hoist, golden packages spawn
+- Tier 3: Depth 3+, golden packages spawn
 - Tier 4-5: Deeper nesting, faster automation
 
 **Automation (Tier 2+):**
 - Auto-resolve: Automatically resolves conflicts when enabled
-- Auto-hoist: Automatically hoists duplicate deps to root
 
 ## Current Implementation Status
 
@@ -138,8 +136,7 @@ This means **NO numbers, NO letters** anywhere in the game UI. Only:
 - Force-directed physics (per-scope)
 - Wire-based conflict system (Prune/Upgrade)
 - Duplicate detection + symlink merge UI
-- Hoisting (manual + auto)
-- Automation system (auto-resolve, auto-hoist)
+- Automation system (auto-resolve)
 - Tier/progression system
 - Prestige (black hole animation, cache tokens)
 - Depth rewards (golden packages, cache fragments)

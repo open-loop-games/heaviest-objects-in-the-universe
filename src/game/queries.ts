@@ -11,7 +11,7 @@ import { getNodeRadius } from '../rendering/nodes'
 
 /**
  * Check if position hits any badge on a package
- * Badges: drill-down (bottom), hoistable (top), cache fragment (left)
+ * Badges: drill-down (bottom), cache fragment (left)
  */
 function hitsBadge(
   pos: Position,
@@ -25,17 +25,6 @@ function hitsBadge(
   // Drill-down badge (bottom) - for packages with internal scope
   if (pkg.internalPackages !== null) {
     const badgeY = pkgY + nodeRadius + 6
-    const dx = pkgX - pos.x
-    const dy = badgeY - pos.y
-    if (Math.sqrt(dx * dx + dy * dy) <= badgeRadius) {
-      return true
-    }
-  }
-
-  // Hoistable badge (top) - check if package could be hoistable
-  // (simplified check - actual hoistability computed elsewhere)
-  if (pkg.parentId !== null && pkg.internalPackages !== null) {
-    const badgeY = pkgY - nodeRadius - 6
     const dx = pkgX - pos.x
     const dy = badgeY - pos.y
     if (Math.sqrt(dx * dx + dy * dy) <= badgeRadius) {

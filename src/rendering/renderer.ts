@@ -27,16 +27,9 @@ import {
 } from '../game/symlinks'
 import {
   updateCrossPackageConflicts,
-  updateCrossPackageDuplicates,
   getSiblingWires,
-  getCrossPackageDuplicateInfo,
 } from '../game/cross-package'
 import { getCleanliness, isOrganizing } from '../game/physics'
-import {
-  getHoistedDeps,
-  updateHoistedPositions,
-  findSharedDeps,
-} from '../game/hoisting'
 import { getAllPendingSpawns, isCascadeActive } from '../game/cascade'
 import { canAffordConflictResolve } from '../game/mutations'
 import { canAffordSymlinkMerge } from '../game/symlinks'
@@ -65,9 +58,6 @@ export class GameRenderer {
   // Symlink drag state (managed externally via setSymlinkDragState)
   private symlinkDragSource: string | null = null
   private symlinkDragTarget: string | null = null
-
-  // Hovered hoistable package (for showing prominent guide)
-  private hoveredHoistableId: string | null = null
 
   // Hovered duplicate package (for emphasizing ghost lines and halos)
   private hoveredDuplicateId: string | null = null
@@ -266,7 +256,7 @@ export class GameRenderer {
     // Update black hole effects
     this.blackHoleRenderer.update(deltaTime, screenWidth, screenHeight)
 
-    // Hide wires, ghost lines, hoisted deps, and background layers during collapse animation
+    // Hide wires, ghost lines, and background layers during collapse animation
     const collapseAnimating = this.blackHoleRenderer.isCollapseAnimating()
     this.wireRenderer.getContainer().visible = !collapseAnimating
     this.ghostLinesGraphics.visible = !collapseAnimating
@@ -309,9 +299,8 @@ export class GameRenderer {
     // Update duplicate groups for symlink detection (scope-aware)
     updateDuplicateGroups()
 
-    // Update cross-package systems (sibling conflicts, cross-package duplicates)
+    // Update cross-package systems (sibling conflicts)
     updateCrossPackageConflicts()
-    updateCrossPackageDuplicates()
 
     // Use toRaw() to avoid Vue reactivity tracking in render loop
     // Use scope-aware getters for packages and wires
@@ -393,17 +382,6 @@ export class GameRenderer {
       }
     }
 
-    // Find hoistable packages (at root scope only)
-    const hoistablePackageIds = new Set<string>()
-    if (!inScope) {
-      const sharedDeps = findSharedDeps()
-      for (const [, sourcePackageIds] of sharedDeps) {
-        for (const pkgId of sourcePackageIds) {
-          hoistablePackageIds.add(pkgId)
-        }
-      }
-    }
-
     for (const pkg of rawPackages.values()) {
       const isRoot = pkg.parentId === null
       const pulseIntensity = isRoot ? rootPulse : 0
@@ -444,20 +422,6 @@ export class GameRenderer {
         }
       }
 
-      // At root scope, also check for cross-package duplicates (packages sharing internal deps)
-      if (!inScope && isTopLevel) {
-        const crossDupInfo = getCrossPackageDuplicateInfo(pkg.id)
-        if (crossDupInfo && !duplicateHalo) {
-          duplicateHalo = {
-            color: crossDupInfo.haloColor,
-            pulsePhase: pulsePhase,
-            canAfford: canAffordMerge,
-            isHovered: false,
-            isFirstDuplicate: isFirstDuplicates,
-          }
-        }
-      }
-
       // Check if this node is involved in drag operation
       const isDragging = this.symlinkDragSource === pkg.id
       const isDropTarget = this.symlinkDragTarget === pkg.id
@@ -476,9 +440,6 @@ export class GameRenderer {
       // Ghost node rendering (cross-package symlink)
       const isGhost = pkg.isGhost || false
       const ghostTargetScope = pkg.ghostTargetScope || null
-
-      // Hoistable indicator (only for top-level packages with shared deps)
-      const isHoistable = isTopLevel && hoistablePackageIds.has(pkg.id)
 
       // Celebration scale only applies inside scopes
       const celebrationScale = inScope
@@ -508,7 +469,6 @@ export class GameRenderer {
         internalState,
         isGhost,
         ghostTargetScope,
-        isHoistable,
         // Depth rewards
         isGolden: pkg.isGolden,
         hasCacheFragment: pkg.hasCacheFragment,
@@ -517,47 +477,6 @@ export class GameRenderer {
         // Scope root stable indicator
         isScopeRootStable,
       })
-    }
-
-    // ============================================
-    // RENDER HOISTED DEPS (at root scope only)
-    // ============================================
-    // Toggle visibility based on scope and collapse state
-    this.nodeRenderer.setHoistedDepsVisible(!inScope && !collapseAnimating)
-
-    // Skip hoisted deps updates entirely during collapse animation
-    if (!inScope && !collapseAnimating) {
-      // Update hoisted dep positions (they orbit root)
-      updateHoistedPositions()
-
-      // Render each hoisted dep
-      const hoistedDeps = getHoistedDeps()
-      const hoistedIds = new Set<string>()
-
-      for (const hoisted of hoistedDeps) {
-        this.nodeRenderer.updateHoistedDep(hoisted)
-        hoistedIds.add(hoisted.id)
-      }
-
-      // Draw ephemeral lines for hovered hoisted dep
-      const hoveredId = this.nodeRenderer.getHoveredHoistedId()
-      if (hoveredId) {
-        const hoveredDep = hoistedDeps.find((h) => h.id === hoveredId)
-        if (hoveredDep) {
-          // Get source package positions
-          const sourcePositions: { x: number; y: number }[] = []
-          for (const pkgId of hoveredDep.sourcePackages) {
-            const pkg = rawPackages.get(pkgId)
-            if (pkg) {
-              sourcePositions.push(pkg.position)
-            }
-          }
-          this.nodeRenderer.drawEphemeralLines(hoveredDep, sourcePositions)
-        }
-      } else {
-        // Clear ephemeral lines when not hovering
-        this.nodeRenderer.drawEphemeralLines(null, [])
-      }
     }
 
     // ============================================
@@ -645,46 +564,6 @@ export class GameRenderer {
               isFirstDuplicates,
               isGroupHovered
             )
-          }
-        }
-      }
-    }
-
-    // Draw hoist guide lines: packages with shared deps → root
-    // Teaches player to drag hoistable packages toward root
-    if (!inScope && gameState.rootId) {
-      const root = scopePackages.get(gameState.rootId)
-      if (root) {
-        const sharedDeps = findSharedDeps()
-        const drawnPackages = new Set<string>() // Avoid duplicate lines
-
-        // Check if this is first-time hoist teaching (like first duplicate teaching)
-        const isFirstHoist =
-          !gameState.onboarding.firstHoistSeen && sharedDeps.size > 0
-
-        // For each shared dep, draw lines from source packages to root
-        for (const [, sourcePackageIds] of sharedDeps) {
-          for (const pkgId of sourcePackageIds) {
-            if (drawnPackages.has(pkgId)) continue
-            drawnPackages.add(pkgId)
-
-            const pkg = scopePackages.get(pkgId)
-            if (pkg) {
-              // Check if this package is being hovered - show prominent guide
-              const isHovered = pkgId === this.hoveredHoistableId
-
-              // Draw guide line (more prominent if hovered or first hoist teaching)
-              this.drawHoistGuideLine(
-                pkg.position.x,
-                pkg.position.y,
-                root.position.x,
-                root.position.y,
-                0x8b5cf6, // Purple for hoisting
-                pulsePhase,
-                isHovered,
-                isFirstHoist
-              )
-            }
           }
         }
       }
@@ -1438,76 +1317,11 @@ export class GameRenderer {
   }
 
   /**
-   * Draw a hoist guide line from package toward root
-   */
-  private drawHoistGuideLine(
-    pkgX: number,
-    pkgY: number,
-    rootX: number,
-    rootY: number,
-    color: number,
-    pulsePhase: number,
-    isHovered: boolean,
-    isFirstHoist: boolean = false
-  ): void {
-    const dx = rootX - pkgX
-    const dy = rootY - pkgY
-    const dist = Math.sqrt(dx * dx + dy * dy)
-    if (dist < 80) return
-
-    const nx = dx / dist
-    const ny = dy / dist
-
-    // First hoist teaching: make lines very prominent (like first duplicate teaching)
-    const isEmphasized = isHovered || isFirstHoist
-
-    this.drawAnimatedGuideLine({
-      startX: pkgX + nx * 45,
-      startY: pkgY + ny * 45,
-      endX: rootX - nx * 55,
-      endY: rootY - ny * 55,
-      color,
-      pulsePhase,
-      emphasized: isEmphasized,
-      dashLength: 8,
-      gapLength: 10,
-      // First hoist: heavy emphasis like first duplicate
-      baseAlpha: isFirstHoist ? 0.5 : 0.35,
-      emphasisMult: isFirstHoist ? 2.5 : 1.5,
-      lineWidthNormal: isFirstHoist ? 2.5 : 2,
-      lineWidthEmph: isFirstHoist || isHovered ? 3.5 : 3,
-      arrowSizeNormal: isFirstHoist ? 10 : 8,
-      arrowSizeEmph: isFirstHoist || isHovered ? 14 : 12,
-      arrowAnimCycle: 1500,
-      arrowStartT: 0.4,
-      arrowRangeT: 0.4,
-      endIcon: {
-        sizeNormal: isFirstHoist ? 7 : 5,
-        sizeEmph: isFirstHoist ? 10 : 7,
-      },
-    })
-  }
-
-  /**
    * Set symlink drag state (called from GameCanvas)
    */
   setSymlinkDragState(sourceId: string | null, targetId: string | null): void {
     this.symlinkDragSource = sourceId
     this.symlinkDragTarget = targetId
-  }
-
-  /**
-   * Set hovered hoisted dep (for ephemeral lines)
-   */
-  setHoveredHoistedDep(hoistedId: string | null): void {
-    this.nodeRenderer.setHoveredHoistedDep(hoistedId)
-  }
-
-  /**
-   * Set hovered hoistable package (for prominent guide line)
-   */
-  setHoveredHoistable(packageId: string | null): void {
-    this.hoveredHoistableId = packageId
   }
 
   /**
@@ -1606,13 +1420,6 @@ export class GameRenderer {
    */
   getEdgeIndicatorRenderer(): EdgeIndicatorRenderer {
     return this.edgeIndicatorRenderer
-  }
-
-  /**
-   * Clear all hoisted deps (call after prestige)
-   */
-  clearHoistedDeps(): void {
-    this.nodeRenderer.clearHoistedDeps()
   }
 
   /**
