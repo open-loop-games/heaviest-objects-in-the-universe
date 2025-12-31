@@ -83,6 +83,9 @@ interface CascadeData {
   surgeFragmentBoost: number // Additive fragment chance
 }
 
+// Queue for pending cascades (FIFO - first entered scope gets completed first)
+const cascadeQueue: string[][] = []
+
 /**
  * Get deterministic size for a package based on its identity.
  */
@@ -112,6 +115,21 @@ export function startCascade(scopePath: string[]): void {
   if (!pkg) return
   if (!pkg.internalPackages || !pkg.internalWires) return
   if (pkg.internalPackages.size > 0) return // Already spawned
+
+  // If a cascade is already running, queue this one for later (FIFO)
+  if (gameState.cascade.active) {
+    cascadeQueue.push([...scopePath])
+    return
+  }
+
+  startCascadeImmediate(scopePath, pkg)
+}
+
+/**
+ * Internal: Actually start the cascade (called when no other cascade is active)
+ */
+function startCascadeImmediate(scopePath: string[], pkg: Package): void {
+  if (!pkg.internalPackages || !pkg.internalWires) return
 
   const depth = scopePath.length
   const isStarterKit = pkg.identity?.name === 'starter-kit'
@@ -511,10 +529,29 @@ function spawnNextFromQueue(): void {
   targetPkg.size += finalSize
   addWeight(finalSize)
 
-  // Trigger particle effect
-  if (onSpawnEffect) {
+  // Trigger particle effect only if viewing the cascading scope
+  // (prevents effects playing on wrong layer when navigating away)
+  if (onSpawnEffect && isViewingCascadeScope()) {
     onSpawnEffect(spawn.position, isConflicted)
   }
+}
+
+/**
+ * Check if the current view scope matches the cascade scope
+ * Exported so UI can conditionally show cascade-related effects
+ */
+export function isViewingCascadeScope(): boolean {
+  const cascadeData = gameState.cascade as unknown as CascadeData
+  const scopePath = cascadeData.scopePath
+  if (!scopePath) return false
+
+  const viewStack = gameState.scopeStack
+  if (viewStack.length !== scopePath.length) return false
+
+  for (let i = 0; i < viewStack.length; i++) {
+    if (viewStack[i] !== scopePath[i]) return false
+  }
+  return true
 }
 
 /**
@@ -561,6 +598,22 @@ function endCascade(): void {
   // Trigger state recalculation callback
   if (onCascadeEnd && scopePath.length > 0) {
     onCascadeEnd(scopePath)
+  }
+
+  // Process next cascade in queue (FIFO)
+  if (cascadeQueue.length > 0) {
+    const nextPath = cascadeQueue.shift()!
+    const nextPkg = getPackageAtPath(nextPath)
+    if (
+      nextPkg &&
+      nextPkg.internalPackages &&
+      nextPkg.internalPackages.size === 0
+    ) {
+      startCascadeImmediate(nextPath, nextPkg)
+    } else {
+      // Package no longer valid or already spawned, try next
+      endCascade()
+    }
   }
 }
 

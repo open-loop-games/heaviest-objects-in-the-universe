@@ -39,7 +39,7 @@ export const DEPTH_COMPRESSION_MULT = [1.0, 0.75, 0.5, 0.25, 0.0] as const
 // ============================================
 
 // Per-dependency spawn cost (queued if unaffordable)
-export const DEP_SPAWN_COST = 12
+export const DEP_SPAWN_COST = 8
 
 // Conflict resolution cost (click wire to resolve)
 export const CONFLICT_RESOLVE_COST = 30
@@ -112,8 +112,8 @@ export const DEFAULT_CONFIG: GameConfig = {
 }
 
 // Starting values - tweak these for early game balance
-const STARTING_BANDWIDTH = 150
 const STARTING_MAX_BANDWIDTH = 1000
+const STARTING_BANDWIDTH = STARTING_MAX_BANDWIDTH / 2 // Start half full
 
 // Save version - increment to force reset on incompatible changes
 export const SAVE_VERSION = 2
