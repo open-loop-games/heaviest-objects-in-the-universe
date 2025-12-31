@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { gameState, previewedActionType } from '../../game/state'
+import {
+  gameState,
+  previewedActionType,
+  cascadeStarved,
+} from '../../game/state'
 import {
   getUpgradeLevel,
   canPurchaseUpgrade,
@@ -8,6 +12,7 @@ import {
   getEffectiveInstallCost,
   setPreviewedUpgrade,
   previewedUpgradeId,
+  isUpgradeUnlocked,
   UPGRADES,
 } from '../../game/upgrades'
 import { CONFLICT_RESOLVE_COST, SYMLINK_MERGE_COST } from '../../game/config'
@@ -93,6 +98,7 @@ const warning = computed(() => {
 // UPGRADE PIPS
 // ============================================
 
+const isUnlocked = computed(() => isUpgradeUnlocked('bandwidth'))
 const level = computed(() => getUpgradeLevel('bandwidth'))
 const maxLevel = computed(() => UPGRADES.bandwidth?.maxLevel ?? 15)
 const canAfford = computed(() => canPurchaseUpgrade('bandwidth'))
@@ -137,6 +143,7 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
       'warning-low': warning === 'low',
       'warning-critical': warning === 'critical',
       'preview-active': isPreviewingAny,
+      'cascade-starved': cascadeStarved,
     }"
   >
     <!-- Bandwidth icon -->
@@ -146,6 +153,7 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
         'bw-preview': isPreviewingBandwidth,
         'warning-low': warning === 'low',
         'warning-critical': warning === 'critical',
+        'cascade-starved': cascadeStarved,
       }"
     >
       ↓
@@ -205,14 +213,9 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
       </div>
     </div>
 
-    <!-- Regen indicator (shows bandwidth recovering during preview) -->
-    <div v-if="isPreviewingBandwidth" class="regen-preview-indicator">
-      <span class="regen-arrow">↓</span>
-      <span class="regen-arrow delayed">↓</span>
-    </div>
-
-    <!-- Upgrade pips with hover preview (split into two rows) -->
+    <!-- Upgrade pips with hover preview (split into two rows) - only after first prestige -->
     <div
+      v-if="isUnlocked"
       class="upgrade-pips-container"
       @mouseenter="handlePipsEnter"
       @mouseleave="handlePipsLeave"
@@ -282,6 +285,24 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
 .resource-icon.bw-preview {
   animation: regen-pulse 0.3s ease-in-out infinite alternate;
   color: #5aff9a;
+}
+
+.resource-icon.cascade-starved {
+  color: var(--hud-warning);
+  text-shadow: 0 0 8px rgba(255, 90, 90, 0.6);
+  animation: starved-icon-pulse 0.4s ease-in-out infinite;
+}
+
+@keyframes starved-icon-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
 }
 
 /* Segmented bar */
@@ -398,22 +419,43 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
   }
 }
 
-/* Regen preview indicator */
-.regen-preview-indicator {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-left: 4px;
+/* Cascade starved - red strobe when waiting for bandwidth during cascade */
+.cascade-starved .resource-bar {
+  animation: starved-glow 0.4s ease-in-out infinite;
 }
 
-.regen-arrow {
-  font-size: 10px;
-  color: var(--hud-stability);
-  animation: hud-bounce 0.6s ease-in-out infinite;
+.cascade-starved .segment {
+  border: 1px solid rgba(255, 90, 90, 0.4);
+  animation: starved-segment-pulse 0.4s ease-in-out infinite;
 }
 
-.regen-arrow.delayed {
-  animation-delay: 0.3s;
+.cascade-starved .segment.filled {
+  background: linear-gradient(to top, #8a4a4a, #aa6a6a);
+  box-shadow: 0 0 8px rgba(255, 90, 90, 0.5);
+}
+
+.cascade-starved .segment .segment-fill {
+  background: linear-gradient(to top, #8a4a4a, #aa6a6a);
+}
+
+@keyframes starved-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 4px rgba(255, 90, 90, 0.3));
+  }
+  50% {
+    filter: drop-shadow(0 0 12px rgba(255, 90, 90, 0.7));
+  }
+}
+
+@keyframes starved-segment-pulse {
+  0%,
+  100% {
+    border-color: rgba(255, 90, 90, 0.3);
+  }
+  50% {
+    border-color: rgba(255, 90, 90, 0.7);
+  }
 }
 
 /* Upgrade pips container (two rows) */
@@ -443,6 +485,8 @@ const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
   background: #2a2a3a;
   border-radius: 50%;
   transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+  flex-shrink: 0;
 }
 
 .pip.filled {

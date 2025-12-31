@@ -38,6 +38,55 @@ export function hslToHex(h: number, s: number, l: number): number {
   return (f(0) << 16) | (f(8) << 8) | f(4)
 }
 
+/**
+ * Get an optimized icon color from a raw hue value.
+ * Makes targeted adjustments for problem hues while preserving variety.
+ *
+ * Problem areas on green node fills:
+ * - Blue-purple (240-295°) has poor contrast → brighten and nudge
+ * - Mid green (115-145°) blends with ready state → boost lightness
+ */
+export function getIconColor(rawHue: number): number {
+  let hue = rawHue % 360
+  let saturation = 70
+  let lightness = 58 // Slight boost from 55
+
+  // Blue-purple range (240-270) - low contrast on green, especially with thin strokes
+  // Brighten significantly and shift toward cyan-blue
+  if (hue >= 240 && hue < 270) {
+    hue = hue - 20 // Shift toward brighter blue (220-250)
+    lightness = 68
+    saturation = 75
+  }
+  // Deep purple/violet (270-295) - worst contrast on green
+  // Nudge toward either blue (cooler) or magenta (warmer)
+  else if (hue >= 270 && hue < 295) {
+    if (hue < 282) {
+      // Shift toward blue
+      hue = hue - 35 // 235-247 range
+      lightness = 66
+    } else {
+      // Shift toward magenta/pink
+      hue = hue + 25 // 307-320 range
+      lightness = 65
+    }
+    saturation = 75
+  }
+  // Mid-green range - blends with ready state fill
+  // Don't shift hue, just make it brighter and more saturated
+  else if (hue >= 115 && hue < 145) {
+    lightness = 68
+    saturation = 85
+  }
+  // Muddy olive/yellow-green (75-115) - can look dull
+  else if (hue >= 75 && hue < 115) {
+    lightness = 62
+    saturation = 78
+  }
+
+  return hslToHex(hue, saturation, lightness)
+}
+
 // Shape draw function type with variant parameter
 type ShapeDrawFn = (
   g: Graphics,
@@ -154,7 +203,7 @@ export function drawProceduralIcon(
 
   const hash = hashString(packageName)
   const hue = hash % 360
-  const color = hslToHex(hue, 70, 55)
+  const color = getIconColor(hue)
   const s = size * 0.35
 
   // Get shape pool based on archetype

@@ -160,17 +160,34 @@ export const UTILITY_ICONS: Record<
     g.fill({ color: 0xffffff, alpha: 0.9 })
   },
 
-  'supports-color': (g, s, _color) => {
-    const r = s * 0.5
-    const offset = s * 0.35
-    g.circle(-offset, -offset * 0.5, r)
-    g.fill({ color: 0xff6b6b, alpha: 0.6 })
-    g.circle(offset, -offset * 0.5, r)
-    g.fill({ color: 0x51cf66, alpha: 0.6 })
-    g.circle(0, offset * 0.7, r)
-    g.fill({ color: 0x339af0, alpha: 0.6 })
-    g.circle(0, 0, r * 0.3)
-    g.fill({ color: 0xffffff, alpha: 0.9 })
+  // supports-color: Terminal window with color bar (detects terminal color support)
+  'supports-color': (g, s, color) => {
+    // Terminal window frame
+    g.roundRect(-s * 0.8, -s * 0.7, s * 1.6, s * 1.4, s * 0.1)
+    g.stroke({ color, width: 2 })
+
+    // Title bar
+    g.rect(-s * 0.8, -s * 0.7, s * 1.6, s * 0.3)
+    g.fill({ color, alpha: 0.3 })
+
+    // Window buttons (traffic lights style)
+    g.circle(-s * 0.55, -s * 0.55, s * 0.08)
+    g.fill({ color: 0xff6b6b, alpha: 0.9 })
+    g.circle(-s * 0.35, -s * 0.55, s * 0.08)
+    g.fill({ color: 0xffd43b, alpha: 0.9 })
+    g.circle(-s * 0.15, -s * 0.55, s * 0.08)
+    g.fill({ color: 0x51cf66, alpha: 0.9 })
+
+    // Color gradient bar at bottom (the "supports color" indicator)
+    const barY = s * 0.35
+    const barH = s * 0.2
+    const segW = s * 0.4
+    g.rect(-s * 0.6, barY, segW, barH)
+    g.fill({ color: 0xff6b6b, alpha: 0.9 })
+    g.rect(-s * 0.2, barY, segW, barH)
+    g.fill({ color: 0x51cf66, alpha: 0.9 })
+    g.rect(s * 0.2, barY, segW, barH)
+    g.fill({ color: 0x339af0, alpha: 0.9 })
   },
 
   // has-flag: Flag shape

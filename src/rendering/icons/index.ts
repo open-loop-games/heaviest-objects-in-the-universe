@@ -7,7 +7,7 @@
 
 import { Graphics, ColorMatrixFilter } from 'pixi.js'
 import { hasSemanticIcon, drawSemanticIcon, SEMANTIC_ICONS } from './semantic'
-import { drawProceduralIcon, hslToHex } from './procedural'
+import { drawProceduralIcon, getIconColor } from './procedural'
 
 // ============================================
 // DEVICON SVG SYSTEM
@@ -160,7 +160,7 @@ export function createPackageIcon(
   if (hasSemanticIcon(packageName)) {
     const hash = hashString(packageName)
     const hue = hash % 360
-    const color = hslToHex(hue, 70, 55)
+    const color = getIconColor(hue)
 
     drawSemanticIcon(g, packageName, size, color)
     return g
@@ -260,5 +260,10 @@ function hashString(str: string): number {
 }
 
 // Re-export utilities that might be needed elsewhere
-export { nameToHue, hslToHex, drawProceduralIcon } from './procedural'
+export {
+  nameToHue,
+  hslToHex,
+  getIconColor,
+  drawProceduralIcon,
+} from './procedural'
 export { hasSemanticIcon } from './semantic'

@@ -22,11 +22,14 @@ const NODE_RADIUS_SMALL = 20 // Smaller for deep dependencies
 export interface NodeEffects {
   pulseIntensity: number // 0-1 for root pulse
   shake: { x: number; y: number } // Offset for conflict shake
+  wigglePhase?: number // 0-1 for wiggle animation (non-draggable feedback)
   showHint: boolean // Show click hint
   duplicateHalo?: {
     color: number
     pulsePhase: number // 0-1, synced across group
     canAfford: boolean // Whether symlink merge is affordable
+    isHovered: boolean // Group is being hovered (boost intensity)
+    isFirstDuplicate: boolean // First time seeing duplicates (heavy teaching)
   }
   isDragging?: boolean // Node is being dragged for symlink
   isDropTarget?: boolean // Node is a valid drop target
@@ -43,6 +46,8 @@ export interface NodeEffects {
   hasCacheFragment?: boolean // Cache fragment indicator
   // Celebration scale (for stable pop effect)
   celebrationScale?: number
+  // Scope root stable indicator (checkmark badge when inside stable scope)
+  isScopeRootStable?: boolean
 }
 
 /**
@@ -177,10 +182,18 @@ export class NodeRenderer {
     // Draw the shape (circle, border, effects)
     this.drawNode(nodeData.shape, pkg, effects)
 
-    // Update position with shake offset
+    // Update position with shake offset and wiggle
     const shakeX = effects?.shake.x || 0
     const shakeY = effects?.shake.y || 0
-    nodeData.container.x = pkg.position.x + shakeX
+
+    // Wiggle effect (horizontal back-and-forth)
+    let wiggleX = 0
+    if (effects?.wigglePhase && effects.wigglePhase !== 0) {
+      // Fast horizontal oscillation that fades out
+      wiggleX = effects.wigglePhase * 8 // 8px max amplitude
+    }
+
+    nodeData.container.x = pkg.position.x + shakeX + wiggleX
     nodeData.container.y = pkg.position.y + shakeY
 
     // Apply spaghettification during collapse
@@ -230,7 +243,9 @@ export class NodeRenderer {
         radius,
         effects.duplicateHalo.color,
         effects.duplicateHalo.pulsePhase,
-        effects.duplicateHalo.canAfford
+        effects.duplicateHalo.canAfford,
+        effects.duplicateHalo.isHovered,
+        effects.duplicateHalo.isFirstDuplicate
       )
     }
 
@@ -338,6 +353,11 @@ export class NodeRenderer {
     // Cache fragment indicator - purple diamond pip at bottom
     if (effects?.hasCacheFragment) {
       this.drawCacheFragmentIndicator(graphics, radius)
+    }
+
+    // Stable scope root checkmark badge at bottom
+    if (effects?.isScopeRootStable) {
+      this.drawStableCheckmark(graphics, radius)
     }
 
     // Click hint for root (pulsing arrow or indicator)
@@ -488,13 +508,16 @@ export class NodeRenderer {
   /**
    * Draw pulsing halo for duplicate packages
    * Shows gray when symlink merge is unaffordable
+   * Boosted intensity when hovered or first duplicate (teaching)
    */
   private drawDuplicateHalo(
     graphics: Graphics,
     radius: number,
     color: number,
     pulsePhase: number,
-    canAfford: boolean
+    canAfford: boolean,
+    isHovered: boolean = false,
+    isFirstDuplicate: boolean = false
   ): void {
     // For reduced motion, use static values
     const reducedMotion = prefersReducedMotion()
@@ -504,24 +527,69 @@ export class NodeRenderer {
     const haloColor = canAfford ? color : 0x6a6a7a
 
     // Pulsing alpha based on phase (synced across group)
+    // Hovered: slightly brighter, no pulsing
+    // First duplicate: strong pulsing for attention
     // Slower, dimmer pulse when unaffordable
-    const baseAlpha = canAfford ? 0.2 : 0.15
-    const pulseScale = canAfford ? 0.15 : 0.08
-    const pulseAlpha = reducedMotion
-      ? 0
-      : pulseScale * Math.sin(effectivePhase * Math.PI * 2)
-    const alpha = baseAlpha + pulseAlpha
+    let alpha: number
+    if (isHovered) {
+      // Slightly brighter when hovered (no pulsing)
+      alpha = canAfford ? 0.35 : 0.25
+    } else if (isFirstDuplicate) {
+      // Heavy pulsing for first duplicate teaching
+      const baseAlpha = canAfford ? 0.4 : 0.25
+      const pulseScale = canAfford ? 0.3 : 0.15
+      const pulseAlpha = reducedMotion
+        ? 0
+        : pulseScale * Math.sin(effectivePhase * Math.PI * 2)
+      alpha = baseAlpha + pulseAlpha
+    } else {
+      // Normal pulsing
+      const baseAlpha = canAfford ? 0.2 : 0.15
+      const pulseScale = canAfford ? 0.15 : 0.08
+      const pulseAlpha = reducedMotion
+        ? 0
+        : pulseScale * Math.sin(effectivePhase * Math.PI * 2)
+      alpha = baseAlpha + pulseAlpha
+    }
 
-    // Outer halo ring (static size for reduced motion, less expansion when unaffordable)
-    const expansionScale = canAfford ? 3 : 1.5
+    // Outer halo ring
+    // First duplicate: larger, thicker ring for teaching
+    // Hovered: slightly larger but not as intense as teaching
+    const expansionScale = isFirstDuplicate
+      ? 6
+      : isHovered
+        ? 4
+        : canAfford
+          ? 3
+          : 1.5
     const haloRadius =
-      radius + 8 + (reducedMotion ? 1.5 : effectivePhase * expansionScale)
+      radius +
+      (isFirstDuplicate ? 12 : isHovered ? 10 : 8) +
+      (reducedMotion ? 1.5 : effectivePhase * expansionScale)
+    const strokeWidth = isFirstDuplicate ? 5 : 3
     graphics.circle(0, 0, haloRadius)
-    graphics.stroke({ color: haloColor, width: 3, alpha: alpha + 0.1 })
+    graphics.stroke({
+      color: haloColor,
+      width: strokeWidth,
+      alpha: Math.min(1, alpha + 0.1),
+    })
 
-    // Inner glow
-    graphics.circle(0, 0, radius + 4)
-    graphics.fill({ color: haloColor, alpha: alpha * 0.5 })
+    // Inner glow (more intense when first duplicate teaching)
+    const innerGlowRadius = radius + (isFirstDuplicate ? 6 : 4)
+    graphics.circle(0, 0, innerGlowRadius)
+    graphics.fill({
+      color: haloColor,
+      alpha: Math.min(1, alpha * (isFirstDuplicate ? 0.8 : 0.5)),
+    })
+
+    // Extra outer ring for first duplicate (attention grabber)
+    if (isFirstDuplicate && !reducedMotion) {
+      const outerRingPhase = (Date.now() % 1000) / 1000
+      const outerRingRadius = haloRadius + 5 + outerRingPhase * 10
+      const outerRingAlpha = 0.4 * (1 - outerRingPhase)
+      graphics.circle(0, 0, outerRingRadius)
+      graphics.stroke({ color: haloColor, width: 2, alpha: outerRingAlpha })
+    }
   }
 
   /**
@@ -609,28 +677,14 @@ export class NodeRenderer {
   }
 
   /**
-   * Draw golden package interior tint
+   * Draw golden package ring
    * For rare packages that spawn at depth 3+ (4x weight)
-   * Uses interior fill instead of outer ring to avoid confusion with halos
+   * Simple gold ring just inside the node's border
    */
   private drawGoldenGlow(graphics: Graphics, radius: number): void {
-    const reducedMotion = prefersReducedMotion()
-    const time = Date.now() * 0.003
-    const pulse = reducedMotion ? 0.5 : (Math.sin(time) + 1) / 2
-
-    // Golden interior fill (radial gradient effect via layered circles)
-    // Outer layer - subtle golden tint on the node interior
-    graphics.circle(0, 0, radius - 2)
-    graphics.fill({ color: Colors.goldenGlow, alpha: 0.08 + pulse * 0.04 })
-
-    // Inner core - brighter golden center
-    graphics.circle(0, 0, radius * 0.5)
-    graphics.fill({ color: Colors.goldenGlow, alpha: 0.1 + pulse * 0.06 })
-
-    // Tiny sparkle at center (pulsing highlight)
-    const sparkleAlpha = 0.25 + pulse * 0.25
-    graphics.circle(0, 0, 3 + pulse * 2)
-    graphics.fill({ color: 0xffffff, alpha: sparkleAlpha * 0.4 })
+    // Gold ring just inside the border (border is ~2px at radius)
+    graphics.circle(0, 0, radius - 4)
+    graphics.stroke({ color: Colors.goldenGlow, width: 2, alpha: 0.8 })
   }
 
   /**
@@ -674,6 +728,47 @@ export class NodeRenderer {
     graphics.lineTo(badgeX - innerSize, badgeY)
     graphics.closePath()
     graphics.fill({ color: 0xffffff, alpha: 0.5 })
+  }
+
+  /**
+   * Draw stable checkmark badge at bottom of scope root
+   * Green circle with checkmark indicating scope is complete
+   */
+  private drawStableCheckmark(graphics: Graphics, radius: number): void {
+    const reducedMotion = prefersReducedMotion()
+    const time = Date.now() * 0.003
+    const pulse = reducedMotion ? 0.5 : (Math.sin(time) + 1) / 2
+
+    const color = 0x4ade80 // Green (same as stable state)
+    const badgeRadius = 10
+    const badgeY = radius + 8 // Position below the node
+
+    // Badge background circle with pulsing glow
+    const glowAlpha = 0.35 + pulse * 0.25
+    graphics.circle(0, badgeY, badgeRadius + 4)
+    graphics.fill({ color, alpha: glowAlpha })
+
+    // Badge circle background
+    graphics.circle(0, badgeY, badgeRadius)
+    graphics.fill({ color: 0x1a1a2e })
+    graphics.stroke({ color, width: 2, alpha: 0.95 })
+
+    // Checkmark inside badge
+    const checkScale = 0.5
+    const cx = 0
+    const cy = badgeY
+
+    // Draw checkmark stroke
+    graphics.moveTo(cx - 4 * checkScale, cy)
+    graphics.lineTo(cx - 1 * checkScale, cy + 3 * checkScale)
+    graphics.lineTo(cx + 5 * checkScale, cy - 4 * checkScale)
+    graphics.stroke({ color, width: 2.5, alpha: 1 })
+
+    // White highlight on checkmark
+    graphics.moveTo(cx - 4 * checkScale, cy)
+    graphics.lineTo(cx - 1 * checkScale, cy + 3 * checkScale)
+    graphics.lineTo(cx + 5 * checkScale, cy - 4 * checkScale)
+    graphics.stroke({ color: 0xffffff, width: 1.5, alpha: 0.6 })
   }
 
   /**

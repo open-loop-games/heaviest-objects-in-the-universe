@@ -291,6 +291,8 @@ function handleHoistSpeedLeave() {
   border-radius: 50%;
   cursor: pointer;
   transition: all 0.15s;
+  will-change: transform;
+  flex-shrink: 0;
 }
 
 .pip.filled {

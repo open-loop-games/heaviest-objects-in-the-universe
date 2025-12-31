@@ -62,8 +62,28 @@ export const SECURITY_ICONS: Record<
     drawPadlockShape(g, s, color, true)
   },
 
+  // bcryptjs: Key shape (pure JS implementation - keys unlock, locks protect)
   bcryptjs: (g, s, color) => {
-    drawPadlockShape(g, s, color, true)
+    // Key head (circular bow)
+    g.circle(-s * 0.4, -s * 0.3, s * 0.4)
+    g.stroke({ color, width: 2.5 })
+    g.circle(-s * 0.4, -s * 0.3, s * 0.2)
+    g.fill({ color: 0x1a1a2e, alpha: 0.5 })
+
+    // Key shaft
+    g.rect(-s * 0.15, -s * 0.15, s * 1.1, s * 0.15)
+    g.fill({ color, alpha: 0.85 })
+
+    // Key teeth (bits)
+    g.rect(s * 0.5, 0, s * 0.15, s * 0.3)
+    g.fill({ color, alpha: 0.9 })
+    g.rect(s * 0.7, 0, s * 0.15, s * 0.2)
+    g.fill({ color, alpha: 0.9 })
+
+    // JS indicator dots (like bcrypt-js)
+    g.circle(s * 0.3, s * 0.55, s * 0.1)
+    g.circle(s * 0.55, s * 0.55, s * 0.1)
+    g.fill({ color, alpha: 0.6 })
   },
 
   // cors: Crossed arrows (Cross-Origin Resource Sharing)
@@ -110,30 +130,31 @@ export const SECURITY_ICONS: Record<
     g.fill({ color, alpha: 0.9 })
   },
 
+  // jwt: Simplified token badge (compact JWT representation)
   jwt: (g, s, color) => {
-    const segmentH = s * 0.5
-    const gap = s * 0.08
-    g.roundRect(-s * 0.6, -s * 0.85, s * 1.2, segmentH, s * 0.1)
-    g.fill({ color: 0xff6b6b, alpha: 0.8 })
-    g.roundRect(
-      -s * 0.6,
-      -s * 0.85 + segmentH + gap,
-      s * 1.2,
-      segmentH,
-      s * 0.1
-    )
-    g.fill({ color: 0xcc5de8, alpha: 0.8 })
-    g.roundRect(
-      -s * 0.6,
-      -s * 0.85 + (segmentH + gap) * 2,
-      s * 1.2,
-      segmentH,
-      s * 0.1
-    )
-    g.fill({ color: 0x22b8cf, alpha: 0.8 })
-    g.circle(0, -s * 0.85 + segmentH + gap / 2, s * 0.06)
-    g.circle(0, -s * 0.85 + segmentH * 2 + gap * 1.5, s * 0.06)
-    g.fill({ color, alpha: 0.9 })
+    // Hexagonal badge shape (like a token/coin)
+    const points: number[] = []
+    for (let i = 0; i < 6; i++) {
+      const angle = (Math.PI / 3) * i - Math.PI / 2
+      points.push(Math.cos(angle) * s * 0.85, Math.sin(angle) * s * 0.85)
+    }
+    g.poly(points, true)
+    g.fill({ color, alpha: 0.3 })
+    g.stroke({ color, width: 2 })
+
+    // Inner three horizontal bars (header.payload.signature simplified)
+    const barW = s * 0.8
+    const barH = s * 0.18
+    const barGap = s * 0.28
+
+    g.roundRect(-barW / 2, -barGap - barH / 2, barW, barH, barH / 2)
+    g.fill({ color: 0xff6b6b, alpha: 0.9 })
+
+    g.roundRect(-barW / 2, -barH / 2, barW, barH, barH / 2)
+    g.fill({ color: 0xcc5de8, alpha: 0.9 })
+
+    g.roundRect(-barW / 2, barGap - barH / 2, barW, barH, barH / 2)
+    g.fill({ color: 0x22b8cf, alpha: 0.9 })
   },
 
   // crypto-js: Lock with binary

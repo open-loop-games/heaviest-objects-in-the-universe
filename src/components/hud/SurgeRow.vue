@@ -343,6 +343,8 @@ function handlePipsLeave() {
   background: #2a2a3a;
   border-radius: 50%;
   transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+  flex-shrink: 0;
 }
 
 .pip.filled {

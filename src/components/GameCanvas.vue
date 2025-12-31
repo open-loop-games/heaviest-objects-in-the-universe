@@ -7,7 +7,13 @@ import {
   onTick,
   setCameraTarget,
 } from '../game/loop'
-import { gameState, setActionPreview } from '../game/state'
+import {
+  gameState,
+  setActionPreview,
+  startDrag,
+  endDrag,
+  triggerWiggle,
+} from '../game/state'
 import {
   isInPackageScope,
   getCurrentScopeWires,
@@ -64,6 +70,7 @@ import {
 import { setAutoResolveCallback } from '../game/automation'
 import type { Package } from '../game/types'
 import { Colors } from '../rendering/colors'
+import { setSelectedConflictWire } from '../onboarding/tutorial-state'
 import type { ParticleType } from './CausalParticles.vue'
 
 // Inject causal particle spawner from App.vue
@@ -97,6 +104,11 @@ let hoistDragSource: Package | null = null
 let hoistDragStartPos: { x: number; y: number } | null = null
 let isInHoistZone = false
 let hoistableDepName: string | null = null
+
+// Non-hoistable package click state (for wiggle-on-drag-attempt)
+let pendingEnterPackage: Package | null = null
+let pendingEnterStartPos: { x: number; y: number } | null = null
+let didWiggle = false
 
 // Computed: selected wire data (scope-aware, including sibling wires)
 const selectedWire = computed(() => {
@@ -395,26 +407,42 @@ function handleMouseDown(event: MouseEvent) {
         symlinkDragStartPos = { x: worldPos.x, y: worldPos.y }
         isDraggingSymlink = false // Will become true after threshold
         renderer.setSymlinkDragState(clickedPkg.id, null)
+        // Signal to physics that we're about to drag (in internal scope only)
+        if (isInPackageScope()) {
+          startDrag(clickedPkg.id, true)
+        }
         return // Don't install on click for duplicates
       }
 
       // At root scope: Check if clicking a top-level package
       if (!isInPackageScope() && clickedPkg.parentId === gameState.rootId) {
-        // Check if there are ANY shared deps globally (for batch hoisting)
-        // Any top-level package can trigger the batch hoist
-        const sharedDeps = findSharedDeps()
-        if (sharedDeps.size > 0) {
+        // Check if THIS package specifically is hoistable (has shared deps)
+        const hoistInfo = canHoist(clickedPkg.id)
+        if (hoistInfo.canHoist) {
+          // This package can be hoisted - start hoist drag
           hoistDragSource = clickedPkg
           hoistDragStartPos = { x: worldPos.x, y: worldPos.y }
-          // Store first shared dep name (just for the condition check)
-          hoistableDepName = sharedDeps.keys().next().value ?? null
+          hoistableDepName = hoistInfo.depName ?? null
           isInHoistZone = false
+          // Signal physics to freeze this package (root-level drag, not internal scope)
+          startDrag(clickedPkg.id, false)
           // Return here - don't enter scope on click
           // Scope entry happens on mouseUp if not dragged to hoist zone
           return
         }
 
-        // Enter this package's internal scope (only if no shared deps to hoist)
+        // Not hoistable - check if there are ANY shared deps globally
+        const sharedDeps = findSharedDeps()
+        if (sharedDeps.size > 0) {
+          // There are hoistable packages, but not this one
+          // Set up pending enter - will wiggle if they try to drag, enter if they just click
+          pendingEnterPackage = clickedPkg
+          pendingEnterStartPos = { x: worldPos.x, y: worldPos.y }
+          didWiggle = false
+          return
+        }
+
+        // No hoistable packages at all - just enter scope normally
         if (enterPackageScope(clickedPkg.id)) {
           // Smooth camera transition to center
           setCameraTarget(0, 0)
@@ -429,6 +457,16 @@ function handleMouseDown(event: MouseEvent) {
           setCameraTarget(0, 0)
           return
         }
+      }
+
+      // Inside scope: non-compressed, non-duplicate leaf nodes wiggle (can't be dragged or entered)
+      if (
+        isInPackageScope() &&
+        clickedPkg.id !== gameState.currentScope &&
+        !isPackageCompressed(clickedPkg)
+      ) {
+        triggerWiggle(clickedPkg.id)
+        return
       }
 
       // When inside a scope, clicking the scope root does nothing
@@ -488,12 +526,18 @@ function selectConflictedWire(wireId: string) {
     // Convert world to screen coords for UI overlay
     const screenPos = renderer.worldToScreen(endpoints.midX, endpoints.midY)
     wireActionPosition.value = screenPos
+
+    // Update edge indicator for two-phase conflict teaching
+    setSelectedConflictWire(wireId, screenPos)
   }
 }
 
 function clearWireSelection() {
   selectedWireId.value = null
   wireActionPosition.value = null
+
+  // Clear edge indicator selection
+  setSelectedConflictWire(null, null)
 }
 
 /**
@@ -720,6 +764,20 @@ function handleMouseMove(event: MouseEvent) {
   const worldPos = getWorldPos(event)
   if (!worldPos) return
 
+  // Handle pending enter (non-hoistable package) - wiggle on drag attempt
+  if (pendingEnterPackage && pendingEnterStartPos) {
+    const dx = worldPos.x - pendingEnterStartPos.x
+    const dy = worldPos.y - pendingEnterStartPos.y
+    const dragDist = Math.sqrt(dx * dx + dy * dy)
+
+    if (dragDist > 10 / gameState.camera.zoom && !didWiggle) {
+      // They tried to drag a non-hoistable package - wiggle it
+      triggerWiggle(pendingEnterPackage.id)
+      didWiggle = true
+    }
+    return
+  }
+
   // Handle hoist drag
   if (hoistDragSource && hoistDragStartPos) {
     // Check drag threshold (10 pixels in world space)
@@ -728,6 +786,13 @@ function handleMouseMove(event: MouseEvent) {
     const dragDist = Math.sqrt(dx * dx + dy * dy)
 
     if (dragDist > 10 / gameState.camera.zoom) {
+      // Actually move the package position (physics is frozen via startDrag)
+      hoistDragSource.position.x = worldPos.x
+      hoistDragSource.position.y = worldPos.y
+      // Zero velocity so it doesn't fly off when released
+      hoistDragSource.velocity.vx = 0
+      hoistDragSource.velocity.vy = 0
+
       // Check if we're in the drop zone (near root)
       isInHoistZone = isInDropZone(worldPos.x, worldPos.y)
 
@@ -761,6 +826,15 @@ function handleMouseMove(event: MouseEvent) {
 
     if (isDraggingSymlink) {
       symlinkDropTarget = null
+
+      // Actually move the node position (for internal scope only)
+      if (isInPackageScope()) {
+        symlinkDragSource.position.x = worldPos.x
+        symlinkDragSource.position.y = worldPos.y
+        // Zero velocity so it doesn't fly off when released
+        symlinkDragSource.velocity.vx = 0
+        symlinkDragSource.velocity.vy = 0
+      }
 
       // Check if this is a cross-package drag (top-level packages at root scope)
       const isCrossPackageDrag =
@@ -852,6 +926,7 @@ function handleMouseMove(event: MouseEvent) {
       // Duplicate package - show grab cursor to indicate draggable
       canvasRef.value.style.cursor = 'grab'
       renderer.setHoveredHoistable(null)
+      renderer.setHoveredDuplicate(hoveredPkg.id)
       setActionPreview('symlink') // Show symlink cost on bandwidth bar
     } else if (
       hoveredPkg &&
@@ -863,16 +938,19 @@ function handleMouseMove(event: MouseEvent) {
       // Top-level package with hoistable shared deps - show grab cursor and highlight guide
       canvasRef.value.style.cursor = 'grab'
       renderer.setHoveredHoistable(hoveredPkg.id)
+      renderer.setHoveredDuplicate(null)
       setActionPreview(null)
     } else if (hoveredWire && hoveredWire.conflicted) {
       // Hovering over conflict wire - show conflict cost on bandwidth bar
       canvasRef.value.style.cursor = 'pointer'
       renderer.setHoveredHoistable(null)
+      renderer.setHoveredDuplicate(null)
       setActionPreview('conflict')
     } else if (hoveredPkg && hoveredPkg.state === 'conflict') {
       // Conflict - show pointer for resolution
       canvasRef.value.style.cursor = 'pointer'
       renderer.setHoveredHoistable(null)
+      renderer.setHoveredDuplicate(null)
       setActionPreview('conflict') // Show conflict cost on bandwidth bar
     } else if (
       hoveredPkg &&
@@ -882,10 +960,12 @@ function handleMouseMove(event: MouseEvent) {
       // Root node - show pointer for installing
       canvasRef.value.style.cursor = 'pointer'
       renderer.setHoveredHoistable(null)
+      renderer.setHoveredDuplicate(null)
       setActionPreview(null)
     } else {
       canvasRef.value.style.cursor = 'default'
       renderer.setHoveredHoistable(null)
+      renderer.setHoveredDuplicate(null)
       setActionPreview(null)
     }
   }
@@ -917,6 +997,23 @@ function handleMouseMove(event: MouseEvent) {
 }
 
 function handleMouseUp(event?: MouseEvent) {
+  // Handle pending enter completion (non-hoistable package click)
+  if (pendingEnterPackage) {
+    // If they didn't wiggle (didn't try to drag), enter the scope
+    if (!didWiggle) {
+      if (enterPackageScope(pendingEnterPackage.id)) {
+        setCameraTarget(0, 0)
+        const effects = renderer.getEffectsRenderer()
+        effects.spawnRipple(0, 0, Colors.borderInstalling)
+      }
+    }
+    // Clear pending enter state
+    pendingEnterPackage = null
+    pendingEnterStartPos = null
+    didWiggle = false
+    return
+  }
+
   // Handle hoist drag completion
   if (hoistDragSource) {
     // Check if we actually dragged (mouse moved from start position)
@@ -1012,6 +1109,9 @@ function handleMouseUp(event?: MouseEvent) {
     hoistDragStartPos = null
     hoistableDepName = null
     isInHoistZone = false
+
+    // End physics drag freeze
+    endDrag()
 
     // Reset cursor
     if (canvasRef.value) {
@@ -1127,6 +1227,9 @@ function handleMouseUp(event?: MouseEvent) {
     symlinkDropTarget = null
     isDraggingSymlink = false
 
+    // End physics drag freeze
+    endDrag()
+
     // Reset cursor
     if (canvasRef.value) {
       canvasRef.value.style.cursor = 'default'
@@ -1199,7 +1302,6 @@ function updatePrestigeTarget() {
           <button
             class="action-btn resolve-inside"
             @click="handleResolveInside"
-            title="Resolve Inside (enter package)"
           >
             ↘
           </button>
@@ -1212,7 +1314,6 @@ function updatePrestigeTarget() {
             :class="{ disabled: !canAffordPrune }"
             :disabled="!canAffordPrune"
             @click="handlePrune"
-            title="Prune (remove package)"
           >
             ✕
           </button>
@@ -1222,7 +1323,6 @@ function updatePrestigeTarget() {
             :class="{ disabled: !canAffordUpgrade }"
             :disabled="!canAffordUpgrade"
             @click="handleUpgrade"
-            title="Upgrade (transform to compatible)"
           >
             ↻
           </button>

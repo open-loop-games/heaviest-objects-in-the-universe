@@ -46,9 +46,27 @@ export const CLI_ICONS: Record<
     drawQuestionMarkShape(g, s * 0.5, color)
   },
 
+  // prompts: Text input cursor/caret (lightweight prompts)
   prompts: (g, s, color) => {
-    drawBubbleOutline(g, s, color)
-    drawQuestionMarkShape(g, s * 0.5, color)
+    // Input field outline
+    g.roundRect(-s * 0.9, -s * 0.35, s * 1.8, s * 0.7, s * 0.1)
+    g.stroke({ color, width: 2 })
+
+    // Typed text (dots representing characters)
+    g.circle(-s * 0.55, 0, s * 0.08)
+    g.circle(-s * 0.25, 0, s * 0.08)
+    g.circle(s * 0.05, 0, s * 0.08)
+    g.fill({ color, alpha: 0.6 })
+
+    // Blinking cursor (tall line)
+    g.rect(s * 0.35, -s * 0.25, s * 0.08, s * 0.5)
+    g.fill({ color, alpha: 0.9 })
+
+    // Prompt indicator (chevron)
+    g.moveTo(-s * 0.85, -s * 0.65)
+    g.lineTo(-s * 0.6, -s * 0.5)
+    g.lineTo(-s * 0.85, -s * 0.35)
+    g.stroke({ color, width: 2 })
   },
 
   // ora: Spinning circle/loading indicator

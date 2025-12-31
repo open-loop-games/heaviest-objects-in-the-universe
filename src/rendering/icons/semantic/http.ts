@@ -38,20 +38,38 @@ export const HTTP_ICONS: Record<
     g.fill({ color, alpha: 0.9 })
   },
 
+  // cross-fetch: Globe with crossing arrows (universal/cross-platform fetch)
   'cross-fetch': (g, s, color) => {
-    // Same as node-fetch
-    g.arc(-s * 0.3, -s * 0.4, s * 0.35, Math.PI, 0, false)
-    g.arc(s * 0.2, -s * 0.35, s * 0.4, Math.PI * 1.3, Math.PI * 0.1, false)
-    g.arc(s * 0.5, -s * 0.15, s * 0.25, Math.PI * 1.5, Math.PI * 0.5, false)
-    g.lineTo(s * 0.5, 0)
-    g.lineTo(-s * 0.6, 0)
-    g.closePath()
-    g.fill({ color, alpha: 0.6 })
-    g.stroke({ color, width: 1.5 })
-    g.moveTo(0, -s * 0.1)
-    g.lineTo(0, s * 0.6)
-    g.stroke({ color, width: 2.5 })
-    g.poly([-s * 0.3, s * 0.4, 0, s * 0.8, s * 0.3, s * 0.4], true)
+    // Globe circle
+    g.circle(0, 0, s * 0.7)
+    g.stroke({ color, width: 2 })
+
+    // Latitude lines
+    g.ellipse(0, 0, s * 0.7, s * 0.25)
+    g.stroke({ color, width: 1.5, alpha: 0.6 })
+    g.ellipse(0, -s * 0.35, s * 0.55, s * 0.15)
+    g.stroke({ color, width: 1, alpha: 0.4 })
+    g.ellipse(0, s * 0.35, s * 0.55, s * 0.15)
+    g.stroke({ color, width: 1, alpha: 0.4 })
+
+    // Longitude line
+    g.moveTo(0, -s * 0.7)
+    g.lineTo(0, s * 0.7)
+    g.stroke({ color, width: 1.5, alpha: 0.6 })
+
+    // Crossing arrows (the "cross" in cross-fetch)
+    // Arrow 1: top-left to bottom-right
+    g.moveTo(-s * 0.9, -s * 0.5)
+    g.lineTo(s * 0.5, s * 0.9)
+    g.stroke({ color, width: 2 })
+    g.poly([s * 0.5, s * 0.9, s * 0.2, s * 0.7, s * 0.35, s * 0.55], true)
+    g.fill({ color, alpha: 0.9 })
+
+    // Arrow 2: top-right to bottom-left
+    g.moveTo(s * 0.9, -s * 0.5)
+    g.lineTo(-s * 0.5, s * 0.9)
+    g.stroke({ color, width: 2 })
+    g.poly([-s * 0.5, s * 0.9, -s * 0.2, s * 0.7, -s * 0.35, s * 0.55], true)
     g.fill({ color, alpha: 0.9 })
   },
 

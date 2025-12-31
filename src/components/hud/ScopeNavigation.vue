@@ -18,6 +18,11 @@ const scopePackageState = computed(() => {
 // Is the current scope stable (ready to exit with satisfaction)?
 const isScopeStable = computed(() => scopePackageState.value === 'stable')
 
+// Is this the first time exiting a stable scope? (heavy teaching)
+const isFirstStableExit = computed(
+  () => isScopeStable.value && !gameState.onboarding.firstScopeExited
+)
+
 // Internal stats for the current scope
 const scopeStats = computed(() => {
   return getInternalStats(gameState.currentScope)
@@ -89,11 +94,28 @@ onUnmounted(() => {
       :class="{
         stable: isScopeStable,
         unstable: scopePackageState === 'unstable',
+        pulse: depthJustChanged,
+        'first-exit-teaching': isFirstStableExit,
       }"
       @click="handleBackClick"
     >
-      <!-- Show arrows based on depth: ← for layer 1, ← ← for layer 2 -->
-      <span class="back-icon" v-for="i in currentDepth" :key="i">←</span>
+      <!-- Single back arrow -->
+      <span class="back-icon">←</span>
+
+      <!-- Integrated depth totem -->
+      <div class="depth-indicator">
+        <div
+          v-for="level in depthLevels.slice().reverse()"
+          :key="level.level"
+          class="depth-dot"
+          :class="{
+            filled: level.filled,
+            deepest: level.isDeepest,
+            'root-level': level.isRoot,
+          }"
+        ></div>
+      </div>
+
       <!-- Show conflict/duplicate indicators if unstable -->
       <div class="scope-status" v-if="scopePackageState === 'unstable'">
         <span
@@ -112,35 +134,6 @@ onUnmounted(() => {
       <!-- Stable checkmark -->
       <span class="stable-check" v-if="isScopeStable">✓</span>
     </button>
-
-    <!-- Depth Totem (horizontal) -->
-    <div
-      class="depth-totem"
-      :class="{
-        'stable-glow': isScopeStable,
-        pulse: depthJustChanged,
-      }"
-    >
-      <!-- Horizontal connecting line -->
-      <div
-        class="totem-line"
-        :style="{ width: currentDepth * 16 + 'px' }"
-      ></div>
-
-      <!-- Depth circles (from left to right: root, layer 1, layer 2, ...) -->
-      <div
-        v-for="level in depthLevels.slice().reverse()"
-        :key="level.level"
-        class="totem-circle"
-        :class="{
-          filled: level.filled,
-          deepest: level.isDeepest,
-          'root-level': level.isRoot,
-        }"
-      >
-        <span class="circle-icon">{{ level.filled ? '◉' : '○' }}</span>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -156,8 +149,8 @@ onUnmounted(() => {
 .back-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 18px;
+  gap: 10px;
+  padding: 10px 14px;
   background: rgba(30, 30, 50, 0.9);
   border: 2px solid var(--hud-border-subtle);
   border-radius: 12px;
@@ -174,8 +167,12 @@ onUnmounted(() => {
   transform: translateX(-2px);
 }
 
+.back-btn.pulse {
+  animation: btn-pulse 0.4s ease-out;
+}
+
 .back-icon {
-  font-size: 28px;
+  font-size: 24px;
   transition: all 0.2s ease;
 }
 
@@ -204,6 +201,78 @@ onUnmounted(() => {
 
 .back-btn.stable .back-icon {
   color: #4ade80;
+}
+
+/* First-time exit teaching - strong pulsing effect */
+.back-btn.first-exit-teaching {
+  animation: first-exit-pulse 0.8s ease-in-out infinite;
+  box-shadow:
+    0 0 20px rgba(74, 222, 128, 0.6),
+    0 0 40px rgba(74, 222, 128, 0.3);
+}
+
+@keyframes first-exit-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 20px rgba(74, 222, 128, 0.6),
+      0 0 40px rgba(74, 222, 128, 0.3);
+  }
+  50% {
+    transform: scale(1.1);
+    box-shadow:
+      0 0 30px rgba(74, 222, 128, 0.8),
+      0 0 60px rgba(74, 222, 128, 0.5);
+  }
+}
+
+/* ============================================
+   INTEGRATED DEPTH INDICATOR
+   ============================================ */
+
+.depth-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.depth-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3a3a5a;
+  border: 1px solid #4a4a6a;
+  transition: all 0.3s ease;
+}
+
+.depth-dot.filled {
+  background: #7a7aff;
+  border-color: #9a9aff;
+  box-shadow: 0 0 6px rgba(122, 122, 255, 0.5);
+}
+
+.depth-dot.deepest {
+  animation: dot-breathe 2s ease-in-out infinite;
+}
+
+.depth-dot.root-level {
+  width: 10px;
+  height: 10px;
+}
+
+/* Stable state depth dots */
+.back-btn.stable .depth-dot.filled {
+  background: #4ade80;
+  border-color: #6ee7a0;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+}
+
+/* Unstable state depth dots */
+.back-btn.unstable .depth-dot.filled {
+  background: #ff6b6b;
+  border-color: #ff8a8a;
+  box-shadow: 0 0 6px rgba(255, 107, 107, 0.5);
 }
 
 /* Scope status indicators */
@@ -244,118 +313,25 @@ onUnmounted(() => {
   }
 }
 
-/* ============================================
-   DEPTH TOTEM
-   ============================================ */
-
-.depth-totem {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
-  background: rgba(30, 30, 50, 0.8);
-  border: 2px solid var(--hud-border-dark);
-  border-radius: 12px;
-  position: relative;
-  transition: all var(--hud-t-normal) ease;
-}
-
-/* Stable state - matches back button glow */
-.depth-totem.stable-glow {
-  border-color: #4ade80;
-  box-shadow: 0 0 16px rgba(74, 222, 128, 0.4);
-  animation: totem-stable-pulse 1.5s ease-in-out infinite;
-}
-
-/* Pulse on depth change */
-.depth-totem.pulse {
-  animation: totem-depth-change 0.5s ease-out;
-}
-
-/* Connecting line between circles */
-.totem-line {
-  position: absolute;
-  height: 2px;
-  background: linear-gradient(to right, #4a4a6a, #7a7aff);
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  transition: width 0.3s ease;
-  z-index: 0;
-}
-
-/* Individual depth circles */
-.totem-circle {
-  position: relative;
-  z-index: 1;
-  transition: all 0.3s ease;
-}
-
-.circle-icon {
-  font-size: 16px;
-  color: #4a4a6a;
-  transition: all 0.3s ease;
-  display: block;
-  line-height: 1;
-}
-
-/* Filled circles (active depth levels) */
-.totem-circle.filled .circle-icon {
-  color: #7a7aff;
-  text-shadow: 0 0 8px rgba(122, 122, 255, 0.6);
-}
-
-/* Deepest level - subtle breathe animation */
-.totem-circle.deepest .circle-icon {
-  animation: totem-breathe 2s ease-in-out infinite;
-}
-
-/* Root level styling */
-.totem-circle.root-level .circle-icon {
-  color: #5a5a7a;
-}
-
-.totem-circle.root-level.filled .circle-icon {
-  color: #7a7aff;
-}
-
-/* Stable state circle colors */
-.depth-totem.stable-glow .totem-circle.filled .circle-icon {
-  color: #4ade80;
-  text-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
-}
-
-/* Totem animations */
-@keyframes totem-stable-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 12px rgba(74, 222, 128, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 20px rgba(74, 222, 128, 0.5);
-  }
-}
-
-@keyframes totem-depth-change {
+@keyframes btn-pulse {
   0% {
     transform: scale(1);
   }
   50% {
-    transform: scale(1.15);
+    transform: scale(1.08);
   }
   100% {
     transform: scale(1);
   }
 }
 
-@keyframes totem-breathe {
+@keyframes dot-breathe {
   0%,
   100% {
-    text-shadow: 0 0 6px rgba(122, 122, 255, 0.4);
+    box-shadow: 0 0 4px rgba(122, 122, 255, 0.4);
   }
   50% {
-    text-shadow: 0 0 12px rgba(122, 122, 255, 0.8);
+    box-shadow: 0 0 10px rgba(122, 122, 255, 0.8);
   }
 }
 </style>
