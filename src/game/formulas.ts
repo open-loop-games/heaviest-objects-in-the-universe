@@ -69,14 +69,16 @@ export function hasConflictsInScope(pkg: Package): boolean {
 }
 
 /**
- * Recursively count unresolved duplicates across all entered scopes
+ * Recursively count unresolved duplicates and conflicts across all entered scopes
  * Pristine scopes don't count - they haven't been entered yet
  */
-function countAllScopeDuplicates(packages: Map<string, Package>): {
+function countAllScopeProblems(packages: Map<string, Package>): {
   duplicates: number
+  conflicts: number
   total: number
 } {
   let totalDuplicates = 0
+  let totalConflicts = 0
   let totalPackages = 0
 
   for (const pkg of packages.values()) {
@@ -91,32 +93,62 @@ function countAllScopeDuplicates(packages: Map<string, Package>): {
       totalDuplicates += duplicates
       totalPackages += total
 
+      // Count conflicts in this scope's wires
+      if (pkg.internalWires) {
+        for (const wire of pkg.internalWires.values()) {
+          if (wire.conflicted) totalConflicts++
+        }
+      }
+
       // Recurse into nested scopes
-      const nested = countAllScopeDuplicates(internalPkgs)
+      const nested = countAllScopeProblems(internalPkgs)
       totalDuplicates += nested.duplicates
+      totalConflicts += nested.conflicts
       totalPackages += nested.total
     }
   }
 
-  return { duplicates: totalDuplicates, total: totalPackages }
+  return {
+    duplicates: totalDuplicates,
+    conflicts: totalConflicts,
+    total: totalPackages,
+  }
 }
 
+// Efficiency formula constants
+const EFFICIENCY_BASE = 0.92 // Each problem reduces efficiency by ~8%
+const EFFICIENCY_SCALE_ANCHOR = 60 // Log scale anchored around ~50 packages
+
 /**
- * Calculate efficiency based on unresolved within-scope duplicates
- * Counts duplicates that the player could symlink-merge but hasn't
- * Pristine scopes don't count (not entered yet)
+ * Calculate efficiency using log-dampened exponential decay
+ *
+ * Problems (duplicates + conflicts) reduce efficiency exponentially,
+ * but the impact is dampened logarithmically as total packages grow.
+ *
+ * Examples (with 0 conflicts):
+ *   100 pkgs, 5 dupes → ~70%
+ *   250 pkgs, 5 dupes → ~74%
+ *   500 pkgs, 5 dupes → ~77%
+ *
+ * Conflicts add to the problem count with equal weight.
  */
 export function calculateEfficiency(state: GameState): number {
   const rawPackages = toRaw(state.packages)
 
-  const { duplicates, total } = countAllScopeDuplicates(rawPackages)
+  const { duplicates, conflicts, total } = countAllScopeProblems(rawPackages)
 
   if (total === 0) return 1
 
-  // Efficiency = 1 - (unresolved duplicates / total packages in entered scopes)
-  const efficiency = 1 - duplicates / total
+  // Log-dampened scale factor: ~1.0 at 50 packages, grows slowly
+  const scale = Math.log10(total + 10) / Math.log10(EFFICIENCY_SCALE_ANCHOR)
 
-  return efficiency
+  // Total problems = duplicates + conflicts
+  const problems = duplicates + conflicts
+
+  // Exponential decay, dampened by scale
+  const efficiency = Math.pow(EFFICIENCY_BASE, problems / scale)
+
+  return Math.max(0, Math.min(1, efficiency))
 }
 
 // ============================================
