@@ -621,16 +621,16 @@ export class NodeRenderer {
     // Golden interior fill (radial gradient effect via layered circles)
     // Outer layer - subtle golden tint on the node interior
     graphics.circle(0, 0, radius - 2)
-    graphics.fill({ color: Colors.goldenGlow, alpha: 0.15 + pulse * 0.1 })
+    graphics.fill({ color: Colors.goldenGlow, alpha: 0.08 + pulse * 0.04 })
 
     // Inner core - brighter golden center
     graphics.circle(0, 0, radius * 0.5)
-    graphics.fill({ color: Colors.goldenGlow, alpha: 0.2 + pulse * 0.15 })
+    graphics.fill({ color: Colors.goldenGlow, alpha: 0.1 + pulse * 0.06 })
 
     // Tiny sparkle at center (pulsing highlight)
-    const sparkleAlpha = 0.4 + pulse * 0.4
+    const sparkleAlpha = 0.25 + pulse * 0.25
     graphics.circle(0, 0, 3 + pulse * 2)
-    graphics.fill({ color: 0xffffff, alpha: sparkleAlpha * 0.5 })
+    graphics.fill({ color: 0xffffff, alpha: sparkleAlpha * 0.4 })
   }
 
   /**

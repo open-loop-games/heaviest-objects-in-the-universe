@@ -1,5 +1,6 @@
 // Hoisting system - deduplicating shared deps to root ring
 // Like npm's node_modules hoisting but visible and interactive
+// Only handles layer 1 deps (direct children of top-level packages)
 
 import { gameState } from './state'
 import { generateId } from './id-generator'
@@ -86,17 +87,18 @@ function redistributeRings(): void {
 }
 
 // ============================================
-// SHARED DEP DETECTION
+// SHARED DEP DETECTION (Layer 1 only)
 // ============================================
 
 /**
- * Find all package names that appear in multiple top-level packages' internals
+ * Find all package names that appear in multiple top-level packages' layer 1
+ * Only scans direct children of top-level packages (not deeper)
  * Returns map of depName -> list of package IDs that contain it
  */
 export function findSharedDeps(): Map<string, string[]> {
   const depLocations = new Map<string, string[]>()
 
-  // Scan all top-level packages' internal deps
+  // Scan all top-level packages' internal deps (layer 1 only)
   for (const [pkgId, pkg] of gameState.packages) {
     if (pkg.parentId !== gameState.rootId) continue // Skip non-top-level
     if (!pkg.internalPackages) continue
@@ -198,7 +200,7 @@ export function getDropZoneDistance(x: number, y: number): number {
 // ============================================
 
 /**
- * Hoist a shared dep to the root ring
+ * Hoist a shared dep to the root ring (layer 1 only)
  * @param depName The name of the dependency to hoist
  * @returns The hoisted dep ID, or null if failed
  */
@@ -259,7 +261,7 @@ export function hoistDep(depName: string): string | null {
   // Redistribute all deps across rings for even spacing
   redistributeRings()
 
-  // Mark source instances as ghosts
+  // Mark source instances as ghosts (layer 1 only)
   for (const { pkgId, internalId } of internalDepIds) {
     const pkg = gameState.packages.get(pkgId)
     if (!pkg?.internalPackages) continue
@@ -280,6 +282,56 @@ export function hoistDep(depName: string): string | null {
   addWeight(hoistedDep.weight)
 
   return hoistedId
+}
+
+/**
+ * Result of a batch hoist operation - includes animation data
+ */
+export interface HoistResult {
+  hoistedId: string
+  sourcePositions: { x: number; y: number }[] // All source package positions for animation
+  targetPosition: { x: number; y: number }
+}
+
+/**
+ * Hoist ALL shared deps at once (Global Hoist All)
+ * Returns animation data for each hoisted dep
+ */
+export function hoistAllSharedDeps(): HoistResult[] {
+  const sharedDeps = findSharedDeps()
+  if (sharedDeps.size === 0) return []
+
+  const results: HoistResult[] = []
+
+  // Hoist each shared dep
+  for (const depName of sharedDeps.keys()) {
+    // Collect source positions BEFORE hoisting (for animation)
+    const sourcePackages = sharedDeps.get(depName) || []
+    const sourcePositions: { x: number; y: number }[] = []
+
+    for (const pkgId of sourcePackages) {
+      const pkg = gameState.packages.get(pkgId)
+      if (pkg) {
+        sourcePositions.push({ x: pkg.position.x, y: pkg.position.y })
+      }
+    }
+
+    // Perform the hoist
+    const hoistedId = hoistDep(depName)
+
+    if (hoistedId) {
+      const hoisted = gameState.hoistedDeps.get(hoistedId)
+      if (hoisted) {
+        results.push({
+          hoistedId,
+          sourcePositions,
+          targetPosition: { x: hoisted.position.x, y: hoisted.position.y },
+        })
+      }
+    }
+  }
+
+  return results
 }
 
 /**
