@@ -266,10 +266,16 @@ export class GameRenderer {
     // Update black hole effects
     this.blackHoleRenderer.update(deltaTime, screenWidth, screenHeight)
 
-    // Hide wires, ghost lines, and hoisted deps during collapse animation
+    // Hide wires, ghost lines, hoisted deps, and background layers during collapse animation
     const collapseAnimating = this.blackHoleRenderer.isCollapseAnimating()
     this.wireRenderer.getContainer().visible = !collapseAnimating
     this.ghostLinesGraphics.visible = !collapseAnimating
+    // Force hide inception background layers during collapse - they would be distracting
+    // (updateBackgroundLayers will restore proper visibility when not collapsing)
+    if (collapseAnimating) {
+      this.midgroundLayerContainer.visible = false
+      this.backgroundLayerContainer.visible = false
+    }
 
     // Get shake offset from black hole
     const shake = this.blackHoleRenderer.getShakeOffset()

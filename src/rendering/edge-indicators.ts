@@ -1,5 +1,6 @@
 // Edge indicators renderer - draws arrows, vignettes, guide lines
 // Logic for WHAT to show is in onboarding/tutorial-indicators.ts
+// Visual style inspired by Alkahistorian's organic line system
 
 import { Graphics, Container, type Application } from 'pixi.js'
 import { prefersReducedMotion } from './accessibility'
@@ -10,11 +11,44 @@ import {
 } from '../onboarding/tutorial-indicators'
 import { drawTutorialCursor } from '../onboarding/tutorial-cursor'
 
+// Persistent state for organic movement per indicator
+interface IndicatorState {
+  // Line endpoint drift (organic wobble)
+  edgeDrawX: number
+  edgeDrawY: number
+  edgeDestX: number
+  edgeDestY: number
+  targetDrawX: number
+  targetDrawY: number
+  targetDestX: number
+  targetDestY: number
+  // Activity level (decays toward 0, spikes on changes)
+  activity: number
+  // Flow dot position along line (0-1)
+  flowProgress: number
+  flowDirection: number // 1 = toward target, -1 = toward edge
+  // Last known positions for change detection
+  lastEdgeX: number
+  lastEdgeY: number
+  lastTargetX: number
+  lastTargetY: number
+}
+
+// Constants for organic movement
+const DRIFT_RADIUS = 4 // Max pixels to drift from origin
+const DRIFT_LERP = 0.008 // How fast to move toward destination
+const ACTIVITY_DECAY = 0.97 // Exponential decay per frame
+const ACTIVITY_MIN = 0.15 // Resting activity level
+const FLOW_SPEED = 0.012 // How fast the dot travels
+
 export class EdgeIndicatorRenderer {
   private container: Container
   private arrowGraphics: Graphics
   private vignetteGraphics: Graphics
   private cursorGraphics: Graphics
+
+  // Persistent state for each indicator (keyed by id)
+  private indicatorStates: Map<string, IndicatorState> = new Map()
 
   // World-to-screen conversion function (set by renderer)
   private worldToScreen:
@@ -50,6 +84,131 @@ export class EdgeIndicatorRenderer {
   }
 
   /**
+   * Get or create persistent state for an indicator
+   */
+  private getOrCreateState(
+    id: string,
+    edgeX: number,
+    edgeY: number,
+    targetX: number,
+    targetY: number
+  ): IndicatorState {
+    let state = this.indicatorStates.get(id)
+
+    if (!state) {
+      // Create new state with random initial drift destinations
+      const edgeAngle = Math.random() * Math.PI * 2
+      const targetAngle = Math.random() * Math.PI * 2
+
+      state = {
+        edgeDrawX: edgeX,
+        edgeDrawY: edgeY,
+        edgeDestX: edgeX + Math.cos(edgeAngle) * DRIFT_RADIUS,
+        edgeDestY: edgeY + Math.sin(edgeAngle) * DRIFT_RADIUS,
+        targetDrawX: targetX,
+        targetDrawY: targetY,
+        targetDestX: targetX + Math.cos(targetAngle) * DRIFT_RADIUS,
+        targetDestY: targetY + Math.sin(targetAngle) * DRIFT_RADIUS,
+        activity: 1.0, // Start fully active
+        flowProgress: 0,
+        flowDirection: 1,
+        lastEdgeX: edgeX,
+        lastEdgeY: edgeY,
+        lastTargetX: targetX,
+        lastTargetY: targetY,
+      }
+      this.indicatorStates.set(id, state)
+    }
+
+    return state
+  }
+
+  /**
+   * Update organic state for an indicator
+   */
+  private updateIndicatorState(
+    state: IndicatorState,
+    edgeX: number,
+    edgeY: number,
+    targetX: number,
+    targetY: number,
+    reducedMotion: boolean
+  ): void {
+    // Detect position changes and boost activity
+    const edgeMoved =
+      Math.abs(edgeX - state.lastEdgeX) > 1 ||
+      Math.abs(edgeY - state.lastEdgeY) > 1
+    const targetMoved =
+      Math.abs(targetX - state.lastTargetX) > 1 ||
+      Math.abs(targetY - state.lastTargetY) > 1
+
+    if (edgeMoved || targetMoved) {
+      state.activity = Math.min(1.0, state.activity + 0.3)
+    }
+
+    state.lastEdgeX = edgeX
+    state.lastEdgeY = edgeY
+    state.lastTargetX = targetX
+    state.lastTargetY = targetY
+
+    if (reducedMotion) {
+      // No animation - snap to positions
+      state.edgeDrawX = edgeX
+      state.edgeDrawY = edgeY
+      state.targetDrawX = targetX
+      state.targetDrawY = targetY
+      state.activity = ACTIVITY_MIN
+      return
+    }
+
+    // Update drift destinations when close
+    const edgeDist = Math.hypot(
+      state.edgeDestX - state.edgeDrawX,
+      state.edgeDestY - state.edgeDrawY
+    )
+    if (edgeDist < 1) {
+      const angle = Math.random() * Math.PI * 2
+      state.edgeDestX = edgeX + Math.cos(angle) * DRIFT_RADIUS
+      state.edgeDestY = edgeY + Math.sin(angle) * DRIFT_RADIUS
+    }
+
+    const targetDist = Math.hypot(
+      state.targetDestX - state.targetDrawX,
+      state.targetDestY - state.targetDrawY
+    )
+    if (targetDist < 1) {
+      const angle = Math.random() * Math.PI * 2
+      state.targetDestX = targetX + Math.cos(angle) * DRIFT_RADIUS
+      state.targetDestY = targetY + Math.sin(angle) * DRIFT_RADIUS
+    }
+
+    // Lerp toward drift destinations
+    state.edgeDrawX += (state.edgeDestX - state.edgeDrawX) * DRIFT_LERP
+    state.edgeDrawY += (state.edgeDestY - state.edgeDrawY) * DRIFT_LERP
+    state.targetDrawX += (state.targetDestX - state.targetDrawX) * DRIFT_LERP
+    state.targetDrawY += (state.targetDestY - state.targetDrawY) * DRIFT_LERP
+
+    // Also lerp destinations toward actual positions (so drift follows target)
+    state.edgeDestX += (edgeX - state.edgeDestX) * 0.02
+    state.edgeDestY += (edgeY - state.edgeDestY) * 0.02
+    state.targetDestX += (targetX - state.targetDestX) * 0.02
+    state.targetDestY += (targetY - state.targetDestY) * 0.02
+
+    // Decay activity toward minimum
+    state.activity = Math.max(ACTIVITY_MIN, state.activity * ACTIVITY_DECAY)
+
+    // Update flow dot position
+    state.flowProgress += FLOW_SPEED * state.flowDirection
+    if (state.flowProgress >= 1) {
+      state.flowProgress = 1
+      state.flowDirection = -1
+    } else if (state.flowProgress <= 0) {
+      state.flowProgress = 0
+      state.flowDirection = 1
+    }
+  }
+
+  /**
    * Update edge indicators each frame
    */
   update(screenWidth: number, screenHeight: number): void {
@@ -68,12 +227,23 @@ export class EdgeIndicatorRenderer {
       now
     )
 
+    // Track which indicators are still active (for pruning old states)
+    const activeIds = new Set<string>()
+
     // Draw vignettes
     this.drawVignettes(vignettes, screenWidth, screenHeight)
 
     // Draw indicators
     for (const indicator of indicators) {
+      activeIds.add(indicator.id)
       this.drawEdgeArrow(indicator, screenWidth, screenHeight, now)
+    }
+
+    // Prune states for indicators that no longer exist
+    for (const id of this.indicatorStates.keys()) {
+      if (!activeIds.has(id)) {
+        this.indicatorStates.delete(id)
+      }
     }
 
     // Draw tutorial cursor
@@ -89,22 +259,21 @@ export class EdgeIndicatorRenderer {
    * Draw an edge indicator - either an arrow or a guide line
    * If screenX/screenY/pointTowardX/pointTowardY are set, draw a guide LINE from edge to target
    * Otherwise draw an arrow at the edge pointing toward off-screen target
+   *
+   * Uses organic movement system inspired by Alkahistorian:
+   * - Endpoints drift/wobble around their targets
+   * - Activity decays exponentially (breathing effect)
+   * - Flow dot travels along the line
+   * - Logarithmic line width scaling
+   * - Multi-layer glow effects
    */
   private drawEdgeArrow(
     indicator: EdgeIndicator,
     screenWidth: number,
     screenHeight: number,
-    now: number
+    _now: number
   ): void {
-    // Pulsing effect (static for reduced motion)
     const reducedMotion = prefersReducedMotion()
-    const pulsePhase = reducedMotion
-      ? 0.5
-      : ((now * indicator.pulseRate) / 1000) % 1
-    const pulse = reducedMotion
-      ? 0.8
-      : 0.6 + 0.4 * Math.sin(pulsePhase * Math.PI * 2)
-    const alpha = reducedMotion ? 0.85 : 0.7 + 0.3 * pulse
 
     // Check if this is a guide line (from edge to on-screen target)
     if (
@@ -118,47 +287,136 @@ export class EdgeIndicatorRenderer {
 
       // Calculate line end point - stop at node edge, not center
       const angle = Math.atan2(centerY - edgeY, centerX - edgeX)
-      const stopRadius = indicator.targetRadius ?? 35 // Default node radius
+      const stopRadius = indicator.targetRadius ?? 35
       const targetX = centerX - Math.cos(angle) * stopRadius
       const targetY = centerY - Math.sin(angle) * stopRadius
 
-      // Draw guide line from edge to node edge (no pulse, thin line)
-      const lineWidth = 1.5
+      // Get/create organic state for this indicator
+      const state = this.getOrCreateState(
+        indicator.id,
+        edgeX,
+        edgeY,
+        targetX,
+        targetY
+      )
+      this.updateIndicatorState(
+        state,
+        edgeX,
+        edgeY,
+        targetX,
+        targetY,
+        reducedMotion
+      )
 
-      // Main line
-      this.arrowGraphics.moveTo(edgeX, edgeY)
-      this.arrowGraphics.lineTo(targetX, targetY)
+      // Use organic positions
+      const drawEdgeX = state.edgeDrawX
+      const drawEdgeY = state.edgeDrawY
+      const drawTargetX = state.targetDrawX
+      const drawTargetY = state.targetDrawY
+
+      // Calculate alpha and line width based on activity (logarithmic feel)
+      const activity = state.activity
+      const baseAlpha = 0.5 + activity * 0.4 // 0.5 at rest, 0.9 at full
+      const baseWidth = 0.8 + Math.log10(1 + activity * 9) * 1.2 // ~0.8-2.0
+
+      // Draw multi-layer glow (outer to inner)
+      // Layer 1: Outer glow (very soft, wide)
+      this.arrowGraphics.moveTo(drawEdgeX, drawEdgeY)
+      this.arrowGraphics.lineTo(drawTargetX, drawTargetY)
       this.arrowGraphics.stroke({
         color: indicator.color,
-        alpha: 0.7,
-        width: lineWidth,
+        alpha: baseAlpha * 0.08,
+        width: baseWidth * 8,
       })
 
-      // Subtle glow line
-      this.arrowGraphics.moveTo(edgeX, edgeY)
-      this.arrowGraphics.lineTo(targetX, targetY)
+      // Layer 2: Mid glow
+      this.arrowGraphics.moveTo(drawEdgeX, drawEdgeY)
+      this.arrowGraphics.lineTo(drawTargetX, drawTargetY)
       this.arrowGraphics.stroke({
         color: indicator.color,
-        alpha: 0.2,
-        width: lineWidth * 4,
+        alpha: baseAlpha * 0.15,
+        width: baseWidth * 4,
       })
+
+      // Layer 3: Inner glow
+      this.arrowGraphics.moveTo(drawEdgeX, drawEdgeY)
+      this.arrowGraphics.lineTo(drawTargetX, drawTargetY)
+      this.arrowGraphics.stroke({
+        color: indicator.color,
+        alpha: baseAlpha * 0.4,
+        width: baseWidth * 2,
+      })
+
+      // Layer 4: Core line
+      this.arrowGraphics.moveTo(drawEdgeX, drawEdgeY)
+      this.arrowGraphics.lineTo(drawTargetX, drawTargetY)
+      this.arrowGraphics.stroke({
+        color: indicator.color,
+        alpha: baseAlpha * 0.9,
+        width: baseWidth,
+      })
+
+      // Draw traveling flow dot
+      if (!reducedMotion) {
+        const flowX = drawEdgeX + (drawTargetX - drawEdgeX) * state.flowProgress
+        const flowY = drawEdgeY + (drawTargetY - drawEdgeY) * state.flowProgress
+        const dotRadius = baseWidth * 1.5 + 1.5
+
+        // Dot glow
+        this.arrowGraphics.circle(flowX, flowY, dotRadius * 2)
+        this.arrowGraphics.fill({
+          color: indicator.color,
+          alpha: baseAlpha * 0.3,
+        })
+
+        // Dot core
+        this.arrowGraphics.circle(flowX, flowY, dotRadius)
+        this.arrowGraphics.fill({
+          color: indicator.color,
+          alpha: baseAlpha * 0.9,
+        })
+      }
 
       // Arrow head at the target end
-      const arrowSize = 10
-      const arrowAngle = Math.PI / 6 // 30 degrees
+      const drawAngle = Math.atan2(
+        drawTargetY - drawEdgeY,
+        drawTargetX - drawEdgeX
+      )
+      const arrowSize = 8 + activity * 4 // Slightly larger when active
+      const arrowAngle = Math.PI / 6
 
-      const tipX = targetX
-      const tipY = targetY
-      const leftX = tipX - arrowSize * Math.cos(angle - arrowAngle)
-      const leftY = tipY - arrowSize * Math.sin(angle - arrowAngle)
-      const rightX = tipX - arrowSize * Math.cos(angle + arrowAngle)
-      const rightY = tipY - arrowSize * Math.sin(angle + arrowAngle)
+      const tipX = drawTargetX
+      const tipY = drawTargetY
+      const leftX = tipX - arrowSize * Math.cos(drawAngle - arrowAngle)
+      const leftY = tipY - arrowSize * Math.sin(drawAngle - arrowAngle)
+      const rightX = tipX - arrowSize * Math.cos(drawAngle + arrowAngle)
+      const rightY = tipY - arrowSize * Math.sin(drawAngle + arrowAngle)
 
+      // Arrow glow
       this.arrowGraphics.moveTo(tipX, tipY)
       this.arrowGraphics.lineTo(leftX, leftY)
       this.arrowGraphics.lineTo(rightX, rightY)
       this.arrowGraphics.closePath()
-      this.arrowGraphics.fill({ color: indicator.color, alpha })
+      this.arrowGraphics.fill({
+        color: indicator.color,
+        alpha: baseAlpha * 0.3,
+      })
+
+      // Slightly smaller solid arrow
+      const innerSize = arrowSize * 0.8
+      const innerLeftX = tipX - innerSize * Math.cos(drawAngle - arrowAngle)
+      const innerLeftY = tipY - innerSize * Math.sin(drawAngle - arrowAngle)
+      const innerRightX = tipX - innerSize * Math.cos(drawAngle + arrowAngle)
+      const innerRightY = tipY - innerSize * Math.sin(drawAngle + arrowAngle)
+
+      this.arrowGraphics.moveTo(tipX, tipY)
+      this.arrowGraphics.lineTo(innerLeftX, innerLeftY)
+      this.arrowGraphics.lineTo(innerRightX, innerRightY)
+      this.arrowGraphics.closePath()
+      this.arrowGraphics.fill({
+        color: indicator.color,
+        alpha: baseAlpha * 0.9,
+      })
 
       return
     }
@@ -178,20 +436,44 @@ export class EdgeIndicatorRenderer {
       padding,
       Math.min(screenHeight - padding, screenPos.y)
     )
-    const targetX = screenPos.x
-    const targetY = screenPos.y
+
+    // Get/create organic state for edge arrows too
+    const state = this.getOrCreateState(
+      indicator.id,
+      arrowX,
+      arrowY,
+      screenPos.x,
+      screenPos.y
+    )
+    this.updateIndicatorState(
+      state,
+      arrowX,
+      arrowY,
+      screenPos.x,
+      screenPos.y,
+      reducedMotion
+    )
+
+    const drawArrowX = state.edgeDrawX
+    const drawArrowY = state.edgeDrawY
+    const activity = state.activity
 
     // Calculate angle from arrow position to target
-    const angle = Math.atan2(targetY - arrowY, targetX - arrowX)
+    const angle = Math.atan2(
+      state.targetDrawY - drawArrowY,
+      state.targetDrawX - drawArrowX
+    )
     const cos = Math.cos(angle)
     const sin = Math.sin(angle)
 
-    const size = indicator.size * (reducedMotion ? 1 : 0.9 + 0.1 * pulse)
+    // Size scales slightly with activity
+    const size = indicator.size * (0.9 + activity * 0.15)
+    const alpha = 0.6 + activity * 0.35
 
     // Helper to rotate and translate a point
     const transform = (x: number, y: number) => ({
-      x: arrowX + x * cos - y * sin,
-      y: arrowY + x * sin + y * cos,
+      x: drawArrowX + x * cos - y * sin,
+      y: drawArrowY + x * sin + y * cos,
     })
 
     // Arrow shape vertices (pointing right, will be rotated)
@@ -200,6 +482,14 @@ export class EdgeIndicatorRenderer {
     const notch = transform(-size * 0.2, 0)
     const backBottom = transform(-size * 0.4, size * 0.5)
 
+    // Outer glow
+    this.arrowGraphics.circle(drawArrowX, drawArrowY, size * 1.2)
+    this.arrowGraphics.fill({ color: indicator.color, alpha: alpha * 0.1 })
+
+    // Inner glow
+    this.arrowGraphics.circle(drawArrowX, drawArrowY, size * 0.8)
+    this.arrowGraphics.fill({ color: indicator.color, alpha: alpha * 0.2 })
+
     // Draw arrow
     this.arrowGraphics.moveTo(tip.x, tip.y)
     this.arrowGraphics.lineTo(backTop.x, backTop.y)
@@ -207,10 +497,6 @@ export class EdgeIndicatorRenderer {
     this.arrowGraphics.lineTo(backBottom.x, backBottom.y)
     this.arrowGraphics.closePath()
     this.arrowGraphics.fill({ color: indicator.color, alpha })
-
-    // Glow effect
-    this.arrowGraphics.circle(arrowX, arrowY, size * 0.8)
-    this.arrowGraphics.fill({ color: indicator.color, alpha: alpha * 0.2 })
   }
 
   /**
