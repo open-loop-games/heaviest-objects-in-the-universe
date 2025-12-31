@@ -26,7 +26,6 @@ import {
   removeWire,
   setPrestigeAnimationCallback,
   canAffordConflictResolve,
-  getConflictResolveCost,
   collectCacheFragment,
 } from '../game/mutations'
 import {
@@ -68,6 +67,7 @@ import {
   findSharedDeps,
 } from '../game/hoisting'
 import { setAutoResolveCallback } from '../game/automation'
+import { onConflictResolved } from '../game/mutations'
 import type { Package } from '../game/types'
 import { Colors } from '../rendering/colors'
 import { setSelectedConflictWire } from '../onboarding/tutorial-state'
@@ -582,13 +582,12 @@ function removeInternalPackageWithSubtree(
 
 function handlePrune() {
   if (!selectedWire.value) return
-  if (!canAffordPrune.value) return
 
   const wire = selectedWire.value
   const inScope = isInPackageScope()
 
-  // Deduct bandwidth cost for conflict resolution
-  gameState.resources.bandwidth -= getConflictResolveCost()
+  // Momentum loop: Generate bandwidth for manual conflict resolution
+  onConflictResolved()
 
   if (inScope) {
     // Pruning inside a package scope (works at any depth)

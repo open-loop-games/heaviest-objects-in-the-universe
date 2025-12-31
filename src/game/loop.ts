@@ -6,17 +6,14 @@ import { isInPackageScope } from './scope'
 import { updateEfficiency, updateStability } from './mutations'
 import { spawnDependencies } from './packages'
 import { updateCascade } from './cascade'
-import {
-  getEffectiveBandwidthRegen,
-  getEffectiveInstallSpeed,
-  applyUpgradeEffects,
-} from './upgrades'
+import { getEffectiveInstallSpeed, applyUpgradeEffects } from './upgrades'
 import {
   updatePhysics,
   updateInternalPhysics,
   isCollapseActive,
 } from './physics'
 import { updateAutomation } from './automation'
+import { applySafetyRegen, onPackageResolved } from './mutations'
 import type { Package } from './types'
 
 type TickCallback = (deltaTime: number) => void
@@ -36,6 +33,8 @@ function updateInternalPackages(
       if (innerPkg.installProgress >= 1) {
         innerPkg.installProgress = 1
         innerPkg.state = 'ready'
+        // Momentum: Generate BW when package resolves
+        onPackageResolved()
       }
     }
 
@@ -177,18 +176,16 @@ function tick(): void {
 }
 
 /**
- * Update resource regeneration
+ * Update resource regeneration (momentum loop: safety regen only)
+ * Main BW generation comes from activity via momentum.ts
  */
 function updateResources(deltaTime: number): void {
   // Apply upgrade effects (ensures max bandwidth is correct)
   applyUpgradeEffects()
 
-  // Bandwidth regeneration
-  const regenRate = getEffectiveBandwidthRegen()
-  gameState.resources.bandwidth = Math.min(
-    gameState.resources.maxBandwidth,
-    gameState.resources.bandwidth + regenRate * deltaTime
-  )
+  // Safety passive regen (minimal, prevents soft-lock)
+  // Main BW generation is activity-driven via momentum.ts
+  applySafetyRegen(deltaTime)
 }
 
 /**
@@ -208,6 +205,8 @@ function updatePackages(deltaTime: number): void {
         pkg.installProgress = 1
         pkg.state = 'ready'
         packagesToSpawn.push(pkg.id)
+        // Momentum: Generate BW when package resolves
+        onPackageResolved()
       }
     }
 

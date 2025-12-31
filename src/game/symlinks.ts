@@ -3,7 +3,6 @@
 
 import { toRaw } from 'vue'
 import { gameState } from './state'
-import { SYMLINK_MERGE_COST } from './config'
 import {
   getCurrentScopePackages,
   getCurrentScopeWires,
@@ -14,6 +13,7 @@ import {
 import type { Package } from './types'
 import { triggerOrganizeBoost, markPackageRelocated } from './physics'
 import { updateCrossPackageDuplicates } from './cross-package'
+import { emitQualityEvent, onSymlinkMerged } from './mutations'
 
 // Callbacks to avoid circular dependency
 // Set by packages.ts on initialization - takes full scope path for arbitrary depth
@@ -166,16 +166,18 @@ export function canSymlink(sourceId: string, targetId: string): boolean {
 
 /**
  * Check if we can afford to perform a symlink merge
+ * Momentum loop: Always affordable (generates BW instead of costing)
  */
 export function canAffordSymlinkMerge(): boolean {
-  return gameState.resources.bandwidth >= SYMLINK_MERGE_COST
+  return true // Always affordable in momentum loop
 }
 
 /**
  * Get the cost to perform a symlink merge
+ * Momentum loop: Free (generates BW instead)
  */
 export function getSymlinkMergeCost(): number {
-  return SYMLINK_MERGE_COST
+  return 0 // Free in momentum loop
 }
 
 /**
@@ -191,6 +193,21 @@ export interface MergeResult {
  */
 function isCompressed(pkg: Package): boolean {
   return pkg.internalPackages !== null && pkg.internalWires !== null
+}
+
+/**
+ * Check if rewiring would create a duplicate wire
+ * Used during symlink merge to avoid creating parallel wires
+ */
+function wouldCreateDuplicateWire(
+  wireId: string,
+  newFromId: string,
+  newToId: string,
+  allWires: Map<string, import('./types').Wire>
+): boolean {
+  return Array.from(allWires.values()).some(
+    (w) => w.id !== wireId && w.fromId === newFromId && w.toId === newToId
+  )
 }
 
 /**
@@ -220,19 +237,14 @@ function shouldKeep(a: Package, b: Package): boolean {
 /**
  * Perform a symlink merge: keep the more central node, other vanishes cleanly
  * SCOPE-AWARE: Works for both root scope and internal packages
- * Returns the weight saved from the merge (0 if failed due to affordability or invalid)
+ * Momentum loop: Generates bandwidth instead of costing
+ * Returns the weight saved from the merge (0 if failed)
  */
 export function performSymlinkMerge(
   sourceId: string,
   targetId: string
 ): number {
-  // Check affordability first
-  if (!canAffordSymlinkMerge()) return 0
-
   if (!canSymlink(sourceId, targetId)) return 0
-
-  // Deduct bandwidth cost upfront
-  gameState.resources.bandwidth -= SYMLINK_MERGE_COST
 
   const packages = getCurrentScopePackages()
   const wires = getCurrentScopeWires()
@@ -253,13 +265,15 @@ export function performSymlinkMerge(
   // Calculate weight savings (50% of source)
   const weightSaved = Math.floor(source.size / 2)
 
-  // === IMMEDIATE REWARDS ===
-  // Small bandwidth refund (10% of source weight) - symlinks still cost net bandwidth
-  const bandwidthRefund = Math.floor(source.size * 0.1)
-  gameState.resources.bandwidth = Math.min(
-    gameState.resources.maxBandwidth,
-    gameState.resources.bandwidth + bandwidthRefund
-  )
+  // === MOMENTUM LOOP: Generate bandwidth for manual merge ===
+  onSymlinkMerged()
+
+  // === QUALITY EVENT: Notify UI for juice ===
+  emitQualityEvent({
+    type: 'symlink-merge',
+    weightSaved,
+    position: { x: source.position.x, y: source.position.y },
+  })
 
   // Reduce global weight
   gameState.resources.weight -= weightSaved
@@ -277,32 +291,24 @@ export function performSymlinkMerge(
 
   for (const [wireId, wire] of wires) {
     if (wire.toId === sourceId) {
+      // Wire points TO source - redirect to target or delete if duplicate
       if (wire.fromId === targetId) {
+        wiresToDelete.push(wireId) // Direct connection between source/target
+      } else if (
+        wouldCreateDuplicateWire(wireId, wire.fromId, targetId, wires)
+      ) {
         wiresToDelete.push(wireId)
       } else {
-        const wouldDuplicate = Array.from(wires.values()).some(
-          (w) =>
-            w.id !== wireId && w.fromId === wire.fromId && w.toId === targetId
-        )
-        if (wouldDuplicate) {
-          wiresToDelete.push(wireId)
-        } else {
-          wire.toId = targetId
-        }
+        wire.toId = targetId
       }
     } else if (wire.fromId === sourceId) {
+      // Wire points FROM source - redirect from target or delete if duplicate
       if (wire.toId === targetId) {
+        wiresToDelete.push(wireId) // Direct connection between source/target
+      } else if (wouldCreateDuplicateWire(wireId, targetId, wire.toId, wires)) {
         wiresToDelete.push(wireId)
       } else {
-        const wouldDuplicate = Array.from(wires.values()).some(
-          (w) =>
-            w.id !== wireId && w.fromId === targetId && w.toId === wire.toId
-        )
-        if (wouldDuplicate) {
-          wiresToDelete.push(wireId)
-        } else {
-          wire.fromId = targetId
-        }
+        wire.fromId = targetId
       }
     }
   }

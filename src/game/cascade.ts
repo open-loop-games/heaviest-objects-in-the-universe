@@ -9,7 +9,6 @@ import {
   setCascadeStarved,
 } from './state'
 import {
-  DEP_SPAWN_COST,
   MAX_PENDING_DEPS,
   GOLDEN_SPAWN_CHANCE,
   GOLDEN_WEIGHT_MULTIPLIER,
@@ -18,7 +17,7 @@ import {
   CACHE_FRAGMENT_MIN_DEPTH,
   DEPTH_WEIGHT_MULTIPLIERS,
 } from './config'
-import { addWeight } from './mutations'
+import { addWeight, onGoldenSpawned, onFragmentCollected } from './mutations'
 import { generateId, generateWireId } from './id-generator'
 import {
   type Package,
@@ -35,6 +34,7 @@ import {
   type PackageIdentity,
 } from './registry'
 import { getPackageAtPath } from './scope'
+import { getIdentitySize } from './formulas'
 import { consumeSurge, isSurgeUnlocked } from './upgrades'
 
 // Callback for particle effects when a dep spawns
@@ -85,17 +85,6 @@ interface CascadeData {
 
 // Queue for pending cascades (FIFO - first entered scope gets completed first)
 const cascadeQueue: string[][] = []
-
-/**
- * Get deterministic size for a package based on its identity.
- */
-function getIdentitySize(
-  identity: PackageIdentity | undefined,
-  minSize: number = 10
-): number {
-  if (!identity) return 30 + Math.floor(Math.random() * 40)
-  return Math.max(minSize, identity.weight)
-}
 
 /**
  * Check if cascade is currently active
@@ -390,29 +379,14 @@ function spawnNextFromQueue(): void {
     return
   }
 
-  // Check bandwidth affordability
-  if (gameState.resources.bandwidth < DEP_SPAWN_COST) {
-    // Can't afford - mark as awaiting bandwidth
-    if (!spawn.awaitingBandwidth) {
-      spawn.awaitingBandwidth = true
-      spawn.queuedAt = Date.now()
-    }
-    // Signal starved state to UI
-    setCascadeStarved(true)
-    // Don't spawn, wait for bandwidth to regenerate
-    return
-  }
-
-  // Can afford - clear starved state
-  setCascadeStarved(false)
-
-  // Remove from queue and deduct bandwidth
+  // Momentum loop: Cascade spawns are FREE
+  // Remove from queue (no bandwidth check needed)
   cascade.pendingSpawns.shift()
-  gameState.resources.bandwidth -= DEP_SPAWN_COST
 
-  // Clear awaiting flag if it was set
+  // Clear any legacy awaiting state
   spawn.awaitingBandwidth = false
   spawn.queuedAt = 0
+  setCascadeStarved(false)
 
   // Enforce queue cap
   if (cascade.pendingSpawns.length > MAX_PENDING_DEPS) {
@@ -464,9 +438,15 @@ function spawnNextFromQueue(): void {
   const goldenMultiplier = isGolden ? GOLDEN_WEIGHT_MULTIPLIER : 1.0
   const finalSize = Math.floor(spawn.size * depthMultiplier * goldenMultiplier)
 
-  // Track golden packages
+  // Track golden packages and generate momentum
   if (isGolden) {
     gameState.stats.goldenPackagesFound++
+    onGoldenSpawned()
+  }
+
+  // Generate momentum for cache fragments
+  if (hasCacheFragment) {
+    onFragmentCollected()
   }
 
   const innerPkg: Package = {

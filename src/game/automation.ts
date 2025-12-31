@@ -4,17 +4,18 @@
 
 import { toRaw } from 'vue'
 import { gameState, getEcosystemTier } from './state'
-import { getPackageAtPath } from './scope'
+import { getPackageAtPath, getPackagesAtPath, getWiresAtPath } from './scope'
 import { findSharedDeps, hoistDep } from './hoisting'
+import { hasDuplicatesInScope, hasConflictsInScope } from './formulas'
 import { getCascadeScopePath, isCascadeActive } from './cascade'
 import {
   getResolveDrainMultiplier,
   getResolveSpeedMultiplier,
   getHoistDrainMultiplier,
   getHoistSpeedMultiplier,
-  getEffectiveBandwidthRegen,
 } from './upgrades'
-import type { Wire, Package } from './types'
+import { AUTO_RESOLVE_DRAIN, AUTO_HOIST_DRAIN } from './config'
+import type { Package } from './types'
 
 // ============================================
 // AUTOMATION TIMING CONSTANTS
@@ -137,30 +138,6 @@ function findConflictInPackage(
 // ============================================
 
 /**
- * Get the wire map for a specific scope path
- */
-function getWiresAtPath(scopePath: string[]): Map<string, Wire> | null {
-  if (scopePath.length === 0) {
-    return gameState.wires
-  }
-
-  const pkg = getPackageAtPath(scopePath)
-  return pkg?.internalWires ?? null
-}
-
-/**
- * Get the package map for a specific scope path
- */
-function getPackagesAtPath(scopePath: string[]): Map<string, Package> | null {
-  if (scopePath.length === 0) {
-    return gameState.packages
-  }
-
-  const pkg = getPackageAtPath(scopePath)
-  return pkg?.internalPackages ?? null
-}
-
-/**
  * Resolve a wire conflict at a specific scope path
  */
 function resolveWireAtPath(wireId: string, scopePath: string[]): boolean {
@@ -206,8 +183,8 @@ function recalculateInternalStateAtPath(scopePath: string[]): void {
     if (!pkg) continue
 
     // Check if all internal issues are resolved
-    const hasConflicts = checkForConflicts(pkg)
-    const hasDuplicates = checkForDuplicates(pkg)
+    const hasConflicts = hasConflictsInScope(pkg)
+    const hasDuplicates = hasDuplicatesInScope(pkg)
 
     if (!hasConflicts && !hasDuplicates) {
       pkg.internalState = 'stable'
@@ -215,37 +192,6 @@ function recalculateInternalStateAtPath(scopePath: string[]): void {
       pkg.internalState = 'unstable'
     }
   }
-}
-
-function checkForConflicts(pkg: Package): boolean {
-  if (!pkg.internalWires) return false
-  for (const wire of pkg.internalWires.values()) {
-    if (wire.conflicted) return true
-  }
-  // Check nested packages
-  if (pkg.internalPackages) {
-    for (const innerPkg of pkg.internalPackages.values()) {
-      if (checkForConflicts(innerPkg)) return true
-    }
-  }
-  return false
-}
-
-function checkForDuplicates(pkg: Package): boolean {
-  if (!pkg.internalPackages) return false
-
-  // Simple duplicate detection - just check if any two packages share same identity
-  const identityCounts = new Map<string, number>()
-  for (const [id, innerPkg] of pkg.internalPackages) {
-    if (!innerPkg.identity || innerPkg.isGhost || id === pkg.id) continue
-    const name = innerPkg.identity.name
-    identityCounts.set(name, (identityCounts.get(name) || 0) + 1)
-  }
-
-  for (const count of identityCounts.values()) {
-    if (count >= 2) return true
-  }
-  return false
 }
 
 // ============================================
@@ -272,43 +218,33 @@ export function setAutoResolveCallback(
  * @param now Current timestamp
  * @param deltaTime Time since last update in seconds (for BW drain)
  */
-export function updateAutomation(now: number, deltaTime: number = 0): void {
+export function updateAutomation(now: number, _deltaTime: number = 0): void {
   const tier = getEcosystemTier(gameState.meta.cacheTokens)
   const auto = gameState.automation
 
   // ============================================
   // AUTO-RESOLVE (Tier 2+, requires toggle enabled)
+  // Momentum loop: Fixed drain per operation (not continuous)
   // ============================================
   if (tier >= 2 && auto.resolveEnabled) {
     // Apply speed upgrade to interval (faster with upgrades)
     const baseInterval = RESOLVE_INTERVALS[tier] ?? Infinity
     const resolveInterval = baseInterval / getResolveSpeedMultiplier()
 
-    // If actively processing, drain bandwidth (% of regen, reduced by upgrade)
-    // 20% of regen per second while processing - meaningful cost for convenience
-    if (auto.resolveActive) {
-      const drain =
-        getEffectiveBandwidthRegen() *
-        0.2 *
-        deltaTime *
-        getResolveDrainMultiplier()
-      if (gameState.resources.bandwidth >= drain) {
-        gameState.resources.bandwidth -= drain
-      } else {
-        // Not enough BW - pause processing (don't complete)
-        // Will resume when BW regenerates
-      }
-    }
-
     // Check if we should start a new resolve
     if (!auto.resolveActive && now - auto.lastResolveTime >= resolveInterval) {
       const conflict = findFirstConflictedWire()
       if (conflict) {
-        // Start processing
-        auto.resolveActive = true
-        auto.resolveTargetWireId = conflict.wireId
-        auto.resolveTargetScope = conflict.scopePath
-        auto.processStartTime = now
+        // Check if we can afford the fixed drain cost
+        const drainCost = AUTO_RESOLVE_DRAIN * getResolveDrainMultiplier()
+        if (gameState.resources.bandwidth >= drainCost) {
+          // Start processing
+          auto.resolveActive = true
+          auto.resolveTargetWireId = conflict.wireId
+          auto.resolveTargetScope = conflict.scopePath
+          auto.processStartTime = now
+        }
+        // If can't afford, don't start - will try again next interval
       }
       auto.lastResolveTime = now
     }
@@ -339,7 +275,14 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
             }
           }
 
-          // Complete the resolve
+          // Deduct fixed drain cost on completion (momentum loop)
+          const drainCost = AUTO_RESOLVE_DRAIN * getResolveDrainMultiplier()
+          gameState.resources.bandwidth = Math.max(
+            0,
+            gameState.resources.bandwidth - drainCost
+          )
+
+          // Complete the resolve (no momentum generation - automation doesn't reward)
           const success = resolveWireAtPath(auto.resolveTargetWireId, scopePath)
 
           if (success && onAutoResolveComplete) {
@@ -362,24 +305,12 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
 
   // ============================================
   // AUTO-HOIST (Tier 3+, requires toggle enabled)
+  // Momentum loop: Fixed drain per operation (not continuous)
   // ============================================
   if (tier >= 3 && auto.hoistEnabled) {
     // Apply speed upgrade to interval (faster with upgrades)
     const baseInterval = HOIST_INTERVALS[tier] ?? Infinity
     const hoistInterval = baseInterval / getHoistSpeedMultiplier()
-
-    // If actively processing, drain bandwidth (% of regen, reduced by upgrade)
-    // 20% of regen per second while processing - meaningful cost for convenience
-    if (auto.hoistActive) {
-      const drain =
-        getEffectiveBandwidthRegen() *
-        0.2 *
-        deltaTime *
-        getHoistDrainMultiplier()
-      if (gameState.resources.bandwidth >= drain) {
-        gameState.resources.bandwidth -= drain
-      }
-    }
 
     // Check if we should start a new hoist
     if (!auto.hoistActive && now - auto.lastHoistTime >= hoistInterval) {
@@ -392,11 +323,16 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
           string[],
         ]
         if (depName && sources && sources.length >= 2) {
-          // Start processing
-          auto.hoistActive = true
-          auto.hoistTargetDepName = depName
-          auto.hoistTargetSources = sources
-          auto.processStartTime = now
+          // Check if we can afford the fixed drain cost
+          const drainCost = AUTO_HOIST_DRAIN * getHoistDrainMultiplier()
+          if (gameState.resources.bandwidth >= drainCost) {
+            // Start processing
+            auto.hoistActive = true
+            auto.hoistTargetDepName = depName
+            auto.hoistTargetSources = sources
+            auto.processStartTime = now
+          }
+          // If can't afford, don't start - will try again next interval
         }
       }
       auto.lastHoistTime = now
@@ -428,7 +364,14 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
           effectPosition.y /= count
         }
 
-        // Complete the hoist
+        // Deduct fixed drain cost on completion (momentum loop)
+        const drainCost = AUTO_HOIST_DRAIN * getHoistDrainMultiplier()
+        gameState.resources.bandwidth = Math.max(
+          0,
+          gameState.resources.bandwidth - drainCost
+        )
+
+        // Complete the hoist (no momentum generation - automation doesn't reward)
         const success = hoistDep(depName)
 
         if (success && onAutoHoistComplete) {

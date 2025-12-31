@@ -11,7 +11,11 @@ import {
 import { addPackage, addWire, spendBandwidth } from './mutations'
 import { generateId, generateWireId } from './id-generator'
 import { type Package, type Wire, type InternalState } from './types'
-import { rollDependencyCount, rollPackageSize } from './formulas'
+import {
+  rollDependencyCount,
+  getIdentitySize,
+  countScopeDuplicates,
+} from './formulas'
 import { getEffectiveInstallCost } from './upgrades'
 import {
   pickRandomIdentity,
@@ -21,26 +25,13 @@ import {
   type PackageIdentity,
 } from './registry'
 import { setRecalculateCallback } from './symlinks'
+import { onScopeStabilized } from './mutations'
 
 // Re-export ID initialization for save/load
 export { initIdCounterFromState } from './id-generator'
 
 // Re-export queries for backwards compatibility
 export { findPackageAtPosition, getInternalStats } from './queries'
-
-/**
- * Get deterministic size for a package based on its identity.
- * Same identity = same size, for visual consistency of duplicates.
- */
-function getIdentitySize(
-  identity: PackageIdentity | undefined,
-  minSize: number = 10
-): number {
-  if (!identity) return rollPackageSize()
-  // Use identity weight directly - no random variance
-  // This ensures duplicates of the same package look identical
-  return Math.max(minSize, identity.weight)
-}
 
 // Root package identity - npm itself
 const ROOT_IDENTITY: PackageIdentity = {
@@ -433,18 +424,10 @@ export function recalculateStateAtPath(scopePath: string[]): void {
     }
   }
 
-  // Check for duplicate identities
-  const identityCounts = new Map<string, number>()
-  for (const innerPkg of pkg.internalPackages.values()) {
-    if (innerPkg.identity && !innerPkg.isGhost) {
-      const name = innerPkg.identity.name
-      identityCounts.set(name, (identityCounts.get(name) || 0) + 1)
-    }
-  }
-  let duplicateCount = 0
-  for (const count of identityCounts.values()) {
-    if (count > 1) duplicateCount += count - 1
-  }
+  // Check for duplicate identities using shared helper
+  const { duplicates: duplicateCount } = countScopeDuplicates(
+    pkg.internalPackages
+  )
 
   let newState: InternalState
   if (
@@ -458,6 +441,12 @@ export function recalculateStateAtPath(scopePath: string[]): void {
   }
 
   pkg.internalState = newState
+
+  // Momentum loop: Generate burst when scope becomes stable
+  if (previousState !== 'stable' && newState === 'stable') {
+    const packageCount = pkg.internalPackages?.size ?? 0
+    onScopeStabilized(packageCount)
+  }
 
   // Propagate state change up the tree
   // If this package became stable/unstable, parent may need recalculation

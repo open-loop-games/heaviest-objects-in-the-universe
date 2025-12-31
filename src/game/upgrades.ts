@@ -3,7 +3,6 @@
 
 import { gameState } from './state'
 import { spendBandwidth } from './mutations'
-import { getScopePackageCount } from './scope'
 
 export interface UpgradeDefinition {
   id: string
@@ -44,13 +43,14 @@ const effects = {
 }
 
 // Core and automation upgrades
+// Costs reduced for momentum loop (activity-driven economy)
 export const UPGRADES: Record<string, UpgradeDefinition> = {
   bandwidth: {
     id: 'bandwidth',
     icon: '↓',
     maxLevel: 15,
-    baseCost: 40,
-    costMultiplier: 1.6,
+    baseCost: 25, // Reduced from 40
+    costMultiplier: 1.5, // Reduced from 1.6
     unlockAt: 3,
     prestigeRequirement: 1, // Gate behind first prestige to prevent poor early states
   },
@@ -58,16 +58,16 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     id: 'efficiency',
     icon: '⚡',
     maxLevel: 12,
-    baseCost: 60,
-    costMultiplier: 1.8,
+    baseCost: 40, // Reduced from 60
+    costMultiplier: 1.6, // Reduced from 1.8
     unlockAt: 15,
   },
   compression: {
     id: 'compression',
     icon: '◆↓',
     maxLevel: 8,
-    baseCost: 100,
-    costMultiplier: 2.0,
+    baseCost: 80, // Reduced from 100
+    costMultiplier: 1.8, // Reduced from 2.0
     unlockAt: 0,
     prestigeRequirement: 3, // Only visible after 3 prestiges
   },
@@ -75,8 +75,8 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     id: 'resolveSpeed',
     icon: '⚙+',
     maxLevel: 5,
-    baseCost: 50,
-    costMultiplier: 1.7,
+    baseCost: 35, // Reduced from 50
+    costMultiplier: 1.5, // Reduced from 1.7
     unlockAt: 0,
     tierRequirement: 2,
   },
@@ -84,8 +84,8 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     id: 'hoistSpeed',
     icon: '⤴+',
     maxLevel: 5,
-    baseCost: 60,
-    costMultiplier: 1.8,
+    baseCost: 45, // Reduced from 60
+    costMultiplier: 1.6, // Reduced from 1.8
     unlockAt: 0,
     tierRequirement: 3,
   },
@@ -93,8 +93,8 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     id: 'surge',
     icon: '◎', // Ripple/burst icon (placeholder, component uses SVG)
     maxLevel: 9, // 1 base + 9 upgrades = 10 total segments
-    baseCost: 80,
-    costMultiplier: 1.5,
+    baseCost: 50, // Reduced from 80
+    costMultiplier: 1.4, // Reduced from 1.5
     unlockAt: 0,
     prestigeRequirement: 2, // Unlocks after P2
   },
@@ -390,16 +390,44 @@ export function getNextLockedUpgrade(): UpgradeDefinition | null {
   return locked[0] || null
 }
 
-// Calculate install cost with upgrades applied
-// Per-scope scaling: each scope has its own cost curve (resets when entering)
-// Tier scaling: higher tiers have higher base costs to match increased regen
+// Calculate install cost with upgrades applied (momentum loop version)
+// Install is the entry gate to cascades - cost scales with tier and active scopes
+// Cascades themselves are FREE (removed DEP_SPAWN_COST)
 export function getEffectiveInstallCost(): number {
-  const scopePackageCount = getScopePackageCount()
   const tier = gameState.meta.ecosystemTier
-  const baseCost = 10 * tier // 10 → 20 → 30 at tiers 1-3
-  const scaledCost = baseCost * Math.pow(1.12, scopePackageCount)
+
+  // Count active (non-stable) scopes for scaling
+  // Each active scope makes the next install more expensive
+  const activeScopes = countActiveScopes()
+
+  // Base cost scales with tier: 25 → 50 → 75 → 100 → 125
+  const baseCost = 25 * tier
+
+  // Active scope multiplier: 1.15^activeScopes
+  const scopeMultiplier = Math.pow(1.15, activeScopes)
+
+  // Apply efficiency upgrade discount
   const costMultiplier = getEffectiveCostMultiplier()
-  return Math.floor(scaledCost * costMultiplier)
+
+  return Math.floor(baseCost * scopeMultiplier * costMultiplier)
+}
+
+/**
+ * Count currently active (non-stable) top-level packages
+ * Used for install cost scaling
+ */
+function countActiveScopes(): number {
+  let count = 0
+  for (const pkg of gameState.packages.values()) {
+    // Only count top-level packages (direct children of root)
+    if (pkg.parentId === gameState.rootId) {
+      // Count if not stable (pristine, unstable, or null internal state)
+      if (pkg.internalState !== 'stable') {
+        count++
+      }
+    }
+  }
+  return count
 }
 
 // ============================================

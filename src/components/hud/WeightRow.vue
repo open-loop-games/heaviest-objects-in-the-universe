@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { gameState, computed_gravity } from '../../game/state'
+import { gameState, computed_rawGravity } from '../../game/state'
 import {
   getUpgradeLevel,
   canPurchaseUpgrade,
@@ -15,9 +15,11 @@ import {
 
 const SEGMENTS = 12
 
-// Progress toward prestige threshold (0-1, capped)
+// Raw progress toward prestige threshold (0-1, capped)
+// Uses raw gravity (not efficiency-boosted) to show pure weight accumulation
+// The gap between this and PrestigeOrbit visualizes efficiency boost
 const prestigeProgress = computed(() => {
-  return Math.min(1, computed_gravity.value)
+  return Math.min(1, computed_rawGravity.value)
 })
 
 // Segmented weight bar - split into separate computeds for v-memo
