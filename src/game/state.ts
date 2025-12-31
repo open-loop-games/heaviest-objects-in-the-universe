@@ -259,3 +259,67 @@ export function endCollapse(): void {
 export function markPackageAbsorbed(pkgId: string): void {
   collapseState.value.absorbedPackages.add(pkgId)
 }
+
+// ============================================
+// DRAG STATE (for physics freeze during drag)
+// ============================================
+
+export interface DragState {
+  packageId: string | null // Package being dragged (null = no drag)
+  isInternalScope: boolean // Whether drag is in an internal scope
+}
+
+export const dragState = ref<DragState>({
+  packageId: null,
+  isInternalScope: false,
+})
+
+export function startDrag(packageId: string, isInternalScope: boolean): void {
+  dragState.value = { packageId, isInternalScope }
+}
+
+export function endDrag(): void {
+  dragState.value = { packageId: null, isInternalScope: false }
+}
+
+// ============================================
+// WIGGLE STATE (for non-draggable nodes)
+// ============================================
+
+// Maps packageId -> wiggle end time (Date.now() timestamp)
+export const wiggleState = ref<Map<string, number>>(new Map())
+
+export function triggerWiggle(packageId: string): void {
+  // Wiggle lasts 400ms
+  wiggleState.value.set(packageId, Date.now() + 400)
+}
+
+export function isWiggling(packageId: string): boolean {
+  const endTime = wiggleState.value.get(packageId)
+  if (!endTime) return false
+  if (Date.now() > endTime) {
+    wiggleState.value.delete(packageId)
+    return false
+  }
+  return true
+}
+
+export function getWigglePhase(packageId: string): number {
+  const endTime = wiggleState.value.get(packageId)
+  if (!endTime) return 0
+  const remaining = endTime - Date.now()
+  if (remaining <= 0) return 0
+  // Phase oscillates 0-1-0-1 multiple times during wiggle duration
+  return Math.sin((400 - remaining) * 0.05) * (remaining / 400)
+}
+
+// ============================================
+// CASCADE STARVED STATE
+// ============================================
+
+// True when cascade is waiting on bandwidth to spawn more packages
+export const cascadeStarved = ref(false)
+
+export function setCascadeStarved(starved: boolean): void {
+  cascadeStarved.value = starved
+}
