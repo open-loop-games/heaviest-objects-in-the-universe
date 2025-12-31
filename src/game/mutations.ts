@@ -3,8 +3,19 @@
 import type { Package, Wire } from './types'
 import {
   createInitialState,
-  CONFLICT_RESOLVE_COST,
   FRAGMENT_TO_TOKEN_RATIO,
+  MOMENTUM_PACKAGE_RESOLVE,
+  MOMENTUM_CONFLICT_RESOLVE,
+  MOMENTUM_SYMLINK_MERGE,
+  MOMENTUM_STABILIZE_BASE,
+  MOMENTUM_STABILIZE_PER_PKG,
+  MOMENTUM_GOLDEN_SPAWN,
+  MOMENTUM_FRAGMENT_COLLECT,
+  MOMENTUM_TIER_MULTIPLIERS,
+  SAFETY_REGEN_BY_TIER,
+  MOMENTUM_DAMPENING_WINDOW,
+  MOMENTUM_DAMPENING_THRESHOLD,
+  MOMENTUM_DAMPENING_FLOOR,
 } from './config'
 import {
   calculateEfficiency,
@@ -16,6 +27,7 @@ import {
   computed_canPrestige,
   getPrestigeThreshold,
   syncEcosystemTier,
+  getEcosystemTier,
 } from './state'
 import {
   getCurrentScopePackages,
@@ -24,7 +36,245 @@ import {
 } from './scope'
 import { recalculateStateAtPath } from './packages'
 import { saveToLocalStorage, clearSavedGame } from './persistence'
-import { getCompressionMultiplier } from './upgrades'
+import { getCompressionMultiplier, getUpgradeLevel } from './upgrades'
+import {
+  getEfficiencyTier,
+  getEfficiencyTierRank,
+  type EfficiencyTier,
+} from './formulas'
+
+// ============================================
+// QUALITY EVENT SYSTEM
+// ============================================
+
+export type QualityEvent =
+  | {
+      type: 'efficiency-improved'
+      delta: number
+      newValue: number
+      newTier: EfficiencyTier
+    }
+  | {
+      type: 'efficiency-tier-up'
+      oldTier: EfficiencyTier
+      newTier: EfficiencyTier
+    }
+  | {
+      type: 'symlink-merge'
+      weightSaved: number
+      position: { x: number; y: number }
+    }
+  | {
+      type: 'scope-stabilized'
+      scopeId: string
+      packageCount: number
+    }
+  | {
+      type: 'conflict-resolved'
+      position: { x: number; y: number }
+    }
+  | {
+      type: 'stability-improved'
+      newValue: number
+      scopesStable: number
+      scopesTotal: number
+    }
+
+type QualityEventListener = (event: QualityEvent) => void
+const qualityEventListeners: Set<QualityEventListener> = new Set()
+
+/** Emit a quality event to all subscribers */
+export function emitQualityEvent(event: QualityEvent): void {
+  for (const listener of qualityEventListeners) {
+    try {
+      listener(event)
+    } catch (e) {
+      console.error('Quality event listener error:', e)
+    }
+  }
+}
+
+/** Subscribe to quality events. Returns unsubscribe function. */
+export function onQualityEvent(listener: QualityEventListener): () => void {
+  qualityEventListeners.add(listener)
+  return () => {
+    qualityEventListeners.delete(listener)
+  }
+}
+
+/** Clear all listeners (for cleanup/testing) */
+export function clearQualityEventListeners(): void {
+  qualityEventListeners.clear()
+}
+
+// ============================================
+// EFFICIENCY TRACKING (for tier-up detection)
+// ============================================
+
+let lastEfficiency = 1
+let lastEfficiencyTier: EfficiencyTier = 'pristine'
+
+/** Check efficiency changes and emit events if needed */
+function checkEfficiencyChange(newEfficiency: number): void {
+  const newTier = getEfficiencyTier(newEfficiency)
+  const delta = newEfficiency - lastEfficiency
+
+  // Emit tier-up event if tier improved
+  const oldRank = getEfficiencyTierRank(lastEfficiencyTier)
+  const newRank = getEfficiencyTierRank(newTier)
+
+  if (newRank > oldRank) {
+    emitQualityEvent({
+      type: 'efficiency-tier-up',
+      oldTier: lastEfficiencyTier,
+      newTier,
+    })
+  }
+
+  // Emit improvement event if efficiency increased significantly (>1%)
+  if (delta > 0.01) {
+    emitQualityEvent({
+      type: 'efficiency-improved',
+      delta,
+      newValue: newEfficiency,
+      newTier,
+    })
+  }
+
+  lastEfficiency = newEfficiency
+  lastEfficiencyTier = newTier
+}
+
+/** Reset efficiency tracking (call on prestige) */
+function resetEfficiencyTracking(): void {
+  lastEfficiency = 1
+  lastEfficiencyTier = 'pristine'
+}
+
+// ============================================
+// MOMENTUM SYSTEM (Activity-driven BW generation)
+// ============================================
+
+// Track recent generation for dampening calculation
+interface GenerationEvent {
+  amount: number
+  timestamp: number
+}
+
+const recentGeneration: GenerationEvent[] = []
+
+function cleanOldEvents(): void {
+  const cutoff = Date.now() - MOMENTUM_DAMPENING_WINDOW
+  while (
+    recentGeneration.length > 0 &&
+    recentGeneration[0]!.timestamp < cutoff
+  ) {
+    recentGeneration.shift()
+  }
+}
+
+function getRecentTotal(): number {
+  cleanOldEvents()
+  return recentGeneration.reduce((sum, e) => sum + e.amount, 0)
+}
+
+function getDampeningMultiplier(): number {
+  const recentTotal = getRecentTotal()
+  if (recentTotal <= MOMENTUM_DAMPENING_THRESHOLD) return 1.0
+  const excess = recentTotal - MOMENTUM_DAMPENING_THRESHOLD
+  return Math.max(
+    MOMENTUM_DAMPENING_FLOOR,
+    1 -
+      (excess / (MOMENTUM_DAMPENING_THRESHOLD * 2)) *
+        (1 - MOMENTUM_DAMPENING_FLOOR)
+  )
+}
+
+function recordGeneration(amount: number): void {
+  recentGeneration.push({ amount, timestamp: Date.now() })
+}
+
+function getMomentumTierMultiplier(): number {
+  const tier = getEcosystemTier(gameState.meta.cacheTokens)
+  return MOMENTUM_TIER_MULTIPLIERS[tier] ?? 1.0
+}
+
+function generateBandwidth(
+  baseAmount: number,
+  applyTierScaling: boolean = true
+): number {
+  const tierMult = applyTierScaling ? getMomentumTierMultiplier() : 1.0
+  const dampeningMult = getDampeningMultiplier()
+  const actualAmount = Math.floor(baseAmount * tierMult * dampeningMult)
+
+  if (actualAmount > 0) {
+    gameState.resources.bandwidth = Math.min(
+      gameState.resources.maxBandwidth,
+      gameState.resources.bandwidth + actualAmount
+    )
+    recordGeneration(actualAmount)
+  }
+  return actualAmount
+}
+
+/** Generate BW when a package finishes installing */
+export function onPackageResolved(): number {
+  return generateBandwidth(MOMENTUM_PACKAGE_RESOLVE)
+}
+
+/** Generate BW when a conflict is manually resolved */
+export function onConflictResolved(): number {
+  return generateBandwidth(MOMENTUM_CONFLICT_RESOLVE)
+}
+
+/** Generate BW when packages are merged via symlink */
+export function onSymlinkMerged(): number {
+  return generateBandwidth(MOMENTUM_SYMLINK_MERGE)
+}
+
+/** Generate BW burst when a scope stabilizes */
+export function onScopeStabilized(packageCount: number): number {
+  const baseAmount =
+    MOMENTUM_STABILIZE_BASE + packageCount * MOMENTUM_STABILIZE_PER_PKG
+  const bwLevel = getUpgradeLevel('bandwidth')
+  const upgradeBonus = 1 + bwLevel * 0.1
+
+  // Emit quality event for UI juice
+  const scopeId =
+    gameState.scopeStack[gameState.scopeStack.length - 1] ?? 'root'
+  emitQualityEvent({
+    type: 'scope-stabilized',
+    scopeId,
+    packageCount,
+  })
+
+  return generateBandwidth(Math.floor(baseAmount * upgradeBonus))
+}
+
+/** Generate BW when a golden package spawns */
+export function onGoldenSpawned(): number {
+  return generateBandwidth(MOMENTUM_GOLDEN_SPAWN, false)
+}
+
+/** Generate BW when a cache fragment is collected */
+export function onFragmentCollected(): number {
+  return generateBandwidth(MOMENTUM_FRAGMENT_COLLECT, false)
+}
+
+/** Get safety regen rate (BW/sec) - minimal passive to prevent soft-lock */
+export function getSafetyRegenRate(): number {
+  const tier = getEcosystemTier(gameState.meta.cacheTokens)
+  return SAFETY_REGEN_BY_TIER[tier] ?? 2
+}
+
+/** Apply safety regen for a time delta (called from game loop) */
+export function applySafetyRegen(deltaTime: number): void {
+  const regenRate = getSafetyRegenRate()
+  gameState.resources.bandwidth = Math.min(
+    gameState.resources.maxBandwidth,
+    gameState.resources.bandwidth + regenRate * deltaTime
+  )
+}
 
 // ============================================
 // WEIGHT HELPERS
@@ -131,7 +381,10 @@ export function spendBandwidth(amount: number): boolean {
 }
 
 export function updateEfficiency(): void {
-  gameState.stats.currentEfficiency = calculateEfficiency(gameState)
+  const newEfficiency = calculateEfficiency(gameState)
+  gameState.stats.currentEfficiency = newEfficiency
+  // Check for tier-up events (emits quality events for UI juice)
+  checkEfficiencyChange(newEfficiency)
 }
 
 export function updateStability(): void {
@@ -154,39 +407,36 @@ export function resolveConflict(packageId: string): void {
 }
 
 /**
- * Get the cost to resolve a conflict (scales with tier)
- * Base cost 15, multiplied by tier to match increased regen at higher tiers
+ * Get the cost to resolve a conflict
+ * Momentum loop: Conflicts are FREE to resolve (generates BW instead)
  */
 export function getConflictResolveCost(): number {
-  return CONFLICT_RESOLVE_COST * gameState.meta.ecosystemTier
+  return 0 // Free in momentum loop - generates BW instead
 }
 
 /**
  * Check if we can afford to resolve a conflict
+ * Always true in momentum loop (no cost)
  */
 export function canAffordConflictResolve(): boolean {
-  return gameState.resources.bandwidth >= getConflictResolveCost()
+  return true // Always affordable in momentum loop
 }
 
 /**
  * Resolve a conflict on a wire
  * SCOPE-AWARE: Works for both outer wires and internal wires
- * Returns false if wire doesn't exist, isn't conflicted, or can't afford
+ * Momentum loop: Generates bandwidth instead of costing
+ * Returns false if wire doesn't exist or isn't conflicted
  */
 export function resolveWireConflict(wireId: string): boolean {
-  // Check affordability first
-  if (!canAffordConflictResolve()) {
-    return false
-  }
-
   const wires = getCurrentScopeWires()
   const packages = getCurrentScopePackages()
 
   const wire = wires.get(wireId)
   if (!wire || !wire.conflicted) return false
 
-  // Deduct bandwidth cost (tier-scaled)
-  gameState.resources.bandwidth -= getConflictResolveCost()
+  // Momentum loop: Generate bandwidth for manual conflict resolution
+  onConflictResolved()
 
   // Mark wire as resolved
   wire.conflicted = false
@@ -314,6 +564,7 @@ export function performPrestige(): void {
   // Keep upgrades but reset level-specific progress
   gameState.stats.currentEfficiency = 1
   gameState.stats.currentStability = 1
+  resetEfficiencyTracking()
 
   // Reset camera
   gameState.camera.x = 0
@@ -365,6 +616,7 @@ export function softReset(): void {
   // Reset run stats but keep lifetime stats structure
   gameState.stats.currentEfficiency = 1
   gameState.stats.currentStability = 1
+  resetEfficiencyTracking()
 
   // Reset surge charge (keep unlocked segments)
   gameState.surge.chargedSegments = 0

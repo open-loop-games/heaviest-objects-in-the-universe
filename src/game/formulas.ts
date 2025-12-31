@@ -10,7 +10,7 @@ import { DEFAULT_CONFIG } from './config'
  * Count unresolved duplicates within a single scope (packages that could be symlink-merged)
  * Returns { duplicates: number, total: number }
  */
-function countScopeDuplicates(packages: Map<string, Package>): {
+export function countScopeDuplicates(packages: Map<string, Package>): {
   duplicates: number
   total: number
 } {
@@ -34,6 +34,38 @@ function countScopeDuplicates(packages: Map<string, Package>): {
   }
 
   return { duplicates, total }
+}
+
+/**
+ * Check if a package's internal scope has any unresolved duplicates
+ * Used by automation to determine if a scope is stable
+ */
+export function hasDuplicatesInScope(pkg: Package): boolean {
+  if (!pkg.internalPackages) return false
+  const { duplicates } = countScopeDuplicates(toRaw(pkg.internalPackages))
+  return duplicates > 0
+}
+
+/**
+ * Check if a package's internal scope has any unresolved conflicts (recursively)
+ * Used by automation and packages.ts to determine if a scope is stable
+ */
+export function hasConflictsInScope(pkg: Package): boolean {
+  if (!pkg.internalWires) return false
+
+  // Check this package's internal wires
+  for (const wire of pkg.internalWires.values()) {
+    if (wire.conflicted) return true
+  }
+
+  // Recursively check nested packages
+  if (pkg.internalPackages) {
+    for (const innerPkg of pkg.internalPackages.values()) {
+      if (hasConflictsInScope(innerPkg)) return true
+    }
+  }
+
+  return false
 }
 
 /**
@@ -85,6 +117,60 @@ export function calculateEfficiency(state: GameState): number {
   const efficiency = 1 - duplicates / total
 
   return efficiency
+}
+
+// ============================================
+// EFFICIENCY TIERS
+// ============================================
+
+export type EfficiencyTier =
+  | 'bloated'
+  | 'messy'
+  | 'decent'
+  | 'clean'
+  | 'pristine'
+
+/** Thresholds for each tier (exclusive upper bound) */
+export const EFFICIENCY_TIER_THRESHOLDS: Record<EfficiencyTier, number> = {
+  bloated: 0.3,
+  messy: 0.5,
+  decent: 0.7,
+  clean: 0.85,
+  pristine: 1.01, // Slightly over 1 to include 100%
+}
+
+/** Get the efficiency tier for a given efficiency value (0-1) */
+export function getEfficiencyTier(efficiency: number): EfficiencyTier {
+  if (efficiency < 0.3) return 'bloated'
+  if (efficiency < 0.5) return 'messy'
+  if (efficiency < 0.7) return 'decent'
+  if (efficiency < 0.85) return 'clean'
+  return 'pristine'
+}
+
+/** Get numeric rank for tier comparison (higher = better) */
+export function getEfficiencyTierRank(tier: EfficiencyTier): number {
+  const ranks: Record<EfficiencyTier, number> = {
+    bloated: 0,
+    messy: 1,
+    decent: 2,
+    clean: 3,
+    pristine: 4,
+  }
+  return ranks[tier]
+}
+
+/** Get progress within current tier (0-1) */
+export function getEfficiencyTierProgress(efficiency: number): number {
+  const tier = getEfficiencyTier(efficiency)
+  const thresholds: number[] = [0, 0.3, 0.5, 0.7, 0.85, 1.0]
+  const tierIndex = getEfficiencyTierRank(tier)
+
+  const low = thresholds[tierIndex] ?? 0
+  const high = thresholds[tierIndex + 1] ?? 1
+
+  if (high <= low) return 1
+  return Math.min(1, (efficiency - low) / (high - low))
 }
 
 /**
@@ -217,4 +303,18 @@ export function rollPackageSize(): number {
   const base = 10 + Math.random() * 40
   const isLarge = Math.random() < 0.1
   return Math.floor(isLarge ? base * 5 : base)
+}
+
+/**
+ * Get deterministic size for a package based on its identity.
+ * Same identity = same size, for visual consistency of duplicates.
+ */
+export function getIdentitySize(
+  identity: { weight: number } | undefined,
+  minSize: number = 10
+): number {
+  if (!identity) return rollPackageSize()
+  // Use identity weight directly - no random variance
+  // This ensures duplicates of the same package look identical
+  return Math.max(minSize, identity.weight)
 }
