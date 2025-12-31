@@ -29,6 +29,7 @@ import {
   type PackageIdentity,
 } from './registry'
 import { getPackageAtPath } from './scope'
+import { consumeSurge, isSurgeUnlocked } from './upgrades'
 
 // Callback for particle effects when a dep spawns
 let onSpawnEffect: ((position: Position, isConflict: boolean) => void) | null =
@@ -71,6 +72,9 @@ interface CascadeData {
   scopePath: string[] // Full path to the package whose internals are cascading
   subDepQueue: Array<{ parentIndex: number; identity: PackageIdentity }>
   compressedIndices: Set<number>
+  // Surge boosts (consumed at cascade start)
+  surgeGoldenBoost: number // Additive golden chance
+  surgeFragmentBoost: number // Additive fragment chance
 }
 
 /**
@@ -106,6 +110,12 @@ export function startCascade(scopePath: string[]): void {
   const depth = scopePath.length
   const isStarterKit = pkg.identity?.name === 'starter-kit'
 
+  // Consume surge boost if available (only at depth 1, unlocked after P2)
+  let surgeBoost = { sizeMultiplier: 1, goldenBoost: 0, fragmentBoost: 0 }
+  if (depth === 1 && isSurgeUnlocked()) {
+    surgeBoost = consumeSurge()
+  }
+
   // Build list of identities to spawn
   const depIdentities: PackageIdentity[] = isStarterKit
     ? [...STARTER_KIT_INTERNAL_DEPS]
@@ -133,6 +143,10 @@ export function startCascade(scopePath: string[]): void {
         onCritEffect(count)
       }
     }
+
+    // Apply surge size multiplier
+    count = Math.floor(count * surgeBoost.sizeMultiplier)
+
     count = Math.min(count, 40)
     count = Math.max(count, 3)
 
@@ -214,6 +228,8 @@ export function startCascade(scopePath: string[]): void {
   cascadeData.scopePath = [...scopePath]
   cascadeData.subDepQueue = subDepPlaceholders
   cascadeData.compressedIndices = compressedIndices
+  cascadeData.surgeGoldenBoost = surgeBoost.goldenBoost
+  cascadeData.surgeFragmentBoost = surgeBoost.fragmentBoost
 
   // Start the cascade
   gameState.cascade.active = true
@@ -377,14 +393,25 @@ function spawnNextFromQueue(): void {
   // Calculate effective depth for rewards (scope depth + internal depth)
   const effectiveDepth = depth + spawn.depth
 
-  // Roll for golden package (depth 3+ only)
-  const isGolden =
-    effectiveDepth >= GOLDEN_MIN_DEPTH && Math.random() < GOLDEN_SPAWN_CHANCE
+  // Get surge boosts for this cascade
+  const surgeGoldenBoost = cascadeData.surgeGoldenBoost ?? 0
+  const surgeFragmentBoost = cascadeData.surgeFragmentBoost ?? 0
 
-  // Roll for cache fragment (depth 2+ only)
+  // Roll for golden package (depth 3+ only, boosted by surge)
+  const goldenChance = GOLDEN_SPAWN_CHANCE + surgeGoldenBoost
+  const isGolden =
+    effectiveDepth >= GOLDEN_MIN_DEPTH && Math.random() < goldenChance
+
+  // Roll for cache fragment (depth 2+ only, boosted by surge)
+  // Easter egg: break_infinity and break_eternity ALWAYS have fragments
+  // (they're the tools of the incremental game trade!)
+  const isIncrementalEasterEgg =
+    identity?.name === 'break_infinity' || identity?.name === 'break_eternity'
+  const fragmentChance = CACHE_FRAGMENT_CHANCE + surgeFragmentBoost
   const hasCacheFragment =
-    effectiveDepth >= CACHE_FRAGMENT_MIN_DEPTH &&
-    Math.random() < CACHE_FRAGMENT_CHANCE
+    isIncrementalEasterEgg ||
+    (effectiveDepth >= CACHE_FRAGMENT_MIN_DEPTH &&
+      Math.random() < fragmentChance)
 
   // Apply golden weight multiplier and depth weight bonus
   const depthIndex = Math.min(
@@ -501,6 +528,8 @@ function endCascade(): void {
   cd.scopePath = undefined
   cd.subDepQueue = undefined
   cd.compressedIndices = undefined
+  cd.surgeGoldenBoost = undefined
+  cd.surgeFragmentBoost = undefined
 
   // Trigger state recalculation callback
   if (onCascadeEnd && scopePath.length > 0) {

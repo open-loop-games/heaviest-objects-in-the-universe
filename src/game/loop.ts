@@ -3,7 +3,7 @@
 import { toRaw } from 'vue'
 import { gameState } from './state'
 import { isInPackageScope } from './scope'
-import { updateEfficiency } from './mutations'
+import { updateEfficiency, updateStability } from './mutations'
 import { spawnDependencies } from './packages'
 import { updateCascade } from './cascade'
 import {
@@ -158,9 +158,10 @@ function tick(): void {
     }
   }
 
-  // Update efficiency
+  // Update efficiency and stability
   if (tickCount % 30 === 0) {
     updateEfficiency()
+    updateStability()
   }
 
   // Update automation (auto-resolve, auto-dedup, auto-hoist)

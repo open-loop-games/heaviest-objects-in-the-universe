@@ -6,7 +6,11 @@ import {
   CONFLICT_RESOLVE_COST,
   FRAGMENT_TO_TOKEN_RATIO,
 } from './config'
-import { calculateEfficiency, calculatePrestigeReward } from './formulas'
+import {
+  calculateEfficiency,
+  calculateStabilityRatio,
+  calculatePrestigeReward,
+} from './formulas'
 import {
   gameState,
   computed_canPrestige,
@@ -128,6 +132,10 @@ export function spendBandwidth(amount: number): boolean {
 
 export function updateEfficiency(): void {
   gameState.stats.currentEfficiency = calculateEfficiency(gameState)
+}
+
+export function updateStability(): void {
+  gameState.stats.currentStability = calculateStabilityRatio(gameState)
 }
 
 /**
@@ -290,12 +298,17 @@ export function performPrestige(): void {
   gameState.automation.lastResolveTime = 0
   gameState.automation.lastHoistTime = 0
 
+  // Reset surge (charge resets, unlocked segments preserved via upgrade)
+  gameState.surge.chargedSegments = 0
+  gameState.surge.unlockedSegments = 1 + gameState.upgrades.surgeLevel
+
   gameState.resources.bandwidth = 100 * gameState.meta.ecosystemTier
   gameState.resources.weight = 0
   gameState.resources.cacheFragments = 0
 
   // Keep upgrades but reset level-specific progress
   gameState.stats.currentEfficiency = 1
+  gameState.stats.currentStability = 1
 
   // Reset camera
   gameState.camera.x = 0
@@ -346,6 +359,10 @@ export function softReset(): void {
 
   // Reset run stats but keep lifetime stats structure
   gameState.stats.currentEfficiency = 1
+  gameState.stats.currentStability = 1
+
+  // Reset surge charge (keep unlocked segments)
+  gameState.surge.chargedSegments = 0
 
   // Reset camera
   gameState.camera.x = 0

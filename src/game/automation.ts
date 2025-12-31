@@ -285,11 +285,11 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
     const resolveInterval = baseInterval / getResolveSpeedMultiplier()
 
     // If actively processing, drain bandwidth (% of regen, reduced by upgrade)
-    // 5% of regen per second while processing - scales with power level
+    // 20% of regen per second while processing - meaningful cost for convenience
     if (auto.resolveActive) {
       const drain =
         getEffectiveBandwidthRegen() *
-        0.05 *
+        0.2 *
         deltaTime *
         getResolveDrainMultiplier()
       if (gameState.resources.bandwidth >= drain) {
@@ -369,11 +369,11 @@ export function updateAutomation(now: number, deltaTime: number = 0): void {
     const hoistInterval = baseInterval / getHoistSpeedMultiplier()
 
     // If actively processing, drain bandwidth (% of regen, reduced by upgrade)
-    // 5% of regen per second while processing - scales with power level
+    // 20% of regen per second while processing - meaningful cost for convenience
     if (auto.hoistActive) {
       const drain =
         getEffectiveBandwidthRegen() *
-        0.05 *
+        0.2 *
         deltaTime *
         getHoistDrainMultiplier()
       if (gameState.resources.bandwidth >= drain) {

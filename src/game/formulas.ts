@@ -1,60 +1,137 @@
 // Cost and production formulas based on design doc
 
 import { toRaw } from 'vue'
-import type { GameState, GameConfig } from './types'
+import type { GameState, GameConfig, Package } from './types'
 import { DEFAULT_CONFIG } from './config'
 
 // Note: getEffectiveBandwidthRegen is now in upgrades.ts (uses upgrade system)
 
 /**
- * Calculate efficiency based on unique package identities vs total
- * Efficiency = unique / total (1.0 = perfect, lower = more duplicates)
+ * Count unresolved duplicates within a single scope (packages that could be symlink-merged)
+ * Returns { duplicates: number, total: number }
  */
-export function calculateEfficiency(state: GameState): number {
-  // Use toRaw() to avoid Vue reactivity tracking
-  const packages = Array.from(toRaw(state.packages).values())
-  if (packages.length === 0) return 1
-
-  // Count unique package identities vs total
+function countScopeDuplicates(packages: Map<string, Package>): {
+  duplicates: number
+  total: number
+} {
   const identityCounts = new Map<string, number>()
-  for (const pkg of packages) {
-    const key = pkg.identity?.name || pkg.id // Use identity name or fallback to id
-    identityCounts.set(key, (identityCounts.get(key) || 0) + 1)
-  }
+  let total = 0
 
-  // Count packages that appear more than once (duplicates)
-  let duplicateCount = 0
-  for (const count of identityCounts.values()) {
-    if (count > 1) {
-      duplicateCount += count - 1 // Extra copies beyond the first
+  for (const pkg of packages.values()) {
+    if (pkg.isGhost) continue
+    total++
+    const name = pkg.identity?.name
+    if (name) {
+      identityCounts.set(name, (identityCounts.get(name) || 0) + 1)
     }
   }
 
-  // Base efficiency: fewer duplicates = higher efficiency
-  const baseEfficiency = 1 - duplicateCount / packages.length
+  let duplicates = 0
+  for (const count of identityCounts.values()) {
+    if (count > 1) {
+      duplicates += count - 1 // Extra copies beyond the first
+    }
+  }
 
-  // Bonus for symlink merges performed (much more impactful now)
-  // Each merge is worth 0.15 efficiency (capped at 1.0 total)
-  const mergeCount = state.stats.totalSymlinksCreated
-  const mergeBonus = mergeCount * 0.15
-
-  return Math.min(1, baseEfficiency + mergeBonus)
+  return { duplicates, total }
 }
 
 /**
- * Calculate stability ratio (stable packages / total top-level packages)
+ * Recursively count unresolved duplicates across all entered scopes
+ * Pristine scopes don't count - they haven't been entered yet
+ */
+function countAllScopeDuplicates(packages: Map<string, Package>): {
+  duplicates: number
+  total: number
+} {
+  let totalDuplicates = 0
+  let totalPackages = 0
+
+  for (const pkg of packages.values()) {
+    // Only count scopes that have been entered (not pristine)
+    if (
+      pkg.internalPackages &&
+      pkg.internalState !== null &&
+      pkg.internalState !== 'pristine'
+    ) {
+      const internalPkgs = toRaw(pkg.internalPackages)
+      const { duplicates, total } = countScopeDuplicates(internalPkgs)
+      totalDuplicates += duplicates
+      totalPackages += total
+
+      // Recurse into nested scopes
+      const nested = countAllScopeDuplicates(internalPkgs)
+      totalDuplicates += nested.duplicates
+      totalPackages += nested.total
+    }
+  }
+
+  return { duplicates: totalDuplicates, total: totalPackages }
+}
+
+/**
+ * Calculate efficiency based on unresolved within-scope duplicates
+ * Counts duplicates that the player could symlink-merge but hasn't
+ * Pristine scopes don't count (not entered yet)
+ */
+export function calculateEfficiency(state: GameState): number {
+  const rawPackages = toRaw(state.packages)
+
+  const { duplicates, total } = countAllScopeDuplicates(rawPackages)
+
+  // Debug: log duplicate info (throttled)
+  if (Math.random() < 0.03) {
+    console.log(`[Efficiency] Unresolved scope dupes: ${duplicates}/${total}`)
+  }
+
+  if (total === 0) return 1
+
+  // Efficiency = 1 - (unresolved duplicates / total packages in entered scopes)
+  const efficiency = 1 - duplicates / total
+
+  return efficiency
+}
+
+/**
+ * Recursively collect all scopes (packages with internalState) that have been entered
+ * Pristine scopes don't count - they haven't been opened yet
+ */
+function collectAllEnteredScopes(packages: Map<string, Package>): Package[] {
+  const result: Package[] = []
+
+  for (const pkg of packages.values()) {
+    // Only count packages that have internal scope and have been entered (not pristine)
+    if (pkg.internalState !== null && pkg.internalState !== 'pristine') {
+      result.push(pkg)
+    }
+    // Recursively check nested packages
+    // Use toRaw() to handle Vue reactivity on nested maps
+    const internalPkgs = pkg.internalPackages
+      ? toRaw(pkg.internalPackages)
+      : null
+    if (internalPkgs && internalPkgs.size > 0) {
+      result.push(...collectAllEnteredScopes(internalPkgs))
+    }
+  }
+
+  return result
+}
+
+/**
+ * Calculate stability ratio across all entered scopes (not just top-level)
+ * Only counts scopes that have been entered (not pristine)
  */
 export function calculateStabilityRatio(state: GameState): number {
-  const packages = Array.from(toRaw(state.packages).values())
+  const rawPackages = toRaw(state.packages)
+  const enteredScopes = collectAllEnteredScopes(rawPackages)
 
-  // Only count top-level packages (direct children of root)
-  const topLevelPackages = packages.filter((p) => p.parentId === state.rootId)
-  if (topLevelPackages.length === 0) return 1
+  if (enteredScopes.length === 0) return 1
 
-  const stableCount = topLevelPackages.filter(
+  const stableCount = enteredScopes.filter(
     (p) => p.internalState === 'stable'
   ).length
-  return stableCount / topLevelPackages.length
+
+  return stableCount / enteredScopes.length
 }
 
 /**

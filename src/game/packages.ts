@@ -408,19 +408,6 @@ export function recalculateStateAtPath(scopePath: string[]): void {
     if (wire.conflicted) conflictCount++
   }
 
-  // Check for duplicate identities
-  const identityCounts = new Map<string, number>()
-  for (const innerPkg of pkg.internalPackages.values()) {
-    if (innerPkg.identity && !innerPkg.isGhost) {
-      const name = innerPkg.identity.name
-      identityCounts.set(name, (identityCounts.get(name) || 0) + 1)
-    }
-  }
-  let duplicateCount = 0
-  for (const count of identityCounts.values()) {
-    if (count > 1) duplicateCount += count - 1
-  }
-
   // Check for unstable compressed internal deps (propagation from deeper levels)
   let unstableCompressedCount = 0
   for (const innerPkg of pkg.internalPackages.values()) {
@@ -435,6 +422,19 @@ export function recalculateStateAtPath(scopePath: string[]): void {
         unstableCompressedCount++
       }
     }
+  }
+
+  // Check for duplicate identities
+  const identityCounts = new Map<string, number>()
+  for (const innerPkg of pkg.internalPackages.values()) {
+    if (innerPkg.identity && !innerPkg.isGhost) {
+      const name = innerPkg.identity.name
+      identityCounts.set(name, (identityCounts.get(name) || 0) + 1)
+    }
+  }
+  let duplicateCount = 0
+  for (const count of identityCounts.values()) {
+    if (count > 1) duplicateCount += count - 1
   }
 
   let newState: InternalState

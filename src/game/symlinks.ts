@@ -254,7 +254,8 @@ export function performSymlinkMerge(
   const weightSaved = Math.floor(source.size / 2)
 
   // === IMMEDIATE REWARDS ===
-  const bandwidthRefund = Math.floor(source.size * 0.3)
+  // Small bandwidth refund (10% of source weight) - symlinks still cost net bandwidth
+  const bandwidthRefund = Math.floor(source.size * 0.1)
   gameState.resources.bandwidth = Math.min(
     gameState.resources.maxBandwidth,
     gameState.resources.bandwidth + bandwidthRefund
