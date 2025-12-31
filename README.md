@@ -48,7 +48,5 @@ pnpm lint         # ESLint
 
 ## Docs
 
-- [Game Design](docs/GAME_DESIGN.md) - Full mechanics and progression
-- [Prestige & Progression](docs/PRESTIGE_PROGRESSION.md) - Tier system, cache tokens
-- [Original Concept](docs/CONCEPT.md) - Initial brainstorm
-- [Archived Designs](docs/archived/) - Legacy design docs
+- [Game Design](docs/GAME_DESIGN.md) - Full mechanics, progression, and implementation status
+- [Archived Designs](docs/archived/) - Legacy design docs (prestige, concept, visual design, etc.)

@@ -1,17 +1,17 @@
 # The Heaviest Objects in the Universe
-## Core Game Loop Design Document
+## Core Game Design Document
 
 > An incremental game about recursive dependencies, inspired by the horrors of `node_modules`
 
 **Jam Theme:** Inception (recursive dependencies = layers within layers)
 **Bonus Challenge:** No Text (shape/color communication only)
-**Tech Stack:** TypeScript + Vue 3 + Canvas (Pixi.js or Canvas2D)
+**Tech Stack:** TypeScript + Vue 3 + Pixi.js
 
 ---
 
 ## 1. High Concept
 
-You are a dependency resolver. Packages arrive. Each package explodes into dependencies. Dependencies explode into more dependencies. The tree grows. The weight increases. Eventually, gravity wins—the node_modules folder collapses into a singularity, and you prestige into a new ecosystem with better tools.
+You are a dependency resolver. Packages arrive. Each package contains its own `node_modules` folder you can dive into. Dependencies cascade, conflicts erupt, duplicates multiply. Resolve the chaos, optimize the tree, and watch it all collapse into a black hole—then prestige into a new ecosystem with better tools.
 
 **Core Fantasy:** Taming chaos through optimization. The satisfaction of watching a messy, sprawling tree snap into an efficient, deduplicated web.
 
@@ -23,25 +23,33 @@ You are a dependency resolver. Packages arrive. Each package explodes into depen
 
 | Resource | Symbol | Description | Generation |
 |----------|--------|-------------|------------|
-| **Bandwidth** | ↓ (down arrow) | Installation speed currency | Passive + click |
-| **Packages** | □ (box) | Count of installed packages | Spend bandwidth |
-| **Weight** | ◆ (diamond/heavy) | Total node_modules size (KB→MB→GB→TB) | Sum of all packages |
-| **Heat** | ○→● (fill circle) | System strain, triggers events | Weight × inefficiency |
+| **Bandwidth** | ↓ | Installation currency | Passive regen + momentum from actions |
+| **Weight** | ◆ | Total node_modules size | Sum of all package sizes |
+| **Cache Fragments** | ✦ | Depth rewards (depth 2+) | Collected during runs, convert on prestige |
 
 ### Meta-Currencies (Persist through prestige)
 
 | Currency | Symbol | Description | Source |
 |----------|--------|-------------|--------|
-| **Cache Tokens** | ⟲ (cycle) | Permanent speed multipliers | Prestige reward |
-| **Algorithm Fragments** | △ (triangle) | Unlock new mechanics | Achievements + prestige |
+| **Cache Tokens** | ⟲ | Permanent progression currency | Prestige reward + fragments (5:1) |
 
 ### Derived Stats
 
 | Stat | Formula | Effect |
 |------|---------|--------|
-| **Efficiency** | `unique_deps / total_deps` | Multiplies bandwidth |
-| **Gravity** | `weight^1.5 / structure` | When > threshold, collapse begins |
-| **Resolution Speed** | `base × cache_mult × efficiency × ecosystem_bonus` | How fast conflicts resolve |
+| **Efficiency** | `optimized_weight / total_weight` | 0.5x-1.5x prestige reward multiplier |
+| **Stability** | Ratio of stable scopes | 0.7x-1.0x prestige bonus |
+| **Gravity** | `weight / threshold` | Progress toward prestige (100% = ready) |
+| **Tier** | Derived from cache tokens | Unlocks depth, automation, upgrades |
+
+### Momentum System
+
+The game uses a "momentum loop" where actions generate bandwidth:
+- **Cascade spawns**: Free (0 bandwidth cost)
+- **Conflict resolution**: Generates 15 bandwidth
+- **Symlink merge**: Generates 20 bandwidth
+- **Install cost**: 25 × tier × 1.15^activeScopes (entry gate only)
+- **Base safety regen**: 2-4 bandwidth/tick by tier
 
 ---
 
@@ -49,469 +57,375 @@ You are a dependency resolver. Packages arrive. Each package explodes into depen
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     THE INSTALL LOOP                        │
-│                      (30s - 2min)                           │
+│                     THE SCOPE LOOP                          │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │   ┌──────────┐    ┌──────────┐    ┌──────────┐             │
-│   │  CLICK   │───▶│  BURST   │───▶│  SPREAD  │             │
-│   │ Package  │    │ Open     │    │ Dependencies           │
+│   │  CLICK   │───▶│  ENTER   │───▶│ CASCADE  │             │
+│   │  Root    │    │  Scope   │    │ Spawns   │             │
 │   └──────────┘    └──────────┘    └─────┬────┘             │
 │                                         │                   │
 │                                         ▼                   │
 │   ┌──────────┐    ┌──────────┐    ┌──────────┐             │
-│   │  WEIGHT  │◀───│  GROW    │◀───│  CHAIN   │             │
-│   │ Increases│    │ Tree     │    │ Reaction │             │
+│   │  EXIT    │◀───│ OPTIMIZE │◀───│ RESOLVE  │             │
+│   │  Scope   │    │ Duplicates    │ Conflicts │             │
 │   └────┬─────┘    └──────────┘    └──────────┘             │
 │        │                                                    │
 │        ▼                                                    │
 │   ┌──────────┐         ┌──────────┐                        │
-│   │  HEAT    │────────▶│ CONFLICT │ (sometimes)            │
-│   │ Rises    │         │ Spawns   │                        │
-│   └──────────┘         └─────┬────┘                        │
-│                              │                              │
-│                              ▼                              │
-│                        ┌──────────┐                        │
-│                        │  RESOLVE │ (player action)        │
-│                        │ Conflict │                        │
-│                        └──────────┘                        │
+│   │  WEIGHT  │────────▶│ PRESTIGE │ (at threshold)         │
+│   │ Grows    │         │ Collapse │                        │
+│   └──────────┘         └──────────┘                        │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Phase 1: The Install (Player Action)
-- **Click** the Root node or an existing package
-- **Cost:** Bandwidth (scales at 1.15× per package owned)
-- **Result:** A new package box appears, connected by a wire
+### Phase 1: Install (Player Action)
+- **Click** the root node to spawn a top-level package
+- **Cost:** Bandwidth (scales with tier and active scopes)
+- **Result:** A compressed package appears with empty internal `node_modules`
 
-### Phase 2: The Burst (Automatic)
-- Package "opens" with a pop animation
-- Spawns 1-5 dependency wires (weighted random)
-- Each wire creates a new smaller package
-- **Visual:** Satisfying explosion of geometry
+### Phase 2: Enter Scope (Player Action)
+- **Click** a top-level package to dive inside
+- Package state changes from `pristine` to `unstable`
+- Triggers cascade spawning of dependencies
 
-### Phase 3: The Chain Reaction (Automatic)
-- Each spawned dependency immediately begins its own burst
-- Tree grows fractally for 2-4 generations
-- **Inception moment:** Zoom into any package to see its internal tree
+### Phase 3: Cascade (Automatic)
+- Dependencies spawn with staggered timing (satisfying popcorn effect)
+- Each spawn positioned radially from parent with physics velocity
+- Spawn interval accelerates (120ms → 40ms minimum)
+- Depth rewards: golden packages (4x weight) at depth 3+, cache fragments at depth 2+
+- Sub-dependencies (40% chance) spawn after main queue
 
-### Phase 4: Weight Accumulation (Passive)
-- Total weight = sum of all package sizes
-- Weight increases Heat
-- Heat affects stability
+### Phase 4: Resolve Conflicts (Player Action)
+- Conflicts appear on wires when incompatible packages exist
+- **Click and hold** conflicted wire to resolve
+- Resolution generates momentum (bandwidth)
 
-### Phase 5: Conflict Generation (Event)
-- At random intervals (based on Heat), a **Conflict** spawns
-- Visual: A node turns red, shows mismatched shapes
-- Must be resolved or tree branch pauses
+### Phase 5: Optimize Duplicates (Player Action)
+- Duplicate packages get colored halos (cyan, magenta, yellow, lime)
+- **Drag** one duplicate onto another to merge (symlink)
+- Merging reduces weight by 50% of removed node
+- **Hoist** shared dependencies to root ring (Tier 3+)
+
+### Phase 6: Stabilize & Exit
+- When scope has 0 conflicts and 0 duplicates → stable (green glow)
+- Exit scope to return to parent level
+- Stable scopes grant efficiency bonus
 
 ---
 
-## 4. Activity Systems (A+C Hybrid)
+## 4. Scope System (Inception Mechanic)
 
-### Type A: Instant Actions (Manual)
-
-| Action | Cost | Effect | Unlock |
-|--------|------|--------|--------|
-| **Install Package** | Bandwidth | Add new package to tree | Start |
-| **Resolve Conflict** | Time (hold) | Fix version mismatch | Start |
-| **Symlink** | None | Drag to deduplicate | Layer 2 |
-| **Prune** | None | Remove unused branch | Layer 3 |
-| **Force Push** | Heat | Instant resolve (adds heat) | Layer 4 |
-
-### Type C: Continuous Production (Automatic)
-
-| Producer | Base Rate | Scaling | Unlock |
-|----------|-----------|---------|--------|
-| **Bandwidth Regen** | 1/s | +10% per cache token | Start |
-| **Auto-Install** | 0.1 pkg/s | ×1.5 per tier | Layer 1 |
-| **Auto-Resolve** | 0.05/s | Based on algorithm level | Layer 2 |
-| **Background Optimize** | Passive | Slowly improves efficiency | Layer 3 |
-
-### Transition Curve
+### Compressed Packages
+Top-level packages are "compressed" - they contain internal `node_modules`:
 ```
-Early Game:  90% clicking, 10% passive
-Mid Game:    50% clicking, 50% passive (symlink management)
-Late Game:   20% clicking, 80% passive (optimization/prestige timing)
+root (package.json)
+├── express (compressed) ─────────────────┐
+│   └── internal node_modules:            │
+│       ├── body-parser                   │ Click to
+│       ├── cookie-parser                 │ dive in
+│       └── debug                         │
+├── lodash (compressed) ──────────────────┘
+└── ...
 ```
+
+### Scope Navigation
+- **Scope Stack:** `[]` = root, `[pkgId]` = depth 1, `[pkgId, internalId]` = depth 2+
+- **Enter:** Click compressed package (cyan portal ring)
+- **Exit:** Back button or click outside scope
+- **Max Depth:** Limited by tier (Tier N = depth N)
+
+### Internal States
+| State | Visual | Meaning |
+|-------|--------|---------|
+| `pristine` | Cyan pulsing glow | Never entered, click to explore |
+| `unstable` | Red pulsing glow | Has conflicts or duplicates |
+| `stable` | Green steady glow | All resolved, optimized |
 
 ---
 
 ## 5. Conflict & Symlink Systems
 
-> **See [CONFLICT_SYMLINK_REDESIGN.md](./CONFLICT_SYMLINK_REDESIGN.md) for full implementation details.**
+### Conflicts (Wire-Based)
 
-### Summary
+**Trigger:** Incompatible package pairs (real npm tensions):
+- Framework wars: React vs Vue vs Angular vs Svelte
+- HTTP clients: request vs axios
+- Utilities: lodash vs underscore
+- Bundlers: webpack vs parcel vs rollup
+- Test runners: jest vs mocha vs vitest
 
-The original version-shape system was replaced with wire-based conflicts and halo-based symlinks:
+**Visual:** Red crackling wire with electric bolts and sparks
 
-| Mechanic | Trigger | Visual | Resolution |
-|----------|---------|--------|------------|
-| **Conflict** | Incompatible archetypes (react+angular, moment+date-fns) | Red crackling wire | Click wire → Prune (✕) or Upgrade (↻) |
-| **Symlink** | Duplicate packages | Matching colored halo | Drag one onto other to merge |
+**Resolution:** Click and hold wire → progress ring fills → resolved
 
-### Color Language
+### Duplicates & Symlinks (Halo-Based)
 
-| Color | Meaning |
-|-------|---------|
-| Green | Healthy/optimal |
-| Yellow | Warning/suboptimal |
-| Orange | High heat/stress |
-| Red | Conflict/error |
-| Blue | Installing/selected |
-| Cyan | Optimized/symlinked |
-| Purple | Symlink wire |
-| Gray | Paused/inactive |
+**Detection:** Same identity name across 2+ packages in scope
+
+**Visual:** Colored halo ring around each duplicate:
+- Cyan (0x22d3ee), Magenta (0xe879f9), Yellow (0xfde047), Lime (0xa3e635)
+
+**Merge:** Drag one duplicate onto another:
+- Keeps "better" node (compressed > lower depth > closer to center)
+- Rewires all connections to kept node
+- Removes 50% of source weight from total
+
+### Hoisting (Tier 3+)
+
+**Purpose:** Deduplicate shared dependencies across top-level packages
+
+**Process:**
+1. Detect deps appearing in 2+ top-level packages
+2. Hoist to root ring (orbital system around root node)
+3. Source instances become "ghosts" (transparent, dashed border)
+4. Weight deduplicated (single copy counted)
+
+**Visual:** Hoisted deps orbit root in 1-2 rings based on count
 
 ---
 
 ## 6. Progression System
 
-### Unlock Layers
+### Tier System (Cache Token Thresholds)
 
-```
-LAYER 0: Genesis (0-50 packages)
-├── Manual install only
-├── Manual conflict resolution
-└── Learn core mechanics
+| Tier | Tokens | Max Depth | Unlocks |
+|------|--------|-----------|---------|
+| **1** | 0 | 1 | Base game, single-level packages |
+| **2** | 9 | 2 | Auto-resolve, Resolve Speed upgrade |
+| **3** | 21 | 3 | Auto-hoist, Hoist Speed upgrade, Golden packages |
+| **4** | 42 | 4 | Faster automation intervals |
+| **5** | 63 | 5 | Maximum automation speed |
 
-LAYER 1: Automation (50-500 packages)
-├── Unlock: Auto-installer
-├── Unlock: Bandwidth upgrades
-└── First efficiency challenges
+### Automation (Tier-Gated)
 
-LAYER 2: Optimization (500-5,000 packages)
-├── Unlock: Symlinking (deduplication)
-├── Unlock: Auto-resolve (minor conflicts)
-└── Efficiency becomes critical
+| Feature | Unlock | Base Interval | Effect |
+|---------|--------|---------------|--------|
+| **Auto-Resolve** | Tier 2 | 3s→2s→1s→0.5s | Resolves conflicted wires automatically |
+| **Auto-Hoist** | Tier 3 | 4s→2.5s→1.5s | Hoists shared deps automatically |
 
-LAYER 3: Architecture (5,000-50,000 packages)
-├── Unlock: Monorepo mode
-├── Unlock: Workspace management
-├── Unlock: Pruning tools
-└── Heat management critical
+Note: Symlink merging stays manual (core gameplay)
 
-LAYER 4: Collapse (50,000+ packages)
-├── Gravity visuals begin
-├── Black hole forms at center
-├── Prestige becomes available
-└── Structure vs. Weight balance
+### Upgrade Tracks (6 Total)
 
-PRESTIGE → New Ecosystem
-├── Keep: Cache Tokens, Algorithm Fragments, Achievements
-├── Reset: All packages, weight, current bandwidth
-└── Gain: Ecosystem multiplier, new mechanics
-```
+| Upgrade | Icon | Max | Unlock | Effect |
+|---------|------|-----|--------|--------|
+| **Bandwidth** | ↓ | 15 | P1+ | +10% capacity per level |
+| **Efficiency** | ⚡ | 12 | 15 pkgs | -6% install cost, +25% speed |
+| **Compression** | ◆↓ | 8 | P3+ | -5% weight gain per level |
+| **Resolve Speed** | ⚙+ | 5 | Tier 2 | -10% drain, +15% speed |
+| **Hoist Speed** | ⤴+ | 5 | Tier 3 | -10% drain, +15% speed |
+| **Surge** | ◎ | 9 | P2+ | +1 surge segment per level |
 
-### Upgrade Trees (Visual, No Text)
+### Surge System (P2+)
 
-```
-BANDWIDTH TREE:          EFFICIENCY TREE:         AUTOMATION TREE:
-     [↓↓]                    [%+]                     [⚙]
-    /    \                  /    \                   /    \
- [↓+]    [↓×]           [⟲+]    [◆-]             [▶]    [⟳]
-  │        │              │        │               │        │
-[↓++]    [↓××]         [⟲++]   [◆--]            [▶▶]    [⟳⟳]
-```
-
-Symbols communicate:
-- `↓` = bandwidth, `+` = additive, `×` = multiplicative
-- `⟲` = cache/reuse, `◆` = weight/size
-- `▶` = auto-install, `⟳` = auto-resolve
+- Charge up to 10 segments (costs 10% max bandwidth each)
+- Effects per charged segment:
+  - +8% cascade size multiplier
+  - +0.5% golden package chance
+  - +0.4% cache fragment chance
 
 ---
 
 ## 7. Prestige System: Ecosystem Collapse
 
-### The Black Hole Mechanic
+### Prestige Thresholds
 
-As weight increases, visual gravity effects intensify:
+| Prestige | Weight Required | Formula |
+|----------|-----------------|---------|
+| P0→P1 | 5,000 | Tutorial threshold |
+| P1→P2 | 20,000 | Fixed |
+| P2→P3 | 36,000 | 20,000 × 1.8 |
+| P3→P4 | 65,000 | 20,000 × 1.8² |
+| Pn→Pn+1 | — | 20,000 × 1.8^(n-1) |
 
-```
-Stage 1 (10K packages): Background starts subtle warping
-Stage 2 (25K packages): Nodes drift slightly toward center
-Stage 3 (50K packages): Visible gravitational pull
-Stage 4 (75K packages): Black hole core visible
-Stage 5 (100K packages): Collapse imminent, screen shakes
-```
-
-### Prestige Trigger
-
-**Option A: Manual**
-- Player clicks the black hole when ready
-- Larger weight = more Cache Tokens
-
-**Option B: Forced**
-- If Gravity exceeds Structure, auto-collapse
-- Penalty: 20% fewer Cache Tokens
-
-### Prestige Formula
+### Cache Token Reward Formula
 
 ```
-cache_tokens_gained = floor(sqrt(total_weight / 1000)) × efficiency_bonus
+baseReward = sqrt(weight / threshold) × 3
+efficiencyMultiplier = 0.5 + (efficiency × 1.0)  // 0.5x at 0%, 1.5x at 100%
+stabilityBonus = 0.7 + (stability × 0.3)         // 0.7x to 1.0x
+fragmentBonus = floor(cacheFragments / 5)        // 5 fragments = 1 token
 
-efficiency_bonus = 1 + (efficiency_rating × 0.5)
-  where efficiency_rating = unique_packages / total_packages
+finalReward = floor(baseReward × efficiencyMultiplier × stabilityBonus) + fragmentBonus
 ```
 
-### Ecosystem Tiers
+### What Persists
 
-| Tier | Name (Visual Only) | Base Multiplier | Special Mechanic |
-|------|-------------------|-----------------|------------------|
-| 1 | ● | 1× | — |
-| 2 | ●● | 2× | Peer dependencies |
-| 3 | ●●● | 4× | Optional dependencies |
-| 4 | ●●●● | 8× | Workspaces |
-| 5 | ★ | 16× | Monorepo mastery |
+**Keeps:**
+- Cache tokens (accumulated)
+- All upgrade levels
+- Total prestige count
+- Ecosystem tier
+
+**Resets:**
+- All packages and wires
+- Bandwidth (reset to 100 × tier)
+- Weight (reset to 0)
+- Cache fragments (converted to tokens)
+- Automation toggles (must re-enable)
+
+### Black Hole Animation
+
+As weight approaches threshold:
+1. Background warps toward center
+2. Packages drift inward (gravitational pull)
+3. Prestige button pulses with intensity
+4. On trigger: spiral collapse, spaghettification effect, rebirth
 
 ---
 
-## 8. Feedback Loops
+## 8. Visual Design
 
-### Primary Loop: Install Cascade
-```
-Click → Package → Dependencies → More Packages → More Weight
-  ↑                                                    │
-  └──────────── Bandwidth Regen ◀─────────────────────┘
-                (faster with efficiency)
-```
+### Color Language
 
-### Secondary Loop: Optimization
-```
-Symlink → Reduce Duplicates → Increase Efficiency → More Bandwidth
-   ↑                                                      │
-   └────────────── More Packages to Symlink ◀────────────┘
-```
+| Color | Hex | Meaning |
+|-------|-----|---------|
+| **Blue** | 0x7a7aff | Installing, active, bandwidth |
+| **Green** | 0x5aff5a | Ready, stable, healthy |
+| **Red** | 0xff5a5a | Conflict, danger, unstable |
+| **Cyan** | 0x5affff | Optimized, symlink, pristine scope |
+| **Purple** | 0x8b5cf6 | Hoistable, cache fragment |
+| **Gold** | 0xffd700 | Golden package, depth reward |
+| **Orange** | 0xffaa5a | Warning, paused |
+| **Gray** | 0x6a6a7a | Unaffordable, inactive |
 
-### Prestige Loop: Ecosystem Growth
-```
-Collapse → Cache Tokens → Better Multipliers → Faster Growth
-    ↑                                                │
-    └──────────── Reach Higher Weight ◀─────────────┘
-```
+### Package Visuals
 
-### Negative Feedback: Heat Management
-```
-More Packages → More Heat → More Conflicts → Slower Growth
-       ↑                                          │
-       └────── Resolve Conflicts (player skill) ◀─┘
-```
+| Element | Visual |
+|---------|--------|
+| **Fill color** | State (installing/ready/conflict/optimized) |
+| **Border color** | State highlight (brighter version) |
+| **Progress ring** | Installation/resolution progress |
+| **Portal rings** | 3 concentric rings on compressed packages |
+| **Golden fill ring** | Depth 3+ reward package |
+| **Cache fragment pip** | Purple diamond badge (left side) |
+| **Duplicate halo** | Colored pulsing ring |
+| **Ghost style** | Semi-transparent, dashed cyan border |
 
----
+### Wire Visuals
 
-## 9. Visual Design Specifications
+| Type | Visual |
+|------|--------|
+| **Normal** | Solid muted purple line with flow particle |
+| **Conflict** | Red with electric crackling, sparks at junctions |
+| **Symlink** | Dashed cyan with glow |
 
-### Canvas Layout
+### Package Icons
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ [↓ ████████░░ ] [◆ 1.2 GB] [○○○●●] [⟲ 15]                  │ ← HUD (top)
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│                                                             │
-│                    ┌───┐                                    │
-│              ┌───┐─┤   ├─┌───┐                              │
-│              │   │ └───┘ │   │                              │
-│         ┌───┐└───┘   │   └───┘┌───┐                         │
-│         │   │────────┼────────│   │                         │
-│         └───┘        │        └───┘                         │
-│              ┌───────┴───────┐                              │
-│              │     ROOT      │                              │ ← Main canvas
-│              └───────────────┘                              │
-│                                                             │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│ [Install ●] [Resolve ●] [Symlink ○] [Prune ○]              │ ← Tools (bottom)
-└─────────────────────────────────────────────────────────────┘
+Three-tier system:
+1. **Semantic Icons:** Custom-drawn for major packages (React, Vue, etc.)
+2. **Devicon SVGs:** Real npm package icons with hue variants
+3. **Procedural Fallback:** Hash-based shapes by archetype (utility/framework/tooling)
 
-Legend:
-████ = Progress bars (no numbers, just fill)
-○/● = Unlocked/locked indicators
-```
+### HUD Components
 
-### Node Design
-
-```
-PACKAGE NODE:
-┌─────────┐
-│  ┌───┐  │ ← Inner shape = version
-│  │ ▲ │  │
-│  └───┘  │
-│ ○○○○●   │ ← Bottom dots = dependency count (filled = resolved)
-└─────────┘
-    │││
-    └┴┴── Wires to children
-
-STATES:
-Normal:    White border, dark fill
-Installing: Pulsing border animation
-Conflict:   Red border, shape mismatch visible
-Optimized:  Green glow, symlink indicator
-Hot:        Orange/red gradient fill
-```
-
-### Animation Principles
-
-1. **Burst**: Packages open like flowers, dependencies shoot out
-2. **Connect**: Wires draw themselves, electron-style particles flow
-3. **Conflict**: Shake animation, warning pulse
-4. **Resolve**: Satisfying "snap" as shapes align
-5. **Symlink**: Dotted line zips into place
-6. **Collapse**: Spiral into center, particles compress
+| Component | Purpose |
+|-----------|---------|
+| **BandwidthRow** | Segmented bar, cost preview, upgrade pips |
+| **WeightRow** | Weight progress, magnitude dots, prestige progress |
+| **ScopeNavigation** | Back button, depth totem, conflict/dupe indicators |
+| **AutomationRow** | Auto-resolve/hoist toggles with speed pips |
+| **PrestigeOrbit** | Singularity button, tier arcs, quality indicators |
+| **SurgeRow** | Draggable charge bar (P2+) |
+| **QualityHero** | Efficiency/stability bars with multiplier indicators |
+| **SettingsPanel** | Save, soft reset, hard reset |
 
 ---
 
-## 10. Audio Design (Conceptual)
-
-Since no text, audio carries emotional weight:
-
-| Event | Sound |
-|-------|-------|
-| Install click | Soft "pop" |
-| Dependency burst | Rapid "pop-pop-pop" (bubble wrap) |
-| Conflict spawn | Discordant tone |
-| Conflict resolve | Satisfying "ding" |
-| Symlink | Zipper/connect sound |
-| Weight milestone | Deep bass note |
-| Gravity warning | Low rumble |
-| Collapse/prestige | Whoosh → silence → rebirth chime |
-
----
-
-## 11. Balance Parameters
-
-### Cost Scaling
-
-```typescript
-// Package install cost
-const installCost = (owned: number, free: number = 0): number => {
-  return Math.floor(BASE_COST * Math.pow(1.15, owned - free));
-};
-
-// BASE_COST = 10 bandwidth
-// At 10 packages: ~40 bandwidth
-// At 50 packages: ~10,000 bandwidth
-// At 100 packages: ~1,000,000 bandwidth
-```
-
-### Production Rates
-
-```typescript
-const BASE_BANDWIDTH_REGEN = 1; // per second
-const CACHE_TOKEN_MULTIPLIER = 1.10; // +10% per token
-
-// Effective regen
-const effectiveBandwidth = BASE_BANDWIDTH_REGEN
-  * Math.pow(CACHE_TOKEN_MULTIPLIER, cacheTokens)
-  * efficiency
-  * ecosystemMultiplier;
-```
-
-### Prestige Timing
-
-Target prestige points:
-- First prestige: ~10-15 minutes
-- Second prestige: ~8-10 minutes (faster due to tokens)
-- Optimal prestige: When `time_to_next_milestone > time_to_prestige_and_return`
-
-### Heat & Conflict Rates
-
-```typescript
-const HEAT_PER_PACKAGE = 0.01;
-const HEAT_DECAY = 0.005; // per second
-const CONFLICT_CHANCE = heat * 0.1; // per new package
-
-// At 100 heat: 10% conflict chance per install
-// At 50 heat: 5% conflict chance per install
-```
-
----
-
-## 12. Technical Architecture (Vue + Canvas)
+## 9. Technical Architecture
 
 ```
 src/
 ├── components/
-│   ├── GameCanvas.vue      # Pixi.js or Canvas2D wrapper
-│   ├── HUD.vue             # Resource bars, tool buttons
-│   └── UpgradePanel.vue    # Visual upgrade trees
+│   ├── GameCanvas.vue      # Pixi.js canvas + input handling
+│   └── hud/                # 8 HUD components
+│       ├── BandwidthRow.vue
+│       ├── WeightRow.vue
+│       ├── ScopeNavigation.vue
+│       ├── AutomationRow.vue
+│       ├── PrestigeOrbit.vue
+│       ├── SurgeRow.vue
+│       ├── QualityHero.vue
+│       └── SettingsPanel.vue
 ├── game/
-│   ├── state.ts            # Reactive game state (Vue ref/reactive)
-│   ├── loop.ts             # Game tick (requestAnimationFrame)
-│   ├── packages.ts         # Package/dependency logic
-│   ├── conflicts.ts        # Conflict generation/resolution
-│   ├── prestige.ts         # Collapse/reset logic
-│   └── formulas.ts         # Cost scaling, production rates
-├── rendering/
-│   ├── graph.ts            # Force-directed layout
-│   ├── nodes.ts            # Package node rendering
-│   ├── wires.ts            # Connection line rendering
-│   └── effects.ts          # Particles, animations
-└── App.vue
+│   ├── state.ts            # Reactive game state (Vue refs)
+│   ├── types.ts            # Core interfaces (Package, Wire, GameState)
+│   ├── loop.ts             # Game tick, physics, automation updates
+│   ├── packages.ts         # Package creation, dependency spawning
+│   ├── cascade.ts          # Staggered spawn system with depth rewards
+│   ├── scope.ts            # Scope navigation (dive into packages)
+│   ├── automation.ts       # Auto-resolve, auto-hoist
+│   ├── hoisting.ts         # Deduplication to root ring
+│   ├── symlinks.ts         # Duplicate detection + merge logic
+│   ├── registry.ts         # Real npm package identities + archetypes
+│   ├── upgrades.ts         # Cache token upgrades + tier system
+│   ├── mutations.ts        # State mutations, prestige logic
+│   ├── formulas.ts         # Cost scaling, reward calculations
+│   ├── config.ts           # Game constants, initial state
+│   └── persistence.ts      # Save/load (localStorage)
+└── rendering/
+    ├── renderer.ts         # Pixi.js setup, camera, containers
+    ├── nodes.ts            # Package visuals (states, icons, effects)
+    ├── wires.ts            # Dependency/symlink/conflict rendering
+    └── colors.ts           # Color palette
 ```
 
-### State Management
+### Key Patterns
 
-```typescript
-interface GameState {
-  // Resources
-  bandwidth: number;
-  packages: Package[];
-  weight: number;
-  heat: number;
-
-  // Meta (persisted)
-  cacheTokens: number;
-  algorithmFragments: number;
-  ecosystemTier: number;
-  achievements: Achievement[];
-
-  // Derived (computed)
-  efficiency: number;
-  gravity: number;
-  resolutionSpeed: number;
-}
-```
+- **State:** Vue reactivity for resources; `Map<string, Package>` for graph
+- **Scopes:** Packages contain `internalPackages` + `internalWires` maps
+- **Rendering:** Layered Pixi containers (wires behind nodes)
+- **Physics:** Force-directed layout with repulsion/attraction (per-scope)
+- **Game Loop:** `requestAnimationFrame` → physics → cascade → automation → rendering
 
 ---
 
-## 13. MVP Scope (Jam Version)
+## 10. Implementation Status
 
-### Must Have (Week 1)
-- [ ] Canvas with pan/zoom
-- [ ] Root node + package installation
-- [ ] Dependency burst animation (1 level deep)
-- [ ] Weight counter with visual bar
-- [ ] Basic prestige (manual trigger, simple multiplier)
+### ✅ Complete
 
-### Should Have (Week 2)
-- [ ] Multi-level dependency chains
-- [ ] Conflict system (shape mismatch)
-- [ ] Symlink mechanic
-- [ ] Heat system with visual feedback
-- [ ] Black hole collapse animation
+- [x] Canvas with pan/zoom
+- [x] Package installation + cascade spawning
+- [x] Scope system (dive into packages, navigate back)
+- [x] Force-directed physics (per-scope)
+- [x] Wire-based conflict system (resolution with hold)
+- [x] Duplicate detection + symlink merge UI
+- [x] Hoisting to root ring (manual + auto)
+- [x] Automation system (auto-resolve, auto-hoist)
+- [x] Tier/progression system (5 tiers)
+- [x] Prestige (black hole animation, cache tokens)
+- [x] Depth rewards (golden packages, cache fragments)
+- [x] Surge system (P2+)
+- [x] Save/load (localStorage)
+- [x] Package icons (Devicon + procedural fallback)
+- [x] Full HUD (8 components)
+- [x] Quality metrics (efficiency/stability)
+- [x] 6 upgrade tracks
 
-### Nice to Have (Polish)
+### 🚧 Not Started
+
 - [ ] Sound effects
-- [ ] Particle effects
-- [ ] Multiple ecosystem tiers
-- [ ] Achievement system
+- [ ] Particle effects (beyond basic ripples)
 - [ ] Offline progress
 
 ---
 
-## 14. Design Decisions (Resolved)
+## 11. Design Decisions
 
 | Question | Decision | Rationale |
 |----------|----------|-----------|
-| **Interaction model** | Click-to-install | Simpler, faster feedback loop |
-| **Zoom-inception** | Render inner trees | Core "inception" theme—see trees within trees |
-| **Conflict punishment** | Soft (slows branch) | Keeps flow, doesn't frustrate |
+| **Conflict model** | Wire-based (not package) | Clear visual, resolves relationship not node |
+| **Scope system** | Compressed packages | Core "inception" theme—trees within trees |
+| **Cascade timing** | Staggered spawns | Satisfying popcorn effect, manageable chaos |
 | **Prestige depth** | Single layer | Jam scope—ship clean, not complex |
-| **Platform** | Desktop only | Skip touch complexity for jam speed |
+| **Automation** | Tier-gated, optional | Player choice, doesn't trivialize gameplay |
+| **Symlink merging** | Manual only | Core interaction, too satisfying to automate |
+| **Hoisting** | Visual orbit ring | Makes deduplication tangible and rewarding |
 
 ---
 
-*Document Version: 0.2*
-*Last Updated: 2024-12-28*
-*Status: Decisions Locked - Ready for Implementation*
+*Document Version: 1.0*
+*Last Updated: 2025-12-31*
+*Status: Reflects Current Implementation*
