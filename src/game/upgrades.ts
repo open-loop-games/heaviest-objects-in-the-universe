@@ -179,7 +179,16 @@ export function getEffectiveBandwidthRegen(): number {
   // At 40 tokens: 1 + 6.32 * 0.7 = 5.4x multiplier
   const cacheBonus = 1 + Math.sqrt(gameState.meta.cacheTokens) * 0.7
 
-  return baseRegen * regenMultiplier * cacheBonus * gameState.meta.ecosystemTier
+  // Low bandwidth catch-up: 100% boost when below 20 bandwidth
+  const lowBandwidthBoost = gameState.resources.bandwidth < 20 ? 2 : 1
+
+  return (
+    baseRegen *
+    regenMultiplier *
+    cacheBonus *
+    gameState.meta.ecosystemTier *
+    lowBandwidthBoost
+  )
 }
 
 export function getEffectiveInstallSpeed(): number {
@@ -337,13 +346,20 @@ export function isUpgradeUnlocked(upgradeId: string): boolean {
   const upgrade = UPGRADES[upgradeId]
   if (!upgrade) return false
 
-  // Check package count requirement
-  if (gameState.packages.size < upgrade.unlockAt) return false
-
   // Check prestige requirement (e.g., compression requires P3+)
+  const prestigeMet =
+    !upgrade.prestigeRequirement ||
+    gameState.meta.totalPrestiges >= upgrade.prestigeRequirement
+
+  if (!prestigeMet) {
+    return false
+  }
+
+  // Check package count requirement (skip if prestige requirement was set and met)
+  // Prestige gates are more meaningful than package count for returning players
   if (
-    upgrade.prestigeRequirement &&
-    gameState.meta.totalPrestiges < upgrade.prestigeRequirement
+    !upgrade.prestigeRequirement &&
+    gameState.packages.size < upgrade.unlockAt
   ) {
     return false
   }

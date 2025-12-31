@@ -25,7 +25,7 @@ export const STARTER_KIT_IDENTITY: PackageIdentity = {
 
 // Internal dependencies for starter-kit (spawned when entering)
 // Curated for first-time experience:
-// - 2 conflicts to resolve (moment/date-fns, jest/mocha)
+// - 1 conflict to resolve (moment/date-fns)
 // - 2 duplicates to merge (lodash appears twice)
 // - Mix of weights for visual variety
 //
@@ -51,14 +51,14 @@ export const STARTER_KIT_INTERNAL_DEPS: PackageIdentity[] = [
     weight: 300,
     isHub: false,
   },
-  // Index 2: jest (conflicts with mocha at index 6)
+  // Index 2: axios (filler)
   {
-    name: 'jest',
-    iconKey: 'jest',
-    archetype: 'tooling',
+    name: 'axios',
+    iconKey: 'axios',
+    archetype: 'utility',
     baseDeps: 0,
-    weight: 200,
-    isHub: false,
+    weight: 30,
+    isHub: true,
   },
   // Index 3: debug (filler)
   {
@@ -87,14 +87,14 @@ export const STARTER_KIT_INTERNAL_DEPS: PackageIdentity[] = [
     weight: 40,
     isHub: false,
   },
-  // Index 6: mocha (conflicts with jest at index 2)
+  // Index 6: semver (filler)
   {
-    name: 'mocha',
-    iconKey: 'mocha',
-    archetype: 'tooling',
+    name: 'semver',
+    iconKey: 'npm',
+    archetype: 'utility',
     baseDeps: 0,
-    weight: 80,
-    isHub: false,
+    weight: 20,
+    isHub: true,
   },
   // Index 7: chalk (filler)
   {
