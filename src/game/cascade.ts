@@ -10,6 +10,7 @@ import {
 } from './state'
 import {
   MAX_PENDING_DEPS,
+  MAX_COMPRESSED_PER_SCOPE,
   GOLDEN_SPAWN_CHANCE,
   GOLDEN_WEIGHT_MULTIPLIER,
   GOLDEN_MIN_DEPTH,
@@ -186,9 +187,16 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
   const maxDepth = getMaxCompressedDepth()
   const compressionChance = getCompressionChance(depth)
 
+  // Hard cap on compressed packages per scope (tier-gated)
+  const tier = gameState.meta.ecosystemTier
+  const maxCompressed = MAX_COMPRESSED_PER_SCOPE[tier - 1] ?? 1
+
   const compressedIndices = new Set<number>()
   if (depth <= maxDepth && compressionChance > 0) {
     for (let i = 0; i < depIdentities.length; i++) {
+      // Stop if we've hit the cap
+      if (compressedIndices.size >= maxCompressed) break
+
       const dep = depIdentities[i]
       if (!dep) continue
       // Starter kit: make one specific dep compressed for tutorial

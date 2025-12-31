@@ -34,6 +34,10 @@ export const COMPRESSION_HARDCAP = 0.5
 // depth 1 = 100%, depth 5 = 0% (always leaves)
 export const DEPTH_COMPRESSION_MULT = [1.0, 0.75, 0.5, 0.25, 0.0] as const
 
+// Max compressed packages per scope by tier [tier 1-5]
+// Prevents exponential scope growth
+export const MAX_COMPRESSED_PER_SCOPE = [1, 2, 2, 3, 3] as const
+
 // ============================================
 // ACTION COSTS (Bandwidth)
 // ============================================

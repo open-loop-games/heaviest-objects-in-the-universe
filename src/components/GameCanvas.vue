@@ -20,6 +20,7 @@ import {
   getCurrentScopeRoot,
   isPackageCompressed,
   exitScope,
+  exitToRoot,
 } from '../game/scope'
 import {
   removePackageWithSubtree,
@@ -208,6 +209,8 @@ onMounted(async () => {
     setPrestigeAnimationCallback(
       // Animation start: trigger black hole collapse
       (onComplete) => {
+        // Exit to root scope first so all packages are visible during collapse
+        exitToRoot()
         renderer.getBlackHoleRenderer().startCollapse(onComplete)
       },
       // After prestige: clear visuals and create new root package

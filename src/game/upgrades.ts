@@ -17,18 +17,19 @@ export interface UpgradeDefinition {
 
 // Combined effect functions
 const effects = {
-  // Bandwidth: increases both regen and capacity
-  // Regen uses mild exponential to keep pace with capacity scaling
-  bandwidthRegen: (level: number) => Math.pow(1.15, level), // ~8x at L15
-  // Capacity: exponential growth × tier × token bonus
-  // This matches the exponential cost scaling of upgrades
+  // Bandwidth: capacity + stabilization burst bonus
+  // Capacity: modest linear scaling to keep UI bar readable
+  // Regen removed - momentum loop uses activity-driven generation
   bandwidthCapacity: (level: number) => {
     const base = 1000
-    const exponentialGrowth = Math.pow(1.25, level) // Exponential scaling
+    const linearGrowth = 1 + level * 0.1 // +10% per level, max 2.5x at L15
     const tierMultiplier = gameState.meta.ecosystemTier // 1-5x from tier
-    const tokenBonus = 1 + Math.sqrt(gameState.meta.cacheTokens) * 0.4 // Token scaling
-    return Math.floor(base * exponentialGrowth * tierMultiplier * tokenBonus)
+    const tokenBonus = 1 + Math.sqrt(gameState.meta.cacheTokens) * 0.05 // Mild token scaling
+    return Math.floor(base * linearGrowth * tierMultiplier * tokenBonus)
   },
+
+  // Stabilization burst: +10% per bandwidth level
+  stabilizationBonus: (level: number) => 1 + level * 0.1,
 
   // Efficiency: faster installs and lower costs
   installSpeed: (level: number) => 1 + level * 0.25, // +25% speed per level
@@ -43,14 +44,14 @@ const effects = {
 }
 
 // Core and automation upgrades
-// Costs reduced for momentum loop (activity-driven economy)
+// Costs rebalanced for momentum loop with reduced capacity ceiling
 export const UPGRADES: Record<string, UpgradeDefinition> = {
   bandwidth: {
     id: 'bandwidth',
     icon: '↓',
     maxLevel: 15,
-    baseCost: 25, // Reduced from 40
-    costMultiplier: 1.5, // Reduced from 1.6
+    baseCost: 80,
+    costMultiplier: 1.35,
     unlockAt: 3,
     prestigeRequirement: 1, // Gate behind first prestige to prevent poor early states
   },
@@ -58,16 +59,16 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     id: 'efficiency',
     icon: '⚡',
     maxLevel: 12,
-    baseCost: 40, // Reduced from 60
-    costMultiplier: 1.6, // Reduced from 1.8
+    baseCost: 120,
+    costMultiplier: 1.4,
     unlockAt: 15,
   },
   compression: {
     id: 'compression',
     icon: '◆↓',
     maxLevel: 8,
-    baseCost: 80, // Reduced from 100
-    costMultiplier: 1.8, // Reduced from 2.0
+    baseCost: 200,
+    costMultiplier: 1.5,
     unlockAt: 0,
     prestigeRequirement: 3, // Only visible after 3 prestiges
   },
@@ -75,8 +76,8 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     id: 'resolveSpeed',
     icon: '⚙+',
     maxLevel: 5,
-    baseCost: 35, // Reduced from 50
-    costMultiplier: 1.5, // Reduced from 1.7
+    baseCost: 100,
+    costMultiplier: 1.35,
     unlockAt: 0,
     tierRequirement: 2,
   },
@@ -84,8 +85,8 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     id: 'hoistSpeed',
     icon: '⤴+',
     maxLevel: 5,
-    baseCost: 45, // Reduced from 60
-    costMultiplier: 1.6, // Reduced from 1.8
+    baseCost: 120,
+    costMultiplier: 1.4,
     unlockAt: 0,
     tierRequirement: 3,
   },
@@ -93,8 +94,8 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     id: 'surge',
     icon: '◎', // Ripple/burst icon (placeholder, component uses SVG)
     maxLevel: 9, // 1 base + 9 upgrades = 10 total segments
-    baseCost: 50, // Reduced from 80
-    costMultiplier: 1.4, // Reduced from 1.5
+    baseCost: 150,
+    costMultiplier: 1.3,
     unlockAt: 0,
     prestigeRequirement: 2, // Unlocks after P2
   },
@@ -170,30 +171,27 @@ export function applyUpgradeEffects(): void {
 
 // Get effective values with upgrades applied
 export function getEffectiveBandwidthRegen(): number {
-  const baseRegen = 5
-  const bwLevel = getUpgradeLevel('bandwidth')
-  const regenMultiplier = effects.bandwidthRegen(bwLevel)
-
-  // Cache token bonus from prestige (sqrt scaling to match capacity growth)
-  // Higher coefficient (0.7) keeps fill time reasonable as capacity scales
-  // At 40 tokens: 1 + 6.32 * 0.7 = 5.4x multiplier
-  const cacheBonus = 1 + Math.sqrt(gameState.meta.cacheTokens) * 0.7
+  // Safety regen by tier: [2, 2.5, 3, 3.5, 4] BW/sec
+  // This is minimal - momentum loop generates most BW from activity
+  const tier = gameState.meta.ecosystemTier
+  const safetyRegen = SAFETY_REGEN_BY_TIER[tier] ?? 2
 
   // Low bandwidth catch-up: 100% boost when below 20 bandwidth
   const lowBandwidthBoost = gameState.resources.bandwidth < 20 ? 2 : 1
 
-  return (
-    baseRegen *
-    regenMultiplier *
-    cacheBonus *
-    gameState.meta.ecosystemTier *
-    lowBandwidthBoost
-  )
+  return safetyRegen * lowBandwidthBoost
 }
 
 export function getEffectiveInstallSpeed(): number {
   const effLevel = getUpgradeLevel('efficiency')
   return effects.installSpeed(effLevel)
+}
+
+// Get stabilization burst bonus from bandwidth upgrade
+// Used when a scope stabilizes to reward activity
+export function getStabilizationBonus(): number {
+  const bwLevel = getUpgradeLevel('bandwidth')
+  return effects.stabilizationBonus(bwLevel)
 }
 
 export function getEffectiveCostMultiplier(): number {
@@ -244,6 +242,7 @@ export function getHoistSpeedMultiplier(): number {
 // ============================================
 
 import {
+  SAFETY_REGEN_BY_TIER,
   SURGE_COST_PER_SEGMENT,
   SURGE_SEGMENTS,
   SURGE_CASCADE_BOOST,

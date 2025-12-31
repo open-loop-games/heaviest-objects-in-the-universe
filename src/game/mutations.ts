@@ -36,7 +36,7 @@ import {
 } from './scope'
 import { recalculateStateAtPath } from './packages'
 import { saveToLocalStorage, clearSavedGame } from './persistence'
-import { getCompressionMultiplier, getUpgradeLevel } from './upgrades'
+import { getCompressionMultiplier, getStabilizationBonus } from './upgrades'
 import {
   getEfficiencyTier,
   getEfficiencyTierRank,
@@ -236,8 +236,7 @@ export function onSymlinkMerged(): number {
 export function onScopeStabilized(packageCount: number): number {
   const baseAmount =
     MOMENTUM_STABILIZE_BASE + packageCount * MOMENTUM_STABILIZE_PER_PKG
-  const bwLevel = getUpgradeLevel('bandwidth')
-  const upgradeBonus = 1 + bwLevel * 0.1
+  const upgradeBonus = getStabilizationBonus()
 
   // Emit quality event for UI juice
   const scopeId =
