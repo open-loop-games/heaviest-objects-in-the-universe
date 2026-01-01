@@ -12,6 +12,7 @@ import HUD from './components/HUD.vue'
 // Mobile components
 import MobileHUD from './components/mobile/MobileHUD.vue'
 import MobileUpgradeSheet from './components/mobile/MobileUpgradeSheet.vue'
+import MobileSettingsSheet from './components/mobile/MobileSettingsSheet.vue'
 
 // ============================================
 // PLATFORM DETECTION
@@ -41,8 +42,9 @@ provide('platform', platform)
 const mobileSelectedNodeId = ref<string | null>(null)
 const mobileSelectedWireId = ref<string | null>(null)
 
-// Upgrade sheet state
+// Sheet states
 const showUpgradeSheet = ref(false)
+const showSettingsSheet = ref(false)
 
 // Provide selection setters for GameCanvas to call
 provide('setMobileSelection', {
@@ -73,8 +75,7 @@ function handleMobileBack() {
 }
 
 function handleMobileSettings() {
-  // TODO: Show mobile settings sheet
-  console.log('Settings requested')
+  showSettingsSheet.value = true
 }
 
 function handleMobileUpgrades() {
@@ -131,6 +132,10 @@ const gameCanvas = ref<InstanceType<typeof GameCanvas> | null>(null)
       <MobileUpgradeSheet
         :open="showUpgradeSheet"
         @close="showUpgradeSheet = false"
+      />
+      <MobileSettingsSheet
+        :open="showSettingsSheet"
+        @close="showSettingsSheet = false"
       />
     </template>
 
