@@ -86,27 +86,33 @@ const efficiencyMultiplierIndicator = computed(() => {
 const stabilityValue = computed(() => gameState.stats.currentStability)
 
 // Count stable vs total entered scopes for dot display
+// Optimized: iterative traversal with early bail-out (we only display up to 6 dots)
 const scopeStats = computed(() => {
-  const packages = toRaw(gameState.packages)
-  const entered = collectEnteredScopes(packages)
-  const stable = entered.filter((p) => p.internalState === 'stable').length
-  return { stable, total: entered.length }
-})
+  const MAX_DISPLAY = 7 // 6 dots + 1 for overflow check
+  let stable = 0
+  let total = 0
 
-// Collect all entered scopes (non-pristine internal states)
-function collectEnteredScopes(packages: Map<string, Package>): Package[] {
-  const result: Package[] = []
-  for (const pkg of packages.values()) {
-    if (pkg.internalState !== null && pkg.internalState !== 'pristine') {
-      result.push(pkg)
-    }
-    const internal = pkg.internalPackages ? toRaw(pkg.internalPackages) : null
-    if (internal && internal.size > 0) {
-      result.push(...collectEnteredScopes(internal))
+  // Iterative BFS to avoid deep recursion and bail out early
+  const queue: Map<string, Package>[] = [toRaw(gameState.packages)]
+
+  while (queue.length > 0 && total < MAX_DISPLAY) {
+    const packages = queue.shift()!
+    for (const pkg of packages.values()) {
+      if (pkg.internalState !== null && pkg.internalState !== 'pristine') {
+        total++
+        if (pkg.internalState === 'stable') stable++
+        if (total >= MAX_DISPLAY) break
+      }
+      // Queue internal packages for later processing
+      const internal = pkg.internalPackages ? toRaw(pkg.internalPackages) : null
+      if (internal && internal.size > 0) {
+        queue.push(internal)
+      }
     }
   }
-  return result
-}
+
+  return { stable, total }
+})
 
 // Stability state for styling
 const stabilityState = computed(() => {

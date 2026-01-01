@@ -82,8 +82,40 @@ const actionAffordable = computed(
   () => gameState.resources.bandwidth >= actionPreviewCost.value
 )
 
-// Static segment indices for v-for
-const segmentIndices = Array.from({ length: SEGMENTS }, (_, i) => i)
+// Pre-compute segment states to simplify template and avoid duplicated condition checks
+// Each segment has a state object that determines its appearance
+const segmentStates = computed(() => {
+  const filled = filledSegments.value
+  const partial = partialFill.value
+  const costStart = costStartSegment.value
+  const previewStart = previewStartSegment.value
+  const previewingAction = isPreviewingAction.value
+  const previewingEfficiency = isPreviewingEfficiency.value
+  const affordable = actionAffordable.value
+  const canAfford = canAffordInstall.value
+  const filledEnd = filled + (partial > 0 ? 1 : 0)
+
+  return Array.from({ length: SEGMENTS }, (_, i) => {
+    const isFilled = i < filled
+    const isPartial = i === filled && partial > 0
+    const inFilledRange = i < filledEnd
+    const inCostRange = i >= costStart && inFilledRange
+    const inPreviewRange =
+      previewingAction && i >= previewStart && inFilledRange
+
+    return {
+      index: i,
+      filled: isFilled,
+      partial: isPartial,
+      partialValue: isPartial ? partial : 0,
+      isCost: inCostRange && !previewingEfficiency && !inPreviewRange,
+      unaffordable: inCostRange && !canAfford,
+      actionPreview: inPreviewRange,
+      actionAffordable: inPreviewRange && affordable,
+      actionUnaffordable: inPreviewRange && !affordable,
+    }
+  })
+})
 
 // ============================================
 // WARNING STATES
@@ -170,53 +202,23 @@ void showStarved.value // Suppress TS6133 - used in template
     <!-- Segmented bandwidth bar -->
     <div class="resource-bar">
       <div
-        v-for="i in segmentIndices"
-        :key="i"
-        v-memo="[
-          i < filledSegments,
-          i === filledSegments ? partialFill : 0,
-          i >= costStartSegment &&
-            i < filledSegments + (partialFill > 0 ? 1 : 0),
-          isPreviewingAction &&
-            i >= previewStartSegment &&
-            i < filledSegments + (partialFill > 0 ? 1 : 0),
-          canAffordInstall,
-          isPreviewingEfficiency,
-          actionAffordable,
-        ]"
+        v-for="seg in segmentStates"
+        :key="seg.index"
         class="segment"
         :class="{
-          filled: i < filledSegments,
-          partial: i === filledSegments && partialFill > 0,
-          'is-cost':
-            i >= costStartSegment &&
-            i < filledSegments + (partialFill > 0 ? 1 : 0) &&
-            !isPreviewingEfficiency &&
-            !(isPreviewingAction && i >= previewStartSegment),
-          unaffordable:
-            i >= costStartSegment &&
-            i < filledSegments + (partialFill > 0 ? 1 : 0) &&
-            !canAffordInstall,
-          'action-preview':
-            isPreviewingAction &&
-            i >= previewStartSegment &&
-            i < filledSegments + (partialFill > 0 ? 1 : 0),
-          'action-affordable':
-            isPreviewingAction &&
-            i >= previewStartSegment &&
-            i < filledSegments + (partialFill > 0 ? 1 : 0) &&
-            actionAffordable,
-          'action-unaffordable':
-            isPreviewingAction &&
-            i >= previewStartSegment &&
-            i < filledSegments + (partialFill > 0 ? 1 : 0) &&
-            !actionAffordable,
+          filled: seg.filled,
+          partial: seg.partial,
+          'is-cost': seg.isCost,
+          unaffordable: seg.unaffordable,
+          'action-preview': seg.actionPreview,
+          'action-affordable': seg.actionAffordable,
+          'action-unaffordable': seg.actionUnaffordable,
         }"
       >
         <div
-          v-if="i === filledSegments && partialFill > 0"
+          v-if="seg.partial"
           class="segment-fill"
-          :style="{ height: partialFill * 100 + '%' }"
+          :style="{ height: seg.partialValue * 100 + '%' }"
         ></div>
       </div>
     </div>

@@ -51,6 +51,9 @@ export class GameRenderer {
   private backgroundWireRenderer!: WireRenderer
   private midgroundNodeRenderer!: NodeRenderer
   private midgroundWireRenderer!: WireRenderer
+  // Reusable blur filters (avoid creating new ones each frame)
+  private backgroundBlurFilter!: BlurFilter
+  private midgroundBlurFilter!: BlurFilter
 
   private isDragging = false
   private lastMousePos = { x: 0, y: 0 }
@@ -105,9 +108,9 @@ export class GameRenderer {
     this.backgroundLayerContainer = new Container()
     this.backgroundLayerContainer.label = 'background-layer'
     this.backgroundLayerContainer.alpha = 0.12
-    this.backgroundLayerContainer.filters = [
-      new BlurFilter({ strength: 4, quality: 2 }),
-    ]
+    // Create reusable blur filter (strength updated in updateBackgroundLayers)
+    this.backgroundBlurFilter = new BlurFilter({ strength: 4, quality: 2 })
+    this.backgroundLayerContainer.filters = [this.backgroundBlurFilter]
     this.backgroundLayerContainer.visible = false
     this.worldContainer.addChild(this.backgroundLayerContainer)
 
@@ -126,9 +129,9 @@ export class GameRenderer {
     this.midgroundLayerContainer = new Container()
     this.midgroundLayerContainer.label = 'midground-layer'
     this.midgroundLayerContainer.alpha = 0.2
-    this.midgroundLayerContainer.filters = [
-      new BlurFilter({ strength: 2, quality: 2 }),
-    ]
+    // Create reusable blur filter (strength updated in updateBackgroundLayers)
+    this.midgroundBlurFilter = new BlurFilter({ strength: 2, quality: 2 })
+    this.midgroundLayerContainer.filters = [this.midgroundBlurFilter]
     this.midgroundLayerContainer.visible = false
     this.worldContainer.addChild(this.midgroundLayerContainer)
 
@@ -659,9 +662,8 @@ export class GameRenderer {
     const midgroundBlur = baseBlur + (scopeDepth - 1) * blurPerDepth
     const midgroundAlpha = baseAlpha * Math.pow(alphaDecay, scopeDepth - 1)
     this.midgroundLayerContainer.alpha = midgroundAlpha + 0.05 // Slightly more visible
-    this.midgroundLayerContainer.filters = [
-      new BlurFilter({ strength: midgroundBlur, quality: 2 }),
-    ]
+    // Update existing filter strength (avoid creating new filter each frame)
+    this.midgroundBlurFilter.strength = midgroundBlur
 
     // Center midground on the package we entered (current scope's position in parent)
     if (currentPkg) {
@@ -707,9 +709,8 @@ export class GameRenderer {
       const backgroundBlur = baseBlur + scopeDepth * blurPerDepth
       const backgroundAlpha = baseAlpha * Math.pow(alphaDecay, scopeDepth)
       this.backgroundLayerContainer.alpha = backgroundAlpha
-      this.backgroundLayerContainer.filters = [
-        new BlurFilter({ strength: backgroundBlur, quality: 2 }),
-      ]
+      // Update existing filter strength (avoid creating new filter each frame)
+      this.backgroundBlurFilter.strength = backgroundBlur
 
       // Center background on the parent package's position (in grandparent space)
       if (parentPkg) {
@@ -1423,7 +1424,7 @@ export class GameRenderer {
   }
 
   /**
-   * Clean up
+   * Clean up all resources
    */
   destroy(): void {
     this.nodeRenderer.clear()
@@ -1436,6 +1437,11 @@ export class GameRenderer {
     this.backgroundWireRenderer.clear()
     this.midgroundNodeRenderer.clear()
     this.midgroundWireRenderer.clear()
+    // Destroy blur filters
+    this.backgroundBlurFilter.destroy()
+    this.midgroundBlurFilter.destroy()
+    // Destroy ghost lines graphics
+    this.ghostLinesGraphics.destroy()
     this.app.destroy(true)
   }
 }

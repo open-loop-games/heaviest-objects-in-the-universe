@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, triggerRef, onMounted, onUnmounted } from 'vue'
+import { shallowRef, triggerRef, onMounted, onUnmounted } from 'vue'
 
 // Particle types for different causal flows
 export type ParticleType =
@@ -31,15 +31,18 @@ const particles = shallowRef<Particle[]>([])
 let nextId = 0
 let animationFrameId: number | null = null
 
-// HUD element positions (will be set by parent or calculated)
-const hudPositions = ref<Record<string, { x: number; y: number }>>({
+// HUD element positions - cached to avoid DOM queries on every spawn
+// Plain object (not reactive) since we only read it during spawns
+let hudPositions: Record<string, { x: number; y: number }> = {
   bandwidth: { x: 80, y: 36 },
   weight: { x: 200, y: 36 },
   gravity: { x: window.innerWidth - 200, y: window.innerHeight - 36 },
   efficiency: { x: 220, y: 60 },
   stability: { x: 320, y: 60 },
   fragment: { x: window.innerWidth - 100, y: 36 },
-})
+}
+let positionsCacheValid = false
+let fragmentPositionFound = false
 
 // Update HUD positions based on actual element locations
 function updateHudPositions() {
@@ -47,7 +50,7 @@ function updateHudPositions() {
   const bandwidthEl = document.querySelector('.bar-fill.bandwidth')
   if (bandwidthEl) {
     const rect = bandwidthEl.getBoundingClientRect()
-    hudPositions.value.bandwidth = {
+    hudPositions.bandwidth = {
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2,
     }
@@ -57,7 +60,7 @@ function updateHudPositions() {
   const weightEl = document.querySelector('.weight-icon')
   if (weightEl) {
     const rect = weightEl.getBoundingClientRect()
-    hudPositions.value.weight = {
+    hudPositions.weight = {
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2,
     }
@@ -67,7 +70,7 @@ function updateHudPositions() {
   const gravityEl = document.querySelector('.singularity')
   if (gravityEl) {
     const rect = gravityEl.getBoundingClientRect()
-    hudPositions.value.gravity = {
+    hudPositions.gravity = {
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2,
     }
@@ -79,7 +82,7 @@ function updateHudPositions() {
   )
   if (efficiencyEl) {
     const rect = efficiencyEl.getBoundingClientRect()
-    hudPositions.value.efficiency = {
+    hudPositions.efficiency = {
       x: rect.left + rect.width,
       y: rect.top + rect.height / 2,
     }
@@ -91,7 +94,7 @@ function updateHudPositions() {
   )
   if (stabilityEl) {
     const rect = stabilityEl.getBoundingClientRect()
-    hudPositions.value.stability = {
+    hudPositions.stability = {
       x: rect.left + rect.width,
       y: rect.top + rect.height / 2,
     }
@@ -101,32 +104,44 @@ function updateHudPositions() {
   const fragmentEl = document.querySelector('.fragment-preview')
   if (fragmentEl) {
     const rect = fragmentEl.getBoundingClientRect()
-    hudPositions.value.fragment = {
+    hudPositions.fragment = {
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2,
     }
+    fragmentPositionFound = true
   }
+
+  positionsCacheValid = true
+}
+
+// Invalidate cache on resize
+function invalidatePositions() {
+  positionsCacheValid = false
+  fragmentPositionFound = false
 }
 
 // Spawn a causal particle
 function spawnParticle(type: ParticleType, fromX: number, fromY: number) {
-  updateHudPositions()
+  // Only update positions if cache is invalid (e.g., after resize)
+  if (!positionsCacheValid) {
+    updateHudPositions()
+  }
 
   let target: { x: number; y: number } | undefined
   let duration: number
 
   switch (type) {
     case 'bandwidth-cost':
-      target = hudPositions.value.bandwidth
+      target = hudPositions.bandwidth
       duration = 400
       break
     case 'bandwidth-gain':
       // Bandwidth refund from symlink - same target, different color
-      target = hudPositions.value.bandwidth
+      target = hudPositions.bandwidth
       duration = 350 // Slightly faster for reward feel
       break
     case 'weight-gain':
-      target = hudPositions.value.weight
+      target = hudPositions.weight
       duration = 500
       break
     case 'weight-loss':
@@ -135,12 +150,12 @@ function spawnParticle(type: ParticleType, fromX: number, fromY: number) {
       duration = 600
       break
     case 'gravity-pulse':
-      target = hudPositions.value.gravity
+      target = hudPositions.gravity
       duration = 600
       break
     case 'efficiency-up':
       // Efficiency improved - flies to efficiency bar (cyan glow)
-      target = hudPositions.value.efficiency
+      target = hudPositions.efficiency
       duration = 450
       break
     case 'efficiency-down':
@@ -150,7 +165,7 @@ function spawnParticle(type: ParticleType, fromX: number, fromY: number) {
       break
     case 'stability-up':
       // Stability improved - flies to stability bar (green glow)
-      target = hudPositions.value.stability
+      target = hudPositions.stability
       duration = 450
       break
     case 'stability-down':
@@ -160,7 +175,19 @@ function spawnParticle(type: ParticleType, fromX: number, fromY: number) {
       break
     case 'fragment-collect':
       // Fragment collected - flies to prestige panel fragment area
-      target = hudPositions.value.fragment
+      // Re-query if fragment position wasn't found (component may mount late)
+      if (!fragmentPositionFound) {
+        const fragmentEl = document.querySelector('.fragment-preview')
+        if (fragmentEl) {
+          const rect = fragmentEl.getBoundingClientRect()
+          hudPositions.fragment = {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+          }
+          fragmentPositionFound = true
+        }
+      }
+      target = hudPositions.fragment
       duration = 550
       break
     default:
@@ -313,14 +340,15 @@ defineExpose({ spawnParticle, spawnParticleBurst })
 onMounted(() => {
   animationFrameId = requestAnimationFrame(animate)
   updateHudPositions()
-  window.addEventListener('resize', updateHudPositions)
+  // Invalidate cache on resize, don't query immediately
+  window.addEventListener('resize', invalidatePositions)
 })
 
 onUnmounted(() => {
   if (animationFrameId) {
     cancelAnimationFrame(animationFrameId)
   }
-  window.removeEventListener('resize', updateHudPositions)
+  window.removeEventListener('resize', invalidatePositions)
 })
 </script>
 

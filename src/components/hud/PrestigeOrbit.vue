@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onWatcherCleanup } from 'vue'
 import {
   gameState,
   computed_gravity,
@@ -126,69 +126,29 @@ const hasFragments = computed(() => gameState.resources.cacheFragments > 0)
 // TIER PROGRESS ARCS
 // ============================================
 
+// Static tier metadata (never changes) - defined once at module level
+const TIER_ARC_META = [
+  { tier: 2, icon: '⚙', start: 0, end: TIER_THRESHOLDS[1] },
+  { tier: 3, icon: '⟲', start: TIER_THRESHOLDS[1], end: TIER_THRESHOLDS[2] },
+  { tier: 4, icon: '⚡', start: TIER_THRESHOLDS[2], end: TIER_THRESHOLDS[3] },
+  { tier: 5, icon: '★', start: TIER_THRESHOLDS[3], end: TIER_THRESHOLDS[4] },
+] as const
+
 // Calculate progress within each tier segment (0-1)
+// PERF: Reuses static metadata, only computes dynamic progress/complete
 const tierArcProgress = computed(() => {
   const tokens = gameState.meta.cacheTokens
 
-  return [
-    // Tier 2: 0 → 9 tokens
-    {
-      tier: 2,
-      icon: '⚙',
-      start: 0,
-      end: TIER_THRESHOLDS[1],
-      progress: Math.min(1, tokens / TIER_THRESHOLDS[1]),
-      complete: tokens >= TIER_THRESHOLDS[1],
-    },
-    // Tier 3: 9 → 21 tokens
-    {
-      tier: 3,
-      icon: '⟲',
-      start: TIER_THRESHOLDS[1],
-      end: TIER_THRESHOLDS[2],
-      progress:
-        tokens >= TIER_THRESHOLDS[1]
-          ? Math.min(
-              1,
-              (tokens - TIER_THRESHOLDS[1]) /
-                (TIER_THRESHOLDS[2] - TIER_THRESHOLDS[1])
-            )
-          : 0,
-      complete: tokens >= TIER_THRESHOLDS[2],
-    },
-    // Tier 4: 21 → 42 tokens
-    {
-      tier: 4,
-      icon: '⚡',
-      start: TIER_THRESHOLDS[2],
-      end: TIER_THRESHOLDS[3],
-      progress:
-        tokens >= TIER_THRESHOLDS[2]
-          ? Math.min(
-              1,
-              (tokens - TIER_THRESHOLDS[2]) /
-                (TIER_THRESHOLDS[3] - TIER_THRESHOLDS[2])
-            )
-          : 0,
-      complete: tokens >= TIER_THRESHOLDS[3],
-    },
-    // Tier 5: 42 → 63 tokens
-    {
-      tier: 5,
-      icon: '★',
-      start: TIER_THRESHOLDS[3],
-      end: TIER_THRESHOLDS[4],
-      progress:
-        tokens >= TIER_THRESHOLDS[3]
-          ? Math.min(
-              1,
-              (tokens - TIER_THRESHOLDS[3]) /
-                (TIER_THRESHOLDS[4] - TIER_THRESHOLDS[3])
-            )
-          : 0,
-      complete: tokens >= TIER_THRESHOLDS[4],
-    },
-  ]
+  return TIER_ARC_META.map((meta) => {
+    const range = meta.end - meta.start
+    const progress =
+      tokens >= meta.start ? Math.min(1, (tokens - meta.start) / range) : 0
+    return {
+      ...meta,
+      progress,
+      complete: tokens >= meta.end,
+    }
+  })
 })
 
 // SVG arc calculations for tier rings
@@ -227,17 +187,18 @@ const automationType = computed(() => getAutomationProcessingType())
 
 // Flash state for completion effect
 const showAutomationFlash = ref(false)
-let automationFlashTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Watch for automation completion to trigger flash
+// Uses onWatcherCleanup for automatic timeout cleanup
 watch(automationActive, (active, wasActive) => {
   if (wasActive && !active) {
     // Just completed - show flash
     showAutomationFlash.value = true
-    if (automationFlashTimeout) clearTimeout(automationFlashTimeout)
-    automationFlashTimeout = setTimeout(() => {
+    const timeout = setTimeout(() => {
       showAutomationFlash.value = false
     }, 300)
+    // Auto-cleanup on next watch trigger or component unmount
+    onWatcherCleanup(() => clearTimeout(timeout))
   }
 })
 
@@ -250,11 +211,6 @@ function handlePrestige() {
     triggerPrestigeWithAnimation()
   }
 }
-
-// Cleanup on unmount
-onUnmounted(() => {
-  if (automationFlashTimeout) clearTimeout(automationFlashTimeout)
-})
 </script>
 
 <template>

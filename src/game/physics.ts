@@ -655,7 +655,8 @@ export function updateInternalPhysics(
   const scopePkg = getPackageAtPath(scopePath)
   if (!scopePkg || !scopePkg.internalPackages) return
 
-  const internalPackages = scopePkg.internalPackages
+  // Use toRaw() to avoid Vue reactivity tracking in physics loop
+  const internalPackages = toRaw(scopePkg.internalPackages)
   const packages = Array.from(internalPackages.values())
   if (packages.length === 0) return
 

@@ -16,20 +16,57 @@ import { updateAutomation } from './automation'
 import { applySafetyRegen, onPackageResolved } from './mutations'
 import type { Package } from './types'
 
+// ============================================
+// LOOP TIMING CONSTANTS
+// ============================================
+
+/** Base install progress rate (multiplied by deltaTime and installSpeed) */
+const INSTALL_PROGRESS_RATE = 0.5
+
+/** Wire flow animation speed */
+const WIRE_FLOW_SPEED = 0.5
+
+/** How often to recalculate efficiency/stability (every N frames) */
+const STATS_UPDATE_INTERVAL = 30
+
+// ============================================
+// CAMERA TRANSITION CONSTANTS
+// ============================================
+
+/** Camera position lerp speed (higher = faster snap) */
+const CAMERA_POSITION_SPEED = 10
+
+/** Camera zoom lerp speed */
+const CAMERA_ZOOM_SPEED = 8
+
+/** Exponential decay base for smooth easing (smaller = smoother) */
+const CAMERA_EASING_BASE = 0.01
+
+/** Distance threshold to snap camera position */
+const CAMERA_SNAP_THRESHOLD = 0.5
+
+/** Zoom difference threshold to snap camera zoom */
+const CAMERA_ZOOM_SNAP_THRESHOLD = 0.01
+
 type TickCallback = (deltaTime: number) => void
 
 /**
  * Recursively update internal packages at any depth
  * Handles install progress and state transitions
+ * Uses toRaw() to avoid Vue reactivity overhead
  */
 function updateInternalPackages(
   packages: Map<string, Package>,
   deltaTime: number,
   installSpeed: number
 ): void {
-  for (const innerPkg of packages.values()) {
+  // Unwrap reactive map to avoid tracking overhead
+  const rawPackages = toRaw(packages)
+
+  for (const innerPkg of rawPackages.values()) {
     if (innerPkg.state === 'installing') {
-      innerPkg.installProgress += deltaTime * 0.5 * installSpeed
+      innerPkg.installProgress +=
+        deltaTime * INSTALL_PROGRESS_RATE * installSpeed
       if (innerPkg.installProgress >= 1) {
         innerPkg.installProgress = 1
         innerPkg.state = 'ready'
@@ -58,7 +95,6 @@ let cameraTargetX = 0
 let cameraTargetY = 0
 let cameraTargetZoom = 1
 let cameraTransitioning = false
-const CAMERA_POSITION_SPEED = 10 // Higher = faster snap for position
 
 /**
  * Set camera target for smooth transition
@@ -83,29 +119,34 @@ function updateCameraTransition(deltaTime: number): void {
   const dist = Math.sqrt(dx * dx + dy * dy)
 
   // Position transition with smooth lerp
-  if (dist < 0.5) {
+  if (dist < CAMERA_SNAP_THRESHOLD) {
     // Close enough - snap to target
     gameState.camera.x = cameraTargetX
     gameState.camera.y = cameraTargetY
   } else {
     // Lerp toward target with ease-out feel
-    const t = 1 - Math.pow(0.01, deltaTime * CAMERA_POSITION_SPEED)
+    const t =
+      1 - Math.pow(CAMERA_EASING_BASE, deltaTime * CAMERA_POSITION_SPEED)
     gameState.camera.x += dx * t
     gameState.camera.y += dy * t
   }
 
   // Zoom transition with timed easing
   const zoomDiff = cameraTargetZoom - gameState.camera.zoom
-  if (Math.abs(zoomDiff) > 0.01) {
+  if (Math.abs(zoomDiff) > CAMERA_ZOOM_SNAP_THRESHOLD) {
     // Smooth zoom toward target with exponential decay
-    const zoomT = 1 - Math.pow(0.01, deltaTime * 8)
+    const zoomT =
+      1 - Math.pow(CAMERA_EASING_BASE, deltaTime * CAMERA_ZOOM_SPEED)
     gameState.camera.zoom += zoomDiff * zoomT
   } else {
     gameState.camera.zoom = cameraTargetZoom
   }
 
   // Check if transition is complete
-  if (dist < 0.5 && Math.abs(zoomDiff) < 0.01) {
+  if (
+    dist < CAMERA_SNAP_THRESHOLD &&
+    Math.abs(zoomDiff) < CAMERA_ZOOM_SNAP_THRESHOLD
+  ) {
     cameraTransitioning = false
   }
 }
@@ -158,7 +199,7 @@ function tick(): void {
   }
 
   // Update efficiency and stability
-  if (tickCount % 30 === 0) {
+  if (tickCount % STATS_UPDATE_INTERVAL === 0) {
     updateEfficiency()
     updateStability()
   }
@@ -199,7 +240,7 @@ function updatePackages(deltaTime: number): void {
   for (const pkg of toRaw(gameState.packages).values()) {
     // Update installation progress
     if (pkg.state === 'installing') {
-      pkg.installProgress += deltaTime * 0.5 * installSpeed // Base 2 seconds, faster with upgrades
+      pkg.installProgress += deltaTime * INSTALL_PROGRESS_RATE * installSpeed
 
       if (pkg.installProgress >= 1) {
         pkg.installProgress = 1
@@ -226,11 +267,12 @@ function updatePackages(deltaTime: number): void {
 
   // Update wire flow animations
   for (const wire of toRaw(gameState.wires).values()) {
-    wire.flowProgress = (wire.flowProgress + deltaTime * 0.5) % 1
+    wire.flowProgress = (wire.flowProgress + deltaTime * WIRE_FLOW_SPEED) % 1
   }
 
   // Also update internal wire flow animations (recursive for arbitrary depth)
-  for (const pkg of toRaw(gameState.packages).values()) {
+  const rawPackagesForWires = toRaw(gameState.packages)
+  for (const pkg of rawPackagesForWires.values()) {
     if (pkg.internalWires) {
       updateInternalWires(pkg, deltaTime)
     }
@@ -239,17 +281,20 @@ function updatePackages(deltaTime: number): void {
 
 /**
  * Recursively update wire flow animations at any depth
+ * Uses toRaw() to avoid Vue reactivity overhead
  */
 function updateInternalWires(pkg: Package, deltaTime: number): void {
   if (pkg.internalWires) {
-    for (const wire of pkg.internalWires.values()) {
-      wire.flowProgress = (wire.flowProgress + deltaTime * 0.5) % 1
+    const rawWires = toRaw(pkg.internalWires)
+    for (const wire of rawWires.values()) {
+      wire.flowProgress = (wire.flowProgress + deltaTime * WIRE_FLOW_SPEED) % 1
     }
   }
 
   // Recurse into internal packages
   if (pkg.internalPackages) {
-    for (const innerPkg of pkg.internalPackages.values()) {
+    const rawPackages = toRaw(pkg.internalPackages)
+    for (const innerPkg of rawPackages.values()) {
       if (innerPkg.internalWires) {
         updateInternalWires(innerPkg, deltaTime)
       }

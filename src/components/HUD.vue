@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watchEffect } from 'vue'
 import {
   gameState,
   computed_gravity,
@@ -25,23 +25,24 @@ import SurgeRow from './hud/SurgeRow.vue'
 
 const showBandwidth = computed(() => gameState.onboarding.firstClickComplete)
 
-const showWeight = computed(() => {
-  if (gameState.onboarding.weightSeen) return true
-  if (gameState.packages.size >= 2) {
+// Track onboarding state changes with watchEffect (side effects, not computation)
+watchEffect(() => {
+  if (!gameState.onboarding.weightSeen && gameState.packages.size >= 2) {
     gameState.onboarding.weightSeen = true
-    return true
   }
-  return false
+  if (!gameState.onboarding.efficiencySeen && gameState.packages.size >= 2) {
+    gameState.onboarding.efficiencySeen = true
+  }
 })
 
-const showEfficiency = computed(() => {
-  if (gameState.onboarding.efficiencySeen) return true
-  if (gameState.packages.size >= 2) {
-    gameState.onboarding.efficiencySeen = true
-    return true
-  }
-  return false
-})
+// Pure computeds - no mutations
+const showWeight = computed(
+  () => gameState.onboarding.weightSeen || gameState.packages.size >= 2
+)
+
+const showEfficiency = computed(
+  () => gameState.onboarding.efficiencySeen || gameState.packages.size >= 2
+)
 
 const showAutomation = computed(() => computed_ecosystemTier.value >= 2)
 
