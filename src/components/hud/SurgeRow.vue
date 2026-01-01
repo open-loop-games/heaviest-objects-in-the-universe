@@ -6,10 +6,9 @@ import {
   canPurchaseUpgrade,
   purchaseUpgrade,
   setPreviewedUpgrade,
-  setSurgeCharge,
-  getSurgeCost,
   UPGRADES,
 } from '../../game/upgrades'
+import { setSurgeCharge, getSurgeCost } from '../../game/surge'
 import { SURGE_SEGMENTS } from '../../game/config'
 
 // ============================================

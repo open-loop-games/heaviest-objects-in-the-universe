@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import {
-  gameState,
-  previewedActionType,
-  cascadeStarved,
-} from '../../game/state'
+import { gameState } from '../../game/state'
+import { previewedActionType, cascadeStarved } from '../../game/ui-state'
 import { isViewingCascadeScope } from '../../game/cascade'
 import {
   getUpgradeLevel,

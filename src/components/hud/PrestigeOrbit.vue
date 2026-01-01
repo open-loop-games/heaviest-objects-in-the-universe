@@ -6,7 +6,7 @@ import {
   computed_prestigeReward,
   computed_canPrestige,
 } from '../../game/state'
-import { triggerPrestigeWithAnimation } from '../../game/mutations'
+import { triggerPrestigeWithAnimation } from '../../game/prestige'
 import { calculateStabilityRatio } from '../../game/formulas'
 import {
   isAutomationProcessing,

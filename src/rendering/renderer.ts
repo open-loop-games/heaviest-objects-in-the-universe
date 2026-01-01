@@ -8,7 +8,8 @@ import { EffectsRenderer } from './effects'
 import { BlackHoleRenderer } from './blackhole'
 import { EdgeIndicatorRenderer } from './edge-indicators'
 import { Colors } from './colors'
-import { gameState, getWigglePhase } from '../game/state'
+import { gameState } from '../game/state'
+import { getWigglePhase } from '../game/ui-state'
 import { getFirstConflictDimming } from '../onboarding/tutorial-state'
 import {
   getCurrentScopePackages,

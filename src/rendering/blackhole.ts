@@ -2,13 +2,12 @@
 
 import { Graphics, Container, type Application } from 'pixi.js'
 import { Colors } from './colors'
+import { gameState, computed_gravity } from '../game/state'
 import {
-  gameState,
-  computed_gravity,
   startCollapse as startCollapseState,
   endCollapse as endCollapseState,
   collapseState,
-} from '../game/state'
+} from '../game/ui-state'
 import {
   updateCollapsePhysics,
   getCollapseProgress,

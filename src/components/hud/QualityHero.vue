@@ -2,7 +2,7 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { gameState } from '../../game/state'
 import { getEfficiencyTier, getEfficiencyTierRank } from '../../game/formulas'
-import { onQualityEvent, type QualityEvent } from '../../game/mutations'
+import { on } from '../../game/events'
 import { toRaw } from 'vue'
 import type { Package } from '../../game/types'
 
@@ -15,42 +15,42 @@ const stabilityPulse = ref(false)
 const tierUpFlash = ref(false)
 const recentlyFilledPip = ref<number | null>(null)
 
-let unsubscribe: (() => void) | null = null
+const unsubscribers: Array<() => void> = []
 
 onMounted(() => {
-  unsubscribe = onQualityEvent((event: QualityEvent) => {
-    if (
-      event.type === 'symlink-merge' ||
-      event.type === 'efficiency-improved'
-    ) {
-      // Pulse efficiency bar on merge or improvement
+  // Pulse efficiency bar on merge or improvement
+  unsubscribers.push(
+    on('game:symlink-merged', () => {
       efficiencyPulse.value = true
       setTimeout(() => (efficiencyPulse.value = false), 400)
-    }
-
-    if (event.type === 'efficiency-tier-up') {
-      // Flash the tier pips on tier-up
+    }),
+    on('quality:efficiency-improved', () => {
+      efficiencyPulse.value = true
+      setTimeout(() => (efficiencyPulse.value = false), 400)
+    }),
+    // Flash the tier pips on tier-up
+    on('quality:efficiency-tier-up', ({ newTier }) => {
       tierUpFlash.value = true
-      recentlyFilledPip.value = getEfficiencyTierRank(event.newTier) - 1
+      recentlyFilledPip.value = getEfficiencyTierRank(newTier) - 1
       setTimeout(() => {
         tierUpFlash.value = false
         recentlyFilledPip.value = null
       }, 800)
-    }
-
-    if (
-      event.type === 'scope-stabilized' ||
-      event.type === 'stability-improved'
-    ) {
-      // Pulse stability bar
+    }),
+    // Pulse stability bar on scope stabilization or stability improvement
+    on('game:scope-stabilized', () => {
       stabilityPulse.value = true
       setTimeout(() => (stabilityPulse.value = false), 400)
-    }
-  })
+    }),
+    on('quality:stability-improved', () => {
+      stabilityPulse.value = true
+      setTimeout(() => (stabilityPulse.value = false), 400)
+    })
+  )
 })
 
 onUnmounted(() => {
-  if (unsubscribe) unsubscribe()
+  unsubscribers.forEach((unsub) => unsub())
 })
 
 // ============================================

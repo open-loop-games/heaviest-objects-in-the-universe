@@ -38,7 +38,7 @@ import {
 import { getSiblingWires } from '../../game/cross-package'
 import { getInternalStats } from '../../game/packages'
 import { canAffordConflictResolve } from '../../game/mutations'
-import { setSurgeCharge, getSurgeCost } from '../../game/upgrades'
+import { setSurgeCharge, getSurgeCost } from '../../game/surge'
 import { SURGE_SEGMENTS } from '../../game/config'
 
 // ============================================

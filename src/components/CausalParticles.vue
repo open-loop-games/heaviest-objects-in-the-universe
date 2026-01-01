@@ -1,18 +1,9 @@
 <script setup lang="ts">
 import { shallowRef, triggerRef, onMounted, onUnmounted } from 'vue'
+import { on, type ParticleType } from '../game/events'
 
-// Particle types for different causal flows
-export type ParticleType =
-  | 'bandwidth-cost' // Spending bandwidth (flies TO bandwidth bar)
-  | 'bandwidth-gain' // Gaining bandwidth from symlink (flies TO bandwidth bar, green)
-  | 'weight-gain' // Weight increasing (flies TO weight display)
-  | 'weight-loss' // Weight decreasing from merge/prune (flies FROM weight, fades)
-  | 'gravity-pulse' // Gravity building (flies TO gravity bar)
-  | 'efficiency-up' // Efficiency improving (merge success - flies TO efficiency bar, cyan)
-  | 'efficiency-down' // Efficiency dropping (duplicate detected - red/orange warning)
-  | 'stability-up' // Stability improving (conflict resolved - flies TO stability bar, green)
-  | 'stability-down' // Stability dropping (conflict appeared - red warning)
-  | 'fragment-collect' // Cache fragment collected (flies TO prestige panel fragment area)
+// Event unsubscribers for cleanup
+const eventUnsubscribers: Array<() => void> = []
 
 interface Particle {
   id: number
@@ -334,14 +325,21 @@ function getParticleIcon(type: ParticleType): string {
   }
 }
 
-// Expose spawn functions for external use
-defineExpose({ spawnParticle, spawnParticleBurst })
-
 onMounted(() => {
   animationFrameId = requestAnimationFrame(animate)
   updateHudPositions()
   // Invalidate cache on resize, don't query immediately
   window.addEventListener('resize', invalidatePositions)
+
+  // Subscribe to particle events
+  eventUnsubscribers.push(
+    on('particles:spawn', ({ type, x, y }) => {
+      spawnParticle(type, x, y)
+    }),
+    on('particles:burst', ({ type, x, y, count }) => {
+      spawnParticleBurst(type, x, y, count)
+    })
+  )
 })
 
 onUnmounted(() => {
@@ -349,6 +347,11 @@ onUnmounted(() => {
     cancelAnimationFrame(animationFrameId)
   }
   window.removeEventListener('resize', invalidatePositions)
+
+  // Cleanup event subscriptions
+  for (const unsub of eventUnsubscribers) {
+    unsub()
+  }
 })
 </script>
 

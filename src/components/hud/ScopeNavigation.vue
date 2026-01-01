@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { gameState } from '../../game/state'
-import { getScopeDepth } from '../../game/scope'
-import { exitPackageScope, getInternalStats } from '../../game/packages'
+import { getScopeDepth, exitPackageScope } from '../../game/scope'
+import { getInternalStats } from '../../game/packages'
 import { setCameraTarget } from '../../game/loop'
 import { setBackButtonPos } from '../../onboarding/tutorial-state'
 

@@ -2,7 +2,6 @@
 import { ref, provide, onMounted } from 'vue'
 import GameCanvas from './components/GameCanvas.vue'
 import CausalParticles from './components/CausalParticles.vue'
-import type { ParticleType } from './components/CausalParticles.vue'
 
 // Platform detection
 import { detectPlatform } from './input'
@@ -67,7 +66,7 @@ provide('setMobileSelection', {
 
 import { exitScope } from './game/scope'
 import { gameState } from './game/state'
-import { triggerPrestigeWithAnimation } from './game/mutations'
+import { triggerPrestigeWithAnimation } from './game/prestige'
 
 function handleMobileBack() {
   exitScope()
@@ -107,18 +106,6 @@ function handleMobilePrestige() {
 // ============================================
 
 const gameCanvas = ref<InstanceType<typeof GameCanvas> | null>(null)
-
-// ============================================
-// PARTICLE SYSTEM
-// ============================================
-
-const particleSystem = ref<InstanceType<typeof CausalParticles> | null>(null)
-
-function spawnCausalParticle(type: ParticleType, fromX: number, fromY: number) {
-  particleSystem.value?.spawnParticle(type, fromX, fromY)
-}
-
-provide('spawnCausalParticle', spawnCausalParticle)
 </script>
 
 <template>
@@ -147,7 +134,7 @@ provide('spawnCausalParticle', spawnCausalParticle)
       />
     </template>
 
-    <CausalParticles ref="particleSystem" />
+    <CausalParticles />
   </div>
 </template>
 

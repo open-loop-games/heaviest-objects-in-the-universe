@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onUnmounted } from 'vue'
-import { softReset, hardReset } from '../../game/mutations'
+import { softReset, hardReset } from '../../game/prestige'
 import { saveToLocalStorage } from '../../game/persistence'
 import { createRootPackage } from '../../game/packages'
 
