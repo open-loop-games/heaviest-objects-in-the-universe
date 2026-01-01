@@ -15,17 +15,14 @@ import {
   onTick,
   setCameraTarget,
 } from '../game/loop'
+import { gameState } from '../game/state'
 import {
-  gameState,
   setActionPreview,
   startDrag,
   endDrag,
   triggerWiggle,
-} from '../game/state'
-import {
-  TouchInputHandler,
-  type TouchInputCallbacks,
-} from '../input/touch-input'
+} from '../game/ui-state'
+import { TouchInputHandler } from '../input/touch-input'
 import {
   isInPackageScope,
   getCurrentScopeWires,
@@ -38,7 +35,6 @@ import {
 import {
   removePackageWithSubtree,
   removeWire,
-  setPrestigeCompleteCallback,
   canAffordConflictResolve,
   collectCacheFragment,
 } from '../game/mutations'
@@ -53,9 +49,8 @@ import {
   installPackage,
   findPackageAtPosition,
   initIdCounterFromState,
-  enterPackageScope,
-  recalculateStateAtPath,
 } from '../game/packages'
+import { enterPackageScope, recalculateStateAtPath } from '../game/scope'
 import { getUpgradePath, findIdentityByName } from '../game/registry'
 import { getEffectiveInstallCost } from '../game/upgrades'
 import {
@@ -72,16 +67,10 @@ import {
   getSharedInternalDeps,
 } from '../game/cross-package'
 import { onConflictResolved } from '../game/mutations'
-import { on } from '../game/events'
+import { on, emit } from '../game/events'
 import type { Package } from '../game/types'
 import { Colors } from '../rendering/colors'
 import { setSelectedConflictWire } from '../onboarding/tutorial-state'
-import type { ParticleType } from './CausalParticles.vue'
-
-// Inject causal particle spawner from App.vue
-const spawnCausalParticle = inject<
-  (type: ParticleType, x: number, y: number) => void
->('spawnCausalParticle')
 
 // Inject platform detection
 const platform = inject<Ref<'desktop' | 'mobile'>>('platform')
@@ -214,14 +203,14 @@ onMounted(async () => {
     startGameLoop()
     startAutoSave()
 
-    // Set up prestige callbacks using event bus
-    setPrestigeCompleteCallback(() => {
+    // Subscribe to prestige complete event
+    const unsubPrestigeComplete = on('prestige:complete', () => {
       createRootPackage()
       previousPackageStates.clear()
     })
 
     // Subscribe to prestige start event
-    const unsubPrestige = on('prestige:start', ({ onComplete }) => {
+    const unsubPrestigeStart = on('prestige:start', ({ onComplete }) => {
       // Exit to root scope first so all packages are visible during collapse
       exitToRoot()
       renderer.getBlackHoleRenderer().startCollapse(onComplete)
@@ -258,7 +247,8 @@ onMounted(async () => {
 
     // Store unsubscribe functions for cleanup
     eventUnsubscribers.push(
-      unsubPrestige,
+      unsubPrestigeComplete,
+      unsubPrestigeStart,
       unsubSpawnEffect,
       unsubCrit,
       unsubAutoResolve
@@ -421,10 +411,12 @@ function handleMouseDown(event: MouseEvent) {
       if (collectCacheFragment(clickedPkg.id)) {
         effects.spawnRipple(rippleX, rippleY, Colors.cacheFragment)
         // Spawn causal particle flying to prestige panel
-        if (spawnCausalParticle) {
-          const screenPos = renderer.worldToScreen(rippleX, rippleY)
-          spawnCausalParticle('fragment-collect', screenPos.x, screenPos.y)
-        }
+        const screenPos = renderer.worldToScreen(rippleX, rippleY)
+        emit('particles:spawn', {
+          type: 'fragment-collect',
+          x: screenPos.x,
+          y: screenPos.y,
+        })
         return
       }
     }
@@ -513,21 +505,27 @@ function handleMouseDown(event: MouseEvent) {
         )
 
         // Spawn causal particles to show what's happening
-        if (spawnCausalParticle) {
-          // Convert world position to screen position for particles
-          const screenPos = renderer.worldToScreen(
-            clickedPkg.position.x,
-            clickedPkg.position.y
-          )
+        // Convert world position to screen position for particles
+        const screenPos = renderer.worldToScreen(
+          clickedPkg.position.x,
+          clickedPkg.position.y
+        )
 
-          // Bandwidth cost particle (flies to bandwidth bar)
-          spawnCausalParticle('bandwidth-cost', screenPos.x, screenPos.y)
+        // Bandwidth cost particle (flies to bandwidth bar)
+        emit('particles:spawn', {
+          type: 'bandwidth-cost',
+          x: screenPos.x,
+          y: screenPos.y,
+        })
 
-          // Weight gain particle (flies to weight display) - slight delay
-          setTimeout(() => {
-            spawnCausalParticle('weight-gain', screenPos.x, screenPos.y)
-          }, 100)
-        }
+        // Weight gain particle (flies to weight display) - slight delay
+        setTimeout(() => {
+          emit('particles:spawn', {
+            type: 'weight-gain',
+            x: screenPos.x,
+            y: screenPos.y,
+          })
+        }, 100)
       }
     }
   } else {
@@ -672,12 +670,12 @@ function handlePrune() {
   gameState.stats.totalConflictsResolved++
 
   // Spawn stability-up particle to show conflict resolved
-  if (spawnCausalParticle && wireActionPosition.value) {
-    spawnCausalParticle(
-      'stability-up',
-      wireActionPosition.value.x,
-      wireActionPosition.value.y
-    )
+  if (wireActionPosition.value) {
+    emit('particles:spawn', {
+      type: 'stability-up',
+      x: wireActionPosition.value.x,
+      y: wireActionPosition.value.y,
+    })
   }
 
   clearWireSelection()
@@ -736,12 +734,12 @@ function handleUpgrade() {
   gameState.stats.totalConflictsResolved++
 
   // Spawn stability-up particle to show conflict resolved
-  if (spawnCausalParticle && wireActionPosition.value) {
-    spawnCausalParticle(
-      'stability-up',
-      wireActionPosition.value.x,
-      wireActionPosition.value.y
-    )
+  if (wireActionPosition.value) {
+    emit('particles:spawn', {
+      type: 'stability-up',
+      x: wireActionPosition.value.x,
+      y: wireActionPosition.value.y,
+    })
   }
 
   clearWireSelection()
@@ -984,14 +982,24 @@ function handleMouseUp(_event?: MouseEvent) {
             effects.spawnBurst(targetPos.x, targetPos.y, Colors.borderOptimized)
 
             // Spawn causal particles
-            if (spawnCausalParticle) {
-              const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
-              spawnCausalParticle('bandwidth-gain', screenPos.x, screenPos.y)
-              // Efficiency improved by deduplication
-              spawnCausalParticle('efficiency-up', screenPos.x, screenPos.y)
-              // Weight saved
-              spawnCausalParticle('weight-loss', screenPos.x, screenPos.y)
-            }
+            const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
+            emit('particles:spawn', {
+              type: 'bandwidth-gain',
+              x: screenPos.x,
+              y: screenPos.y,
+            })
+            // Efficiency improved by deduplication
+            emit('particles:spawn', {
+              type: 'efficiency-up',
+              x: screenPos.x,
+              y: screenPos.y,
+            })
+            // Weight saved
+            emit('particles:spawn', {
+              type: 'weight-loss',
+              x: screenPos.x,
+              y: screenPos.y,
+            })
           }
         }
       } else {
@@ -1008,15 +1016,25 @@ function handleMouseUp(_event?: MouseEvent) {
           effects.spawnBurst(targetPos.x, targetPos.y, Colors.borderOptimized)
 
           // Spawn causal particles to show rewards flowing back
-          if (spawnCausalParticle) {
-            const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
-            // Bandwidth refund particle (flies to bandwidth bar)
-            spawnCausalParticle('bandwidth-gain', screenPos.x, screenPos.y)
-            // Efficiency improved by deduplication
-            spawnCausalParticle('efficiency-up', screenPos.x, screenPos.y)
-            // Weight saved
-            spawnCausalParticle('weight-loss', screenPos.x, screenPos.y)
-          }
+          const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
+          // Bandwidth refund particle (flies to bandwidth bar)
+          emit('particles:spawn', {
+            type: 'bandwidth-gain',
+            x: screenPos.x,
+            y: screenPos.y,
+          })
+          // Efficiency improved by deduplication
+          emit('particles:spawn', {
+            type: 'efficiency-up',
+            x: screenPos.x,
+            y: screenPos.y,
+          })
+          // Weight saved
+          emit('particles:spawn', {
+            type: 'weight-loss',
+            x: screenPos.x,
+            y: screenPos.y,
+          })
         }
       }
     } else if (!isDraggingSymlink) {
@@ -1122,19 +1140,34 @@ const DOUBLE_TAP_THRESHOLD = 300
 function setupTouchInput() {
   if (!canvasRef.value) return
 
-  const callbacks: TouchInputCallbacks = {
-    onSelect: handleTouchSelect,
-    onDeselect: handleTouchDeselect,
-    onAction: handleTouchAction,
-    onWireTap: handleTouchWireTap,
-    onDragStart: handleTouchDragStart,
-    onDragMove: handleTouchDragMove,
-    onDragEnd: handleTouchDragEnd,
-    onDragCancel: handleTouchDragCancel,
-    screenToWorld: (x, y) => renderer.screenToWorld(x, y),
-  }
+  touchInputHandler = new TouchInputHandler(canvasRef.value, (x, y) =>
+    renderer.screenToWorld(x, y)
+  )
 
-  touchInputHandler = new TouchInputHandler(canvasRef.value, callbacks)
+  // Subscribe to touch input events
+  eventUnsubscribers.push(
+    on('input:select', ({ worldX, worldY }) => {
+      handleTouchSelect({ x: worldX, y: worldY })
+    }),
+    on('input:action', ({ worldX, worldY }) => {
+      handleTouchAction({ x: worldX, y: worldY })
+    }),
+    on('input:wire-tap', ({ worldX, worldY }) => {
+      handleTouchWireTap({ x: worldX, y: worldY })
+    }),
+    on('input:drag-start', ({ worldX, worldY }) => {
+      handleTouchDragStart({ x: worldX, y: worldY })
+    }),
+    on('input:drag-move', ({ worldX, worldY }) => {
+      handleTouchDragMove({ x: worldX, y: worldY })
+    }),
+    on('input:drag-end', ({ worldX, worldY }) => {
+      handleTouchDragEnd({ x: worldX, y: worldY })
+    }),
+    on('input:drag-cancel', () => {
+      handleTouchDragCancel()
+    })
+  )
 }
 
 function handleTouchSelect(worldPos: { x: number; y: number }) {
@@ -1181,10 +1214,12 @@ function handleTouchSelect(worldPos: { x: number; y: number }) {
     if (clickedPkg.hasCacheFragment) {
       if (collectCacheFragment(clickedPkg.id)) {
         effects.spawnRipple(rippleX, rippleY, Colors.cacheFragment)
-        if (spawnCausalParticle) {
-          const screenPos = renderer.worldToScreen(rippleX, rippleY)
-          spawnCausalParticle('fragment-collect', screenPos.x, screenPos.y)
-        }
+        const screenPos = renderer.worldToScreen(rippleX, rippleY)
+        emit('particles:spawn', {
+          type: 'fragment-collect',
+          x: screenPos.x,
+          y: screenPos.y,
+        })
         return
       }
     }
@@ -1245,16 +1280,22 @@ function handleTouchAction(worldPos: { x: number; y: number }) {
         newPkg.position.y,
         Colors.borderInstalling
       )
-      if (spawnCausalParticle) {
-        const screenPos = renderer.worldToScreen(
-          clickedPkg.position.x,
-          clickedPkg.position.y
-        )
-        spawnCausalParticle('bandwidth-cost', screenPos.x, screenPos.y)
-        setTimeout(() => {
-          spawnCausalParticle('weight-gain', screenPos.x, screenPos.y)
-        }, 100)
-      }
+      const screenPos = renderer.worldToScreen(
+        clickedPkg.position.x,
+        clickedPkg.position.y
+      )
+      emit('particles:spawn', {
+        type: 'bandwidth-cost',
+        x: screenPos.x,
+        y: screenPos.y,
+      })
+      setTimeout(() => {
+        emit('particles:spawn', {
+          type: 'weight-gain',
+          x: screenPos.x,
+          y: screenPos.y,
+        })
+      }, 100)
     }
     return
   }
@@ -1445,12 +1486,22 @@ function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
 
         if (totalWeightSaved > 0) {
           effects.spawnBurst(targetPos.x, targetPos.y, Colors.borderOptimized)
-          if (spawnCausalParticle) {
-            const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
-            spawnCausalParticle('bandwidth-gain', screenPos.x, screenPos.y)
-            spawnCausalParticle('efficiency-up', screenPos.x, screenPos.y)
-            spawnCausalParticle('weight-loss', screenPos.x, screenPos.y)
-          }
+          const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
+          emit('particles:spawn', {
+            type: 'bandwidth-gain',
+            x: screenPos.x,
+            y: screenPos.y,
+          })
+          emit('particles:spawn', {
+            type: 'efficiency-up',
+            x: screenPos.x,
+            y: screenPos.y,
+          })
+          emit('particles:spawn', {
+            type: 'weight-loss',
+            x: screenPos.x,
+            y: screenPos.y,
+          })
         }
       }
     } else {
@@ -1462,12 +1513,22 @@ function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
 
       if (weightSaved > 0) {
         effects.spawnBurst(targetPos.x, targetPos.y, Colors.borderOptimized)
-        if (spawnCausalParticle) {
-          const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
-          spawnCausalParticle('bandwidth-gain', screenPos.x, screenPos.y)
-          spawnCausalParticle('efficiency-up', screenPos.x, screenPos.y)
-          spawnCausalParticle('weight-loss', screenPos.x, screenPos.y)
-        }
+        const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
+        emit('particles:spawn', {
+          type: 'bandwidth-gain',
+          x: screenPos.x,
+          y: screenPos.y,
+        })
+        emit('particles:spawn', {
+          type: 'efficiency-up',
+          x: screenPos.x,
+          y: screenPos.y,
+        })
+        emit('particles:spawn', {
+          type: 'weight-loss',
+          x: screenPos.x,
+          y: screenPos.y,
+        })
       }
     }
   }

@@ -11,6 +11,7 @@
  */
 
 import { gameState } from '../game/state'
+import { emit } from '../game/events'
 
 // Gesture configuration
 const CONFIG = {
@@ -58,28 +59,15 @@ interface DoubleTapState {
   lastTapPos: { x: number; y: number } | null
 }
 
-export interface TouchInputCallbacks {
-  // Selection
-  onSelect: (worldPos: { x: number; y: number }) => void
-  onDeselect: () => void
-
-  // Actions
-  onAction: (worldPos: { x: number; y: number }) => void
-  onWireTap: (worldPos: { x: number; y: number }) => void
-
-  // Symlink drag
-  onDragStart: (worldPos: { x: number; y: number }) => void
-  onDragMove: (worldPos: { x: number; y: number }) => void
-  onDragEnd: (worldPos: { x: number; y: number }) => void
-  onDragCancel: () => void
-
-  // Coordinate conversion
-  screenToWorld: (screenX: number, screenY: number) => { x: number; y: number }
-}
+// Coordinate conversion function type
+export type ScreenToWorldFn = (
+  screenX: number,
+  screenY: number
+) => { x: number; y: number }
 
 export class TouchInputHandler {
   private canvas: HTMLCanvasElement
-  private callbacks: TouchInputCallbacks
+  private screenToWorld: ScreenToWorldFn
 
   // Touch tracking
   private primaryTouch: TouchState | null = null
@@ -100,9 +88,9 @@ export class TouchInputHandler {
   private isPanning = false
   private lastPanCenter = { x: 0, y: 0 }
 
-  constructor(canvas: HTMLCanvasElement, callbacks: TouchInputCallbacks) {
+  constructor(canvas: HTMLCanvasElement, screenToWorld: ScreenToWorldFn) {
     this.canvas = canvas
-    this.callbacks = callbacks
+    this.screenToWorld = screenToWorld
     this.setupEventListeners()
   }
 
@@ -151,11 +139,11 @@ export class TouchInputHandler {
           if (this.primaryTouch && !this.primaryTouch.isDragging) {
             this.primaryTouch.isLongPress = true
             // Trigger drag start for symlink
-            const worldPos = this.callbacks.screenToWorld(
+            const worldPos = this.screenToWorld(
               this.primaryTouch.currentPos.x,
               this.primaryTouch.currentPos.y
             )
-            this.callbacks.onDragStart(worldPos)
+            emit('input:drag-start', { worldX: worldPos.x, worldY: worldPos.y })
           }
         }, CONFIG.longPressThreshold)
       } else if (!this.secondaryTouch) {
@@ -195,7 +183,7 @@ export class TouchInputHandler {
 
         // Cancel any ongoing drag
         if (this.primaryTouch.isDragging) {
-          this.callbacks.onDragCancel()
+          emit('input:drag-cancel')
           this.primaryTouch.isDragging = false
         }
       }
@@ -287,11 +275,11 @@ export class TouchInputHandler {
         if (this.primaryTouch.isLongPress) {
           // Long-press drag (symlink)
           this.primaryTouch.isDragging = true
-          const worldPos = this.callbacks.screenToWorld(
+          const worldPos = this.screenToWorld(
             this.primaryTouch.currentPos.x,
             this.primaryTouch.currentPos.y
           )
-          this.callbacks.onDragMove(worldPos)
+          emit('input:drag-move', { worldX: worldPos.x, worldY: worldPos.y })
         }
         // Note: Regular drag without long-press doesn't pan on single finger
         // This prevents accidental camera movement when trying to tap
@@ -320,11 +308,11 @@ export class TouchInputHandler {
 
         if (this.primaryTouch.isDragging) {
           // End symlink drag
-          const worldPos = this.callbacks.screenToWorld(
+          const worldPos = this.screenToWorld(
             this.primaryTouch.currentPos.x,
             this.primaryTouch.currentPos.y
           )
-          this.callbacks.onDragEnd(worldPos)
+          emit('input:drag-end', { worldX: worldPos.x, worldY: worldPos.y })
         } else if (
           elapsed < CONFIG.tapMaxDuration &&
           distance < CONFIG.tapMaxDistance
@@ -354,7 +342,7 @@ export class TouchInputHandler {
     this.cancelLongPress()
 
     if (this.primaryTouch?.isDragging) {
-      this.callbacks.onDragCancel()
+      emit('input:drag-cancel')
     }
 
     this.primaryTouch = null
@@ -365,7 +353,7 @@ export class TouchInputHandler {
 
   private handleTap(screenPos: { x: number; y: number }): void {
     const now = Date.now()
-    const worldPos = this.callbacks.screenToWorld(screenPos.x, screenPos.y)
+    const worldPos = this.screenToWorld(screenPos.x, screenPos.y)
 
     // Check for double-tap
     if (this.doubleTapState.lastTapPos) {
@@ -379,7 +367,7 @@ export class TouchInputHandler {
         distance < CONFIG.tapMaxDistance * 2
       ) {
         // Double-tap detected - trigger action
-        this.callbacks.onAction(worldPos)
+        emit('input:action', { worldX: worldPos.x, worldY: worldPos.y })
         this.doubleTapState.lastTapTime = 0
         this.doubleTapState.lastTapPos = null
         return
@@ -391,10 +379,10 @@ export class TouchInputHandler {
     this.doubleTapState.lastTapPos = { ...screenPos }
 
     // First check for wire tap
-    this.callbacks.onWireTap(worldPos)
+    emit('input:wire-tap', { worldX: worldPos.x, worldY: worldPos.y })
 
     // Then check for node selection (callback decides what to do)
-    this.callbacks.onSelect(worldPos)
+    emit('input:select', { worldX: worldPos.x, worldY: worldPos.y })
   }
 
   private cancelLongPress(): void {
