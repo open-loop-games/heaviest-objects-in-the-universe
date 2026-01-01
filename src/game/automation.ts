@@ -3,7 +3,8 @@
 // Note: Auto-dedup intentionally removed - merging stays manual for gameplay
 
 import { toRaw } from 'vue'
-import { gameState, getEcosystemTier } from './state'
+import { gameState } from './state'
+import { getEcosystemTier } from './formulas'
 import { getPackageAtPath, getPackagesAtPath, getWiresAtPath } from './scope'
 import { hasDuplicatesInScope, hasConflictsInScope } from './formulas'
 import { getCascadeScopePath, isCascadeActive } from './cascade'

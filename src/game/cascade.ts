@@ -2,12 +2,9 @@
 // Creates the "explosion inside" experience when entering packages
 // Supports arbitrary depth using scope paths
 
-import {
-  gameState,
-  getCompressionChance,
-  getMaxCompressedDepth,
-  setCascadeStarved,
-} from './state'
+import { gameState } from './state'
+import { getCompressionChance, getMaxCompressedDepth } from './formulas'
+import { setCascadeStarved } from './ui-state'
 import {
   MAX_PENDING_DEPS,
   MAX_COMPRESSED_PER_SCOPE,
@@ -34,7 +31,7 @@ import {
 } from './registry'
 import { getPackageAtPath } from './scope'
 import { getIdentitySize } from './formulas'
-import { consumeSurge, isSurgeUnlocked } from './upgrades'
+import { consumeSurge, isSurgeUnlocked } from './surge'
 import { emit } from './events'
 
 // Constants for cascade behavior
@@ -137,8 +134,9 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
 
   // Decide which deps will be compressed (can go deeper)
   // Max depth is determined by ecosystem tier (from cache tokens)
-  const maxDepth = getMaxCompressedDepth()
-  const compressionChance = getCompressionChance(depth)
+  const cacheTokens = gameState.meta.cacheTokens
+  const maxDepth = getMaxCompressedDepth(cacheTokens)
+  const compressionChance = getCompressionChance(depth, cacheTokens)
 
   // Hard cap on compressed packages per scope (tier-gated)
   const tier = gameState.meta.ecosystemTier
@@ -363,7 +361,7 @@ function spawnNextFromQueue(): void {
 
   // Check if this dep should be compressed
   const depth = scopePath.length
-  const maxDepth = getMaxCompressedDepth()
+  const maxDepth = getMaxCompressedDepth(gameState.meta.cacheTokens)
   const isCompressed =
     depth <= maxDepth &&
     !spawn.isSubDep &&

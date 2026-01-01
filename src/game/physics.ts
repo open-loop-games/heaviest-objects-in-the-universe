@@ -2,13 +2,8 @@
 // Enhanced with tree-organizing forces for cleaner layouts
 
 import { toRaw } from 'vue'
-import {
-  gameState,
-  gameConfig,
-  collapseState,
-  markPackageAbsorbed,
-  dragState,
-} from './state'
+import { gameState, gameConfig } from './state'
+import { collapseState, markPackageAbsorbed, dragState } from './ui-state'
 import type { Package } from './types'
 import { getAllDuplicateGroups } from './symlinks'
 import { getPackageAtPath } from './scope'

@@ -2,8 +2,6 @@
 
 import type { Package, Wire } from './types'
 import {
-  createInitialState,
-  FRAGMENT_TO_TOKEN_RATIO,
   MOMENTUM_PACKAGE_RESOLVE,
   MOMENTUM_CONFLICT_RESOLVE,
   MOMENTUM_SYMLINK_MERGE,
@@ -17,138 +15,47 @@ import {
   MOMENTUM_DAMPENING_THRESHOLD,
   MOMENTUM_DAMPENING_FLOOR,
 } from './config'
-import {
-  calculateEfficiency,
-  calculateStabilityRatio,
-  calculatePrestigeReward,
-} from './formulas'
-import {
-  gameState,
-  computed_canPrestige,
-  getPrestigeThreshold,
-  syncEcosystemTier,
-  getEcosystemTier,
-} from './state'
+import { calculateEfficiency, calculateStabilityRatio } from './formulas'
+import { gameState } from './state'
+import { getEcosystemTier } from './formulas'
 import {
   getCurrentScopePackages,
   getCurrentScopeWires,
   isInPackageScope,
 } from './scope'
-import { saveToLocalStorage, clearSavedGame } from './persistence'
 import { emit } from './events'
 import { getCompressionMultiplier, getStabilizationBonus } from './upgrades'
-import {
-  getEfficiencyTier,
-  getEfficiencyTierRank,
-  type EfficiencyTier,
-} from './formulas'
+import { getEfficiencyTierRank } from './formulas'
+import { updateEfficiencyTracking } from './prestige'
 
-// ============================================
-// QUALITY EVENT SYSTEM
-// ============================================
-
-export type QualityEvent =
-  | {
-      type: 'efficiency-improved'
-      delta: number
-      newValue: number
-      newTier: EfficiencyTier
-    }
-  | {
-      type: 'efficiency-tier-up'
-      oldTier: EfficiencyTier
-      newTier: EfficiencyTier
-    }
-  | {
-      type: 'symlink-merge'
-      weightSaved: number
-      position: { x: number; y: number }
-    }
-  | {
-      type: 'scope-stabilized'
-      scopeId: string
-      packageCount: number
-    }
-  | {
-      type: 'conflict-resolved'
-      position: { x: number; y: number }
-    }
-  | {
-      type: 'stability-improved'
-      newValue: number
-      scopesStable: number
-      scopesTotal: number
-    }
-
-type QualityEventListener = (event: QualityEvent) => void
-const qualityEventListeners: Set<QualityEventListener> = new Set()
-
-/** Emit a quality event to all subscribers */
-export function emitQualityEvent(event: QualityEvent): void {
-  for (const listener of qualityEventListeners) {
-    try {
-      listener(event)
-    } catch (e) {
-      console.error('Quality event listener error:', e)
-    }
-  }
-}
-
-/** Subscribe to quality events. Returns unsubscribe function. */
-export function onQualityEvent(listener: QualityEventListener): () => void {
-  qualityEventListeners.add(listener)
-  return () => {
-    qualityEventListeners.delete(listener)
-  }
-}
-
-/** Clear all listeners (for cleanup/testing) */
-export function clearQualityEventListeners(): void {
-  qualityEventListeners.clear()
-}
+// Quality event types are now in the main event bus (src/game/events.ts)
+// Use emit('quality:efficiency-improved', ...) etc.
 
 // ============================================
 // EFFICIENCY TRACKING (for tier-up detection)
 // ============================================
 
-let lastEfficiency = 1
-let lastEfficiencyTier: EfficiencyTier = 'pristine'
-
 /** Check efficiency changes and emit events if needed */
 function checkEfficiencyChange(newEfficiency: number): void {
-  const newTier = getEfficiencyTier(newEfficiency)
-  const delta = newEfficiency - lastEfficiency
+  const { tierChanged, oldTier, newTier, delta } =
+    updateEfficiencyTracking(newEfficiency)
 
   // Emit tier-up event if tier improved
-  const oldRank = getEfficiencyTierRank(lastEfficiencyTier)
+  const oldRank = getEfficiencyTierRank(oldTier)
   const newRank = getEfficiencyTierRank(newTier)
 
-  if (newRank > oldRank) {
-    emitQualityEvent({
-      type: 'efficiency-tier-up',
-      oldTier: lastEfficiencyTier,
-      newTier,
-    })
+  if (tierChanged && newRank > oldRank) {
+    emit('quality:efficiency-tier-up', { oldTier, newTier })
   }
 
   // Emit improvement event if efficiency increased significantly (>1%)
   if (delta > 0.01) {
-    emitQualityEvent({
-      type: 'efficiency-improved',
+    emit('quality:efficiency-improved', {
       delta,
       newValue: newEfficiency,
       newTier,
     })
   }
-
-  lastEfficiency = newEfficiency
-  lastEfficiencyTier = newTier
-}
-
-/** Reset efficiency tracking (call on prestige) */
-function resetEfficiencyTracking(): void {
-  lastEfficiency = 1
-  lastEfficiencyTier = 'pristine'
 }
 
 // ============================================
@@ -217,17 +124,29 @@ function generateBandwidth(
 
 /** Generate BW when a package finishes installing */
 export function onPackageResolved(): number {
-  return generateBandwidth(MOMENTUM_PACKAGE_RESOLVE)
+  const amount = generateBandwidth(MOMENTUM_PACKAGE_RESOLVE)
+  emit('game:package-resolved', { amount })
+  return amount
 }
 
 /** Generate BW when a conflict is manually resolved */
-export function onConflictResolved(): number {
-  return generateBandwidth(MOMENTUM_CONFLICT_RESOLVE)
+export function onConflictResolved(position?: {
+  x: number
+  y: number
+}): number {
+  const amount = generateBandwidth(MOMENTUM_CONFLICT_RESOLVE)
+  emit('game:conflict-resolved', { amount, position })
+  return amount
 }
 
 /** Generate BW when packages are merged via symlink */
-export function onSymlinkMerged(): number {
-  return generateBandwidth(MOMENTUM_SYMLINK_MERGE)
+export function onSymlinkMerged(
+  weightSaved: number,
+  position: { x: number; y: number }
+): number {
+  const amount = generateBandwidth(MOMENTUM_SYMLINK_MERGE)
+  emit('game:symlink-merged', { amount, weightSaved, position })
+  return amount
 }
 
 /** Generate BW burst when a scope stabilizes */
@@ -236,26 +155,27 @@ export function onScopeStabilized(packageCount: number): number {
     MOMENTUM_STABILIZE_BASE + packageCount * MOMENTUM_STABILIZE_PER_PKG
   const upgradeBonus = getStabilizationBonus()
 
-  // Emit quality event for UI juice
   const scopeId =
     gameState.scopeStack[gameState.scopeStack.length - 1] ?? 'root'
-  emitQualityEvent({
-    type: 'scope-stabilized',
-    scopeId,
-    packageCount,
-  })
 
-  return generateBandwidth(Math.floor(baseAmount * upgradeBonus))
+  const amount = generateBandwidth(Math.floor(baseAmount * upgradeBonus))
+  emit('game:scope-stabilized', { amount, scopeId, packageCount })
+
+  return amount
 }
 
 /** Generate BW when a golden package spawns */
 export function onGoldenSpawned(): number {
-  return generateBandwidth(MOMENTUM_GOLDEN_SPAWN, false)
+  const amount = generateBandwidth(MOMENTUM_GOLDEN_SPAWN, false)
+  emit('game:golden-spawned', { amount })
+  return amount
 }
 
 /** Generate BW when a cache fragment is collected */
 export function onFragmentCollected(): number {
-  return generateBandwidth(MOMENTUM_FRAGMENT_COLLECT, false)
+  const amount = generateBandwidth(MOMENTUM_FRAGMENT_COLLECT, false)
+  emit('game:fragment-collected', { amount })
+  return amount
 }
 
 /** Get safety regen rate (BW/sec) - minimal passive to prevent soft-lock */
@@ -482,143 +402,4 @@ export function collectCacheFragment(packageId: string): boolean {
   gameState.stats.cacheFragmentsCollected++
 
   return true
-}
-
-// ============================================
-// PRESTIGE & RESET
-// ============================================
-
-// Prestige completion callback (set by UI to handle post-prestige actions)
-let onPrestigeComplete: (() => void) | null = null
-
-export function setPrestigeCompleteCallback(callback: () => void): void {
-  onPrestigeComplete = callback
-}
-
-export function performPrestige(): void {
-  const threshold = getPrestigeThreshold(gameState.meta.totalPrestiges)
-  const reward = calculatePrestigeReward(gameState, threshold)
-
-  // Mark first prestige complete for onboarding
-  if (!gameState.onboarding.firstPrestigeComplete) {
-    gameState.onboarding.firstPrestigeComplete = true
-  }
-
-  // Convert fragments to bonus tokens
-  const fragmentBonus = Math.floor(
-    gameState.resources.cacheFragments / FRAGMENT_TO_TOKEN_RATIO
-  )
-
-  // Add meta rewards (base reward + fragment bonus)
-  gameState.meta.cacheTokens += reward + fragmentBonus
-  gameState.meta.totalPrestiges++
-
-  // Sync ecosystem tier (derived from cache tokens)
-  syncEcosystemTier()
-
-  // Reset current run
-  gameState.packages.clear()
-  gameState.wires.clear()
-  gameState.rootId = null
-
-  // Reset scope system
-  gameState.currentScope = 'root'
-  gameState.scopeStack = []
-  gameState.tutorialGating = false // Relax gating after first prestige
-
-  // Reset cascade system
-  gameState.cascade.active = false
-  gameState.cascade.scopePackageId = null
-  gameState.cascade.pendingSpawns = []
-
-  // Reset automation system (toggles reset to off each run)
-  gameState.automation.resolveEnabled = false
-  gameState.automation.resolveActive = false
-  gameState.automation.resolveTargetWireId = null
-  gameState.automation.resolveTargetScope = null
-  gameState.automation.processStartTime = 0
-  gameState.automation.lastResolveTime = 0
-
-  // Reset surge (charge resets, unlocked segments preserved via upgrade)
-  gameState.surge.chargedSegments = 0
-  gameState.surge.unlockedSegments = 1 + gameState.upgrades.surgeLevel
-
-  gameState.resources.bandwidth = 100 * gameState.meta.ecosystemTier
-  gameState.resources.weight = 0
-  gameState.resources.cacheFragments = 0
-
-  // Keep upgrades but reset level-specific progress
-  gameState.stats.currentEfficiency = 1
-  gameState.stats.currentStability = 1
-  resetEfficiencyTracking()
-
-  // Reset camera
-  gameState.camera.x = 0
-  gameState.camera.y = 0
-  gameState.camera.zoom = 1
-
-  // Save immediately after prestige
-  saveToLocalStorage()
-}
-
-export function triggerPrestigeWithAnimation(): void {
-  if (!computed_canPrestige.value) return
-
-  // Emit prestige start event with completion callback
-  emit('prestige:start', {
-    onComplete: () => {
-      performPrestige()
-      if (onPrestigeComplete) {
-        onPrestigeComplete()
-      }
-    },
-  })
-}
-
-/**
- * Soft reset: restart current run but keep meta progress (prestige, cache tokens, upgrades)
- */
-export function softReset(): void {
-  // Clear current run state
-  gameState.packages.clear()
-  gameState.wires.clear()
-  gameState.rootId = null
-
-  // Reset scope
-  gameState.currentScope = 'root'
-
-  // Reset resources to base values (scaled by tier)
-  gameState.resources.bandwidth = 100 * gameState.meta.ecosystemTier
-  gameState.resources.weight = 0
-  gameState.resources.cacheFragments = 0
-
-  // Reset run stats but keep lifetime stats structure
-  gameState.stats.currentEfficiency = 1
-  gameState.stats.currentStability = 1
-  resetEfficiencyTracking()
-
-  // Reset surge charge (keep unlocked segments)
-  gameState.surge.chargedSegments = 0
-
-  // Reset camera
-  gameState.camera.x = 0
-  gameState.camera.y = 0
-  gameState.camera.zoom = 1
-
-  // Reset onboarding for this run (but intro already seen)
-  gameState.onboarding.firstClickComplete = false
-  // Keep introAnimationComplete and firstPrestigeComplete
-
-  // Save after soft reset
-  saveToLocalStorage()
-}
-
-/**
- * Hard reset: wipe everything and start completely fresh
- */
-export function hardReset(): void {
-  // Clear localStorage first
-  clearSavedGame()
-  // Reset all state to initial
-  Object.assign(gameState, createInitialState())
 }

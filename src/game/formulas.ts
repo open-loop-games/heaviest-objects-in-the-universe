@@ -2,9 +2,125 @@
 
 import { toRaw } from 'vue'
 import type { GameState, GameConfig, Package } from './types'
-import { DEFAULT_CONFIG } from './config'
+import {
+  DEFAULT_CONFIG,
+  TIER_THRESHOLDS,
+  TIER_MAX_DEPTH,
+  BASE_COMPRESSION_CHANCE,
+  COMPRESSION_PER_TOKEN,
+  COMPRESSION_SOFTCAP,
+  COMPRESSION_HARDCAP,
+  DEPTH_COMPRESSION_MULT,
+} from './config'
 
 // Note: getEffectiveBandwidthRegen is now in upgrades.ts (uses upgrade system)
+
+// ============================================
+// PRESTIGE THRESHOLD
+// ============================================
+
+/**
+ * Calculate prestige threshold based on total prestiges completed
+ * - First prestige: 5,000 (intro/tutorial)
+ * - Second prestige: 20,000
+ * - Third+: 20,000 * 1.8^(n-2) scaling
+ */
+export function getPrestigeThreshold(totalPrestiges: number): number {
+  if (totalPrestiges === 0) return 5000 // First prestige - intro
+  if (totalPrestiges === 1) return 20000 // Second prestige
+  // Scaling: 20k, 36k, 65k, 117k, 210k, ...
+  return Math.floor(20000 * Math.pow(1.8, totalPrestiges - 1))
+}
+
+// ============================================
+// ECOSYSTEM TIER (Derived from cache tokens)
+// ============================================
+
+/**
+ * Calculate ecosystem tier from cache token count.
+ * Tier determines max depth and automation unlocks.
+ */
+export function getEcosystemTier(cacheTokens: number): number {
+  for (let tier = TIER_THRESHOLDS.length; tier >= 1; tier--) {
+    const threshold = TIER_THRESHOLDS[tier - 1]
+    if (threshold !== undefined && cacheTokens >= threshold) {
+      return tier
+    }
+  }
+  return 1
+}
+
+/**
+ * Get max compressed depth allowed at current tier.
+ * Tier 1 = depth 1, Tier 5 = depth 5.
+ */
+export function getMaxCompressedDepth(
+  cacheTokens: number,
+  ecosystemTier?: number
+): number {
+  const tier = ecosystemTier ?? getEcosystemTier(cacheTokens)
+  return TIER_MAX_DEPTH[tier - 1] ?? 1
+}
+
+// ============================================
+// COMPRESSION CHANCE (Derived from tokens + depth)
+// ============================================
+
+/**
+ * Calculate base compression chance from cache tokens (before depth tapering).
+ * - Starts at 25%
+ * - +1% per token up to 50% softcap (20 tokens)
+ * - Asymptotically approaches 60% hardcap
+ */
+function calculateBaseCompressionChance(cacheTokens: number): number {
+  let baseChance = BASE_COMPRESSION_CHANCE + cacheTokens * COMPRESSION_PER_TOKEN
+
+  if (baseChance > COMPRESSION_SOFTCAP) {
+    const tokensOverSoftcap = cacheTokens - 20
+    const push =
+      (COMPRESSION_HARDCAP - COMPRESSION_SOFTCAP) *
+      (1 - Math.exp(-tokensOverSoftcap / 75))
+    baseChance = COMPRESSION_SOFTCAP + push
+  }
+
+  return Math.min(COMPRESSION_HARDCAP, baseChance)
+}
+
+/**
+ * Calculate compression chance for a given depth.
+ *
+ * Depth tapering reduces chance at deeper levels:
+ * - Depth 1: 100%
+ * - Depth 2: 75%
+ * - Depth 3: 50%
+ * - Depth 4: 25%
+ * - Depth 5: 0% (always leaves)
+ *
+ * @param depth Current scope depth (1-5)
+ * @param cacheTokens Token count to use for calculation
+ * @returns Compression chance (0-1)
+ */
+export function getCompressionChance(
+  depth: number,
+  cacheTokens: number
+): number {
+  if (depth >= 5) return 0
+
+  const baseChance = calculateBaseCompressionChance(cacheTokens)
+
+  const depthIndex = Math.min(depth - 1, DEPTH_COMPRESSION_MULT.length - 1)
+  const depthMult = DEPTH_COMPRESSION_MULT[depthIndex] ?? 0
+
+  return baseChance * depthMult
+}
+
+/**
+ * Get base compression chance (before depth tapering).
+ * Useful for UI display.
+ */
+export function getBaseCompressionChance(cacheTokens: number): number {
+  return calculateBaseCompressionChance(cacheTokens)
+}
 
 /**
  * Count unresolved duplicates within a single scope (packages that could be symlink-merged)

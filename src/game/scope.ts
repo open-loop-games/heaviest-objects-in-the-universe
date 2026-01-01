@@ -1,8 +1,10 @@
 // Scope navigation - entering/exiting package internal views
 // Supports 2 layers: root → layer 1 (top-level pkg) → layer 2 (compressed internal dep)
 
-import type { Package, Wire } from './types'
+import type { Package, Wire, InternalState } from './types'
 import { gameState } from './state'
+import { countScopeDuplicates } from './formulas'
+import { onScopeStabilized } from './mutations'
 
 // ============================================
 // SCOPE DEPTH HELPERS
@@ -294,4 +296,140 @@ export function enterScopeAtPath(packageId: string): boolean {
   gameState.scopeStack.push(packageId)
   gameState.currentScope = packageId
   return true
+}
+
+// ============================================
+// SCOPE OPERATIONS (enter/exit with cascade integration)
+// ============================================
+
+// Lazy import to avoid circular dependency
+let _startCascade: ((scopePath: string[]) => void) | null = null
+
+export function _injectCascade(
+  startCascade: (scopePath: string[]) => void
+): void {
+  _startCascade = startCascade
+}
+
+/**
+ * Enter a package's internal scope (works at any depth)
+ * If the package is pristine, starts the cascade (staggered spawning)
+ */
+export function enterPackageScope(packageId: string): boolean {
+  // For layer 1 (entering from root), use the original enterScope
+  if (gameState.scopeStack.length === 0) {
+    const pkg = gameState.packages.get(packageId)
+    if (!pkg) return false
+
+    if (!enterScope(packageId)) return false
+
+    // If pristine, start the staggered cascade
+    if (pkg.internalState === 'pristine') {
+      _startCascade?.([packageId])
+      pkg.internalState = 'unstable'
+    }
+
+    return true
+  }
+
+  // For deeper layers, use generic path-based entry
+  if (!enterScopeAtPath(packageId)) return false
+
+  // Get the package we just entered using the new scope path
+  const pkg = getPackageAtPath(gameState.scopeStack)
+  if (!pkg) return false
+
+  // If pristine, start the cascade
+  if (pkg.internalState === 'pristine') {
+    _startCascade?.([...gameState.scopeStack])
+    pkg.internalState = 'unstable'
+  }
+
+  return true
+}
+
+/**
+ * Exit the current scope (go up one level)
+ */
+export function exitPackageScope(): void {
+  // Recalculate state before exiting (at current depth)
+  if (gameState.scopeStack.length > 0) {
+    recalculateStateAtPath([...gameState.scopeStack])
+
+    // Track first stable scope exit for onboarding
+    const pkg = getPackageAtPath(gameState.scopeStack)
+    if (
+      pkg?.internalState === 'stable' &&
+      !gameState.onboarding.firstScopeExited
+    ) {
+      gameState.onboarding.firstScopeExited = true
+    }
+  }
+
+  exitScope()
+}
+
+/**
+ * Recalculate internal state for a package at any path
+ * Works for top-level packages (path length 1) or nested packages (path length 2+)
+ */
+export function recalculateStateAtPath(scopePath: string[]): void {
+  if (scopePath.length === 0) return
+
+  const pkg = getPackageAtPath(scopePath)
+  if (!pkg?.internalPackages || !pkg?.internalWires) return
+
+  const previousState = pkg.internalState
+
+  // Check for conflicted wires
+  let conflictCount = 0
+  for (const wire of pkg.internalWires.values()) {
+    if (wire.conflicted) conflictCount++
+  }
+
+  // Check for unstable compressed internal deps (propagation from deeper levels)
+  let unstableCompressedCount = 0
+  for (const innerPkg of pkg.internalPackages.values()) {
+    // Compressed packages have internal maps
+    if (innerPkg.internalPackages && innerPkg.internalWires) {
+      // If compressed dep hasn't been entered yet (pristine), count as stable
+      // If it's been entered and explored, check its state
+      if (
+        innerPkg.internalState !== null &&
+        innerPkg.internalState !== 'stable'
+      ) {
+        unstableCompressedCount++
+      }
+    }
+  }
+
+  // Check for duplicate identities using shared helper
+  const { duplicates: duplicateCount } = countScopeDuplicates(
+    pkg.internalPackages
+  )
+
+  let newState: InternalState
+  if (
+    conflictCount === 0 &&
+    duplicateCount === 0 &&
+    unstableCompressedCount === 0
+  ) {
+    newState = 'stable'
+  } else {
+    newState = 'unstable'
+  }
+
+  pkg.internalState = newState
+
+  // Momentum loop: Generate burst when scope becomes stable
+  if (previousState !== 'stable' && newState === 'stable') {
+    const packageCount = pkg.internalPackages?.size ?? 0
+    onScopeStabilized(packageCount)
+  }
+
+  // Propagate state change up the tree
+  // If this package became stable/unstable, parent may need recalculation
+  if (scopePath.length > 1 && previousState !== newState) {
+    recalculateStateAtPath(scopePath.slice(0, -1))
+  }
 }

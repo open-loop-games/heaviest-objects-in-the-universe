@@ -2,20 +2,11 @@
 
 import { toRaw } from 'vue'
 import { gameState, gameConfig } from './state'
-import {
-  enterScope as _enterScope,
-  exitScope,
-  enterScopeAtPath,
-  getPackageAtPath,
-} from './scope'
+import { recalculateStateAtPath, _injectCascade } from './scope'
 import { addPackage, addWire, spendBandwidth } from './mutations'
 import { generateId, generateWireId } from './id-generator'
-import { type Package, type Wire, type InternalState } from './types'
-import {
-  rollDependencyCount,
-  getIdentitySize,
-  countScopeDuplicates,
-} from './formulas'
+import { type Package, type Wire } from './types'
+import { rollDependencyCount, getIdentitySize } from './formulas'
 import { getEffectiveInstallCost } from './upgrades'
 import {
   pickRandomIdentity,
@@ -25,8 +16,11 @@ import {
   type PackageIdentity,
 } from './registry'
 import { markDuplicateGroupsDirty } from './symlinks'
-import { onScopeStabilized } from './mutations'
 import { on } from './events'
+import { startCascade } from './cascade'
+
+// Inject cascade dependency to avoid circular imports
+_injectCascade(startCascade)
 
 // Re-export ID initialization for save/load
 export { initIdCounterFromState } from './id-generator'
@@ -313,147 +307,6 @@ export function spawnDependencies(packageId: string): Package[] {
   }
 
   return spawned
-}
-
-// ============================================
-// INTERNAL SCOPE SYSTEM
-// ============================================
-
-// Import cascade and scope systems
-import { startCascade, isCascadeActive } from './cascade'
-import { getScopeDepth } from './scope'
-
-/**
- * Enter a package's internal scope (works at any depth)
- * If the package is pristine, starts the cascade (staggered spawning)
- */
-export function enterPackageScope(packageId: string): boolean {
-  // For layer 1 (entering from root), use the original enterScope
-  if (gameState.scopeStack.length === 0) {
-    const pkg = gameState.packages.get(packageId)
-    if (!pkg) return false
-
-    if (!_enterScope(packageId)) return false
-
-    // If pristine, start the staggered cascade
-    if (pkg.internalState === 'pristine') {
-      startCascade([packageId])
-      pkg.internalState = 'unstable'
-    }
-
-    return true
-  }
-
-  // For deeper layers, use generic path-based entry
-  if (!enterScopeAtPath(packageId)) return false
-
-  // Get the package we just entered using the new scope path
-  const pkg = getPackageAtPath(gameState.scopeStack)
-  if (!pkg) return false
-
-  // If pristine, start the cascade
-  if (pkg.internalState === 'pristine') {
-    startCascade([...gameState.scopeStack])
-    pkg.internalState = 'unstable'
-  }
-
-  return true
-}
-
-/**
- * Check if a cascade is currently in progress
- */
-export { isCascadeActive }
-
-/**
- * Get current scope depth (0 = root, 1+)
- */
-export { getScopeDepth }
-
-/**
- * Exit the current scope (go up one level)
- */
-export function exitPackageScope(): void {
-  // Recalculate state before exiting (at current depth)
-  if (gameState.scopeStack.length > 0) {
-    recalculateStateAtPath([...gameState.scopeStack])
-
-    // Track first stable scope exit for onboarding
-    const pkg = getPackageAtPath(gameState.scopeStack)
-    if (
-      pkg?.internalState === 'stable' &&
-      !gameState.onboarding.firstScopeExited
-    ) {
-      gameState.onboarding.firstScopeExited = true
-    }
-  }
-
-  exitScope()
-}
-
-/**
- * Recalculate internal state for a package at any path
- * Works for top-level packages (path length 1) or nested packages (path length 2+)
- */
-export function recalculateStateAtPath(scopePath: string[]): void {
-  if (scopePath.length === 0) return
-
-  const pkg = getPackageAtPath(scopePath)
-  if (!pkg?.internalPackages || !pkg?.internalWires) return
-
-  const previousState = pkg.internalState
-
-  // Check for conflicted wires
-  let conflictCount = 0
-  for (const wire of pkg.internalWires.values()) {
-    if (wire.conflicted) conflictCount++
-  }
-
-  // Check for unstable compressed internal deps (propagation from deeper levels)
-  let unstableCompressedCount = 0
-  for (const innerPkg of pkg.internalPackages.values()) {
-    // Compressed packages have internal maps
-    if (innerPkg.internalPackages && innerPkg.internalWires) {
-      // If compressed dep hasn't been entered yet (pristine), count as stable
-      // If it's been entered and explored, check its state
-      if (
-        innerPkg.internalState !== null &&
-        innerPkg.internalState !== 'stable'
-      ) {
-        unstableCompressedCount++
-      }
-    }
-  }
-
-  // Check for duplicate identities using shared helper
-  const { duplicates: duplicateCount } = countScopeDuplicates(
-    pkg.internalPackages
-  )
-
-  let newState: InternalState
-  if (
-    conflictCount === 0 &&
-    duplicateCount === 0 &&
-    unstableCompressedCount === 0
-  ) {
-    newState = 'stable'
-  } else {
-    newState = 'unstable'
-  }
-
-  pkg.internalState = newState
-
-  // Momentum loop: Generate burst when scope becomes stable
-  if (previousState !== 'stable' && newState === 'stable') {
-    const packageCount = pkg.internalPackages?.size ?? 0
-    onScopeStabilized(packageCount)
-  }
-
-  // Propagate state change up the tree
-  // If this package became stable/unstable, parent may need recalculation
-  if (scopePath.length > 1 && previousState !== newState) {
-    recalculateStateAtPath(scopePath.slice(0, -1))
-  }
 }
 
 // ============================================

@@ -13,7 +13,7 @@ import {
 import type { Package } from './types'
 import { triggerOrganizeBoost, markPackageRelocated } from './physics'
 import { updateCrossPackageDuplicates } from './cross-package'
-import { emitQualityEvent, onSymlinkMerged } from './mutations'
+import { onSymlinkMerged } from './mutations'
 import { emit } from './events'
 
 // Halo colors for duplicate groups (cycle through these)
@@ -274,16 +274,11 @@ export function performSymlinkMerge(
 
   // Calculate weight savings (50% of source)
   const weightSaved = Math.floor(source.size / 2)
+  const mergePosition = { x: source.position.x, y: source.position.y }
 
   // === MOMENTUM LOOP: Generate bandwidth for manual merge ===
-  onSymlinkMerged()
-
-  // === QUALITY EVENT: Notify UI for juice ===
-  emitQualityEvent({
-    type: 'symlink-merge',
-    weightSaved,
-    position: { x: source.position.x, y: source.position.y },
-  })
+  // Also emits 'game:symlink-merged' event for UI juice
+  onSymlinkMerged(weightSaved, mergePosition)
 
   // Reduce global weight
   gameState.resources.weight -= weightSaved
