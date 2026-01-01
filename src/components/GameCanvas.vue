@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, toRaw, inject } from 'vue'
+import {
+  ref,
+  onMounted,
+  onUnmounted,
+  computed,
+  toRaw,
+  inject,
+  type Ref,
+} from 'vue'
 import { getRenderer, destroyRenderer } from '../rendering/renderer'
 import {
   startGameLoop,
@@ -14,6 +22,10 @@ import {
   endDrag,
   triggerWiggle,
 } from '../game/state'
+import {
+  TouchInputHandler,
+  type TouchInputCallbacks,
+} from '../input/touch-input'
 import {
   isInPackageScope,
   getCurrentScopeWires,
@@ -71,8 +83,21 @@ const spawnCausalParticle = inject<
   (type: ParticleType, x: number, y: number) => void
 >('spawnCausalParticle')
 
+// Inject platform detection
+const platform = inject<Ref<'desktop' | 'mobile'>>('platform')
+
+// Inject mobile selection setters
+const mobileSelection = inject<{
+  setNode: (id: string | null) => void
+  setWire: (id: string | null) => void
+  clear: () => void
+}>('setMobileSelection')
+
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const renderer = getRenderer()
+
+// Touch input handler (mobile only)
+let touchInputHandler: TouchInputHandler | null = null
 
 // Track packages for install success detection
 let previousPackageStates = new Map<string, string>()
@@ -229,6 +254,9 @@ onMounted(async () => {
 
     // Track install completions for particle effects
     onTick(() => {
+      // Update wire action button position every frame (for pan/zoom tracking)
+      updateWireActionPosition()
+
       const effects = renderer.getEffectsRenderer()
       // Use toRaw() to avoid Vue reactivity tracking in tick callback
       const rawPackages = toRaw(gameState.packages)
@@ -262,11 +290,17 @@ onMounted(async () => {
       }
     })
 
-    // Handle mouse interactions
-    canvasRef.value.addEventListener('mousedown', handleMouseDown)
-    canvasRef.value.addEventListener('mousemove', handleMouseMove)
-    canvasRef.value.addEventListener('mouseup', handleMouseUp)
-    canvasRef.value.addEventListener('mouseleave', handleMouseUp)
+    // Handle input based on platform
+    if (platform?.value === 'mobile') {
+      // Mobile: Use touch input handler
+      setupTouchInput()
+    } else {
+      // Desktop: Use mouse events
+      canvasRef.value.addEventListener('mousedown', handleMouseDown)
+      canvasRef.value.addEventListener('mousemove', handleMouseMove)
+      canvasRef.value.addEventListener('mouseup', handleMouseUp)
+      canvasRef.value.addEventListener('mouseleave', handleMouseUp)
+    }
 
     // Handle resize
     window.addEventListener('resize', handleResize)
@@ -280,6 +314,12 @@ onUnmounted(() => {
   destroyRenderer()
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('beforeunload', handleBeforeUnload)
+
+  // Clean up touch input handler
+  if (touchInputHandler) {
+    touchInputHandler.destroy()
+    touchInputHandler = null
+  }
 })
 
 function handleBeforeUnload() {
@@ -494,6 +534,25 @@ function clearWireSelection() {
 
   // Clear edge indicator selection
   setSelectedConflictWire(null, null)
+}
+
+/**
+ * Update wire action button position to track the wire midpoint
+ * Called every frame to keep buttons attached when panning/zooming
+ */
+function updateWireActionPosition() {
+  if (!selectedWireId.value) return
+
+  const endpoints = renderer
+    .getWireRenderer()
+    .getWireEndpoints(selectedWireId.value)
+  if (endpoints) {
+    const screenPos = renderer.worldToScreen(endpoints.midX, endpoints.midY)
+    wireActionPosition.value = screenPos
+
+    // Also update edge indicator position
+    setSelectedConflictWire(selectedWireId.value, screenPos)
+  }
 }
 
 /**
@@ -1022,20 +1081,410 @@ function updatePrestigeTarget() {
   const targetY = screenHeight - 24 - 50 // bottom padding + half of orbit container height
   renderer.setPrestigeTarget(targetX, targetY)
 }
+
+// ============================================
+// TOUCH INPUT (Mobile)
+// ============================================
+
+// Track selected node/wire for mobile
+const mobileSelectedNodeId = ref<string | null>(null)
+
+// Track last tap for double-tap detection
+let lastTapTime = 0
+let lastTapNodeId: string | null = null
+const DOUBLE_TAP_THRESHOLD = 300
+
+function setupTouchInput() {
+  if (!canvasRef.value) return
+
+  const callbacks: TouchInputCallbacks = {
+    onSelect: handleTouchSelect,
+    onDeselect: handleTouchDeselect,
+    onAction: handleTouchAction,
+    onWireTap: handleTouchWireTap,
+    onDragStart: handleTouchDragStart,
+    onDragMove: handleTouchDragMove,
+    onDragEnd: handleTouchDragEnd,
+    onDragCancel: handleTouchDragCancel,
+    screenToWorld: (x, y) => renderer.screenToWorld(x, y),
+  }
+
+  touchInputHandler = new TouchInputHandler(canvasRef.value, callbacks)
+}
+
+function handleTouchSelect(worldPos: { x: number; y: number }) {
+  // Check for wire tap first
+  const wireRenderer = renderer.getWireRenderer()
+  const clickedWireId = wireRenderer.findWireAtPosition(
+    worldPos.x,
+    worldPos.y,
+    30 / gameState.camera.zoom // Larger hit area for touch
+  )
+
+  if (clickedWireId) {
+    const wires = getCurrentScopeWires()
+    let wire = wires.get(clickedWireId)
+
+    // Also check sibling wires at root scope
+    if (!wire && !isInPackageScope()) {
+      const siblingWires = getSiblingWires()
+      wire = siblingWires.get(clickedWireId)
+    }
+
+    if (wire && wire.conflicted) {
+      // Select this wire for the action bar
+      selectedWireId.value = clickedWireId
+      mobileSelection?.setWire(clickedWireId)
+      mobileSelectedNodeId.value = null
+      return
+    }
+  }
+
+  // Check for package tap
+  const clickedPkg = findPackageAtPosition(worldPos, 40 / gameState.camera.zoom)
+
+  if (clickedPkg) {
+    // Spawn click ripple effect
+    const effects = renderer.getEffectsRenderer()
+    const isClickedScopeRoot =
+      isInPackageScope() && clickedPkg.id === gameState.currentScope
+    const rippleX = isClickedScopeRoot ? 0 : clickedPkg.position.x
+    const rippleY = isClickedScopeRoot ? 0 : clickedPkg.position.y
+    effects.spawnRipple(rippleX, rippleY, Colors.borderInstalling)
+
+    // Check for cache fragment collection (priority)
+    if (clickedPkg.hasCacheFragment) {
+      if (collectCacheFragment(clickedPkg.id)) {
+        effects.spawnRipple(rippleX, rippleY, Colors.cacheFragment)
+        if (spawnCausalParticle) {
+          const screenPos = renderer.worldToScreen(rippleX, rippleY)
+          spawnCausalParticle('fragment-collect', screenPos.x, screenPos.y)
+        }
+        return
+      }
+    }
+
+    // Select this node
+    mobileSelectedNodeId.value = clickedPkg.id
+    mobileSelection?.setNode(clickedPkg.id)
+    selectedWireId.value = null
+
+    // Check for double-tap (enter scope / action)
+    const now = Date.now()
+    if (
+      lastTapNodeId === clickedPkg.id &&
+      now - lastTapTime < DOUBLE_TAP_THRESHOLD
+    ) {
+      // Double-tap detected - trigger action
+      handleTouchAction(worldPos)
+      lastTapNodeId = null
+      lastTapTime = 0
+      return
+    }
+
+    lastTapNodeId = clickedPkg.id
+    lastTapTime = now
+  } else {
+    // Tapped on empty space
+    handleTouchDeselect()
+
+    // Exit scope if in one
+    if (isInPackageScope()) {
+      exitScope()
+    }
+  }
+}
+
+function handleTouchDeselect() {
+  mobileSelectedNodeId.value = null
+  selectedWireId.value = null
+  wireActionPosition.value = null
+  mobileSelection?.clear()
+  lastTapNodeId = null
+  lastTapTime = 0
+}
+
+function handleTouchAction(worldPos: { x: number; y: number }) {
+  // Double-tap action on a node
+  const clickedPkg = findPackageAtPosition(worldPos, 40 / gameState.camera.zoom)
+  if (!clickedPkg) return
+
+  const effects = renderer.getEffectsRenderer()
+
+  // Root node: install new package
+  if (clickedPkg.parentId === null && clickedPkg.state === 'ready') {
+    const newPkg = installPackage(clickedPkg.id)
+    if (newPkg) {
+      effects.spawnRipple(
+        newPkg.position.x,
+        newPkg.position.y,
+        Colors.borderInstalling
+      )
+      if (spawnCausalParticle) {
+        const screenPos = renderer.worldToScreen(
+          clickedPkg.position.x,
+          clickedPkg.position.y
+        )
+        spawnCausalParticle('bandwidth-cost', screenPos.x, screenPos.y)
+        setTimeout(() => {
+          spawnCausalParticle('weight-gain', screenPos.x, screenPos.y)
+        }, 100)
+      }
+    }
+    return
+  }
+
+  // Top-level package at root scope: enter its scope
+  if (
+    !isInPackageScope() &&
+    clickedPkg.parentId === gameState.rootId &&
+    clickedPkg.state === 'ready'
+  ) {
+    if (enterPackageScope(clickedPkg.id)) {
+      setCameraTarget(0, 0)
+      effects.spawnRipple(0, 0, Colors.borderInstalling)
+      handleTouchDeselect()
+    }
+    return
+  }
+
+  // Compressed package inside scope: go deeper
+  if (
+    isInPackageScope() &&
+    isPackageCompressed(clickedPkg) &&
+    clickedPkg.state === 'ready'
+  ) {
+    if (enterPackageScope(clickedPkg.id)) {
+      setCameraTarget(0, 0)
+      effects.spawnRipple(0, 0, Colors.borderInstalling)
+      handleTouchDeselect()
+    }
+    return
+  }
+
+  // Non-interactive leaf node: wiggle
+  if (
+    isInPackageScope() &&
+    clickedPkg.id !== gameState.currentScope &&
+    !isPackageCompressed(clickedPkg)
+  ) {
+    triggerWiggle(clickedPkg.id)
+  }
+}
+
+function handleTouchWireTap(worldPos: { x: number; y: number }) {
+  // Wire taps are handled in onSelect, but this allows for explicit wire-only checks
+  const wireRenderer = renderer.getWireRenderer()
+  const clickedWireId = wireRenderer.findWireAtPosition(
+    worldPos.x,
+    worldPos.y,
+    30 / gameState.camera.zoom
+  )
+
+  if (clickedWireId) {
+    const wires = getCurrentScopeWires()
+    let wire = wires.get(clickedWireId)
+
+    if (!wire && !isInPackageScope()) {
+      const siblingWires = getSiblingWires()
+      wire = siblingWires.get(clickedWireId)
+    }
+
+    if (wire && wire.conflicted) {
+      selectedWireId.value = clickedWireId
+      mobileSelection?.setWire(clickedWireId)
+      mobileSelectedNodeId.value = null
+
+      // Also update position for potential desktop fallback
+      const endpoints = wireRenderer.getWireEndpoints(clickedWireId)
+      if (endpoints) {
+        const screenPos = renderer.worldToScreen(endpoints.midX, endpoints.midY)
+        wireActionPosition.value = screenPos
+      }
+    }
+  }
+}
+
+// Symlink drag state for touch
+let touchDragSource: Package | null = null
+let touchDragTarget: Package | null = null
+
+function handleTouchDragStart(worldPos: { x: number; y: number }) {
+  const clickedPkg = findPackageAtPosition(worldPos, 40 / gameState.camera.zoom)
+  if (!clickedPkg) return
+
+  // Only allow drag on duplicates
+  if (clickedPkg.state === 'ready' && hasDuplicates(clickedPkg.id)) {
+    touchDragSource = clickedPkg
+    touchDragTarget = null
+    renderer.setSymlinkDragState(clickedPkg.id, null)
+
+    // Signal physics if in internal scope
+    if (isInPackageScope()) {
+      startDrag(clickedPkg.id, true)
+    }
+  }
+}
+
+function handleTouchDragMove(worldPos: { x: number; y: number }) {
+  if (!touchDragSource) return
+
+  touchDragTarget = null
+
+  // Move the node if in internal scope
+  if (isInPackageScope()) {
+    touchDragSource.position.x = worldPos.x
+    touchDragSource.position.y = worldPos.y
+    touchDragSource.velocity.vx = 0
+    touchDragSource.velocity.vy = 0
+  }
+
+  // Check for cross-package drag at root
+  const isCrossPackageDrag =
+    !isInPackageScope() && touchDragSource.parentId === gameState.rootId
+
+  if (isCrossPackageDrag) {
+    const rawPackages = toRaw(gameState.packages)
+    for (const pkg of rawPackages.values()) {
+      if (pkg.id === touchDragSource.id) continue
+      if (pkg.parentId !== gameState.rootId) continue
+
+      const distX = worldPos.x - pkg.position.x
+      const distY = worldPos.y - pkg.position.y
+      const dist = Math.sqrt(distX * distX + distY * distY)
+
+      if (
+        dist < 50 / gameState.camera.zoom &&
+        canCrossPackageSymlink(touchDragSource.id, pkg.id)
+      ) {
+        touchDragTarget = pkg
+        break
+      }
+    }
+  } else {
+    // Same-scope duplicate drag
+    const otherDuplicates = getOtherDuplicates(touchDragSource.id)
+
+    for (const dup of otherDuplicates) {
+      const distX = worldPos.x - dup.position.x
+      const distY = worldPos.y - dup.position.y
+      const dist = Math.sqrt(distX * distX + distY * distY)
+
+      if (
+        dist < 50 / gameState.camera.zoom &&
+        canSymlink(touchDragSource.id, dup.id)
+      ) {
+        touchDragTarget = dup
+        break
+      }
+    }
+  }
+
+  // Update renderer
+  renderer.setSymlinkDragState(
+    touchDragSource.id,
+    touchDragTarget ? touchDragTarget.id : null
+  )
+}
+
+function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
+  if (!touchDragSource) return
+
+  if (touchDragTarget) {
+    const sourceId = touchDragSource.id
+    const targetId = touchDragTarget.id
+    const effects = renderer.getEffectsRenderer()
+    const sourcePos = touchDragSource.position
+    const targetPos = touchDragTarget.position
+
+    // Check if cross-package
+    const isCrossPackage =
+      !isInPackageScope() &&
+      touchDragSource.parentId === gameState.rootId &&
+      touchDragTarget.parentId === gameState.rootId
+
+    if (isCrossPackage) {
+      const sharedDeps = getSharedInternalDeps(sourceId, targetId)
+      if (sharedDeps.length > 0) {
+        effects.spawnBurst(sourcePos.x, sourcePos.y, Colors.wireSymlink)
+        effects.spawnBurst(targetPos.x, targetPos.y, Colors.wireSymlink)
+
+        let totalWeightSaved = 0
+        for (const depName of sharedDeps) {
+          totalWeightSaved += performCrossPackageSymlink(
+            sourceId,
+            targetId,
+            depName
+          )
+        }
+
+        if (totalWeightSaved > 0) {
+          effects.spawnBurst(targetPos.x, targetPos.y, Colors.borderOptimized)
+          if (spawnCausalParticle) {
+            const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
+            spawnCausalParticle('bandwidth-gain', screenPos.x, screenPos.y)
+            spawnCausalParticle('efficiency-up', screenPos.x, screenPos.y)
+            spawnCausalParticle('weight-loss', screenPos.x, screenPos.y)
+          }
+        }
+      }
+    } else {
+      // Same-scope symlink
+      effects.spawnBurst(sourcePos.x, sourcePos.y, Colors.wireSymlink)
+      effects.spawnBurst(targetPos.x, targetPos.y, Colors.wireSymlink)
+
+      const weightSaved = performSymlinkMerge(sourceId, targetId)
+
+      if (weightSaved > 0) {
+        effects.spawnBurst(targetPos.x, targetPos.y, Colors.borderOptimized)
+        if (spawnCausalParticle) {
+          const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
+          spawnCausalParticle('bandwidth-gain', screenPos.x, screenPos.y)
+          spawnCausalParticle('efficiency-up', screenPos.x, screenPos.y)
+          spawnCausalParticle('weight-loss', screenPos.x, screenPos.y)
+        }
+      }
+    }
+  }
+
+  // Clean up
+  renderer.setSymlinkDragState(null, null)
+  touchDragSource = null
+  touchDragTarget = null
+  endDrag()
+}
+
+function handleTouchDragCancel() {
+  renderer.setSymlinkDragState(null, null)
+  touchDragSource = null
+  touchDragTarget = null
+  endDrag()
+}
+
+// ============================================
+// MOBILE ACTION HANDLERS (called from App.vue)
+// ============================================
+
+// Expose handlers for mobile action bar
+defineExpose({
+  handlePrune,
+  handleResolveInside,
+})
 </script>
 
 <template>
   <div class="canvas-container">
     <canvas ref="canvasRef" class="game-canvas"></canvas>
 
-    <!-- Wire Action Buttons Overlay -->
+    <!-- Wire Action Buttons Overlay (Desktop only) -->
     <Transition name="fade">
       <div
-        v-if="selectedWireId && wireActionPosition"
+        v-if="platform !== 'mobile' && selectedWireId && wireActionPosition"
         class="wire-actions"
         :style="{
           left: wireActionPosition.x + 'px',
           top: wireActionPosition.y + 'px',
+          transform: `translate(-50%, -50%) scale(${Math.min(1.5, Math.max(0.6, gameState.camera.zoom))})`,
         }"
       >
         <!-- Sibling wire: Resolve Inside button -->
@@ -1089,7 +1538,7 @@ function updatePrestigeTarget() {
 /* Wire action buttons */
 .wire-actions {
   position: absolute;
-  transform: translate(-50%, -50%);
+  /* transform set inline to include zoom scale */
   display: flex;
   gap: 8px;
   z-index: 100;
@@ -1159,14 +1608,11 @@ function updatePrestigeTarget() {
 /* Fade transition */
 .fade-enter-active,
 .fade-leave-active {
-  transition:
-    opacity 0.2s,
-    transform 0.2s;
+  transition: opacity 0.2s;
 }
 
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
-  transform: translate(-50%, -50%) scale(0.8);
 }
 </style>
