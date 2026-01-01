@@ -1,4 +1,8 @@
 // Reactive game state management using Vue
+//
+// Pattern rationale:
+// - reactive() for large nested objects mutated in-place (gameState, gameConfig)
+// - ref() for primitives or objects replaced wholesale (collapseState, dragState)
 
 import { reactive, computed, type ComputedRef } from 'vue'
 import { type GameState, type GameConfig } from './types'
@@ -307,12 +311,17 @@ export function endDrag(): void {
 // WIGGLE STATE (for non-draggable nodes)
 // ============================================
 
+/** Duration of wiggle animation in ms */
+const WIGGLE_DURATION = 400
+
+/** Wiggle oscillation frequency */
+const WIGGLE_FREQUENCY = 0.05
+
 // Maps packageId -> wiggle end time (Date.now() timestamp)
 export const wiggleState = ref<Map<string, number>>(new Map())
 
 export function triggerWiggle(packageId: string): void {
-  // Wiggle lasts 400ms
-  wiggleState.value.set(packageId, Date.now() + 400)
+  wiggleState.value.set(packageId, Date.now() + WIGGLE_DURATION)
 }
 
 export function isWiggling(packageId: string): boolean {
@@ -330,8 +339,11 @@ export function getWigglePhase(packageId: string): number {
   if (!endTime) return 0
   const remaining = endTime - Date.now()
   if (remaining <= 0) return 0
-  // Phase oscillates 0-1-0-1 multiple times during wiggle duration
-  return Math.sin((400 - remaining) * 0.05) * (remaining / 400)
+  // Phase oscillates during wiggle duration
+  return (
+    Math.sin((WIGGLE_DURATION - remaining) * WIGGLE_FREQUENCY) *
+    (remaining / WIGGLE_DURATION)
+  )
 }
 
 // ============================================

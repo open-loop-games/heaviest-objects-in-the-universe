@@ -199,6 +199,12 @@ export function createInitialState(): GameState {
       lastSpawnTime: 0,
       spawnInterval: 100, // ms between spawns
       guaranteedCrits: 0, // Earned from inner scope merges
+      // Extended cascade data (null when inactive)
+      scopePath: null,
+      subDepQueue: null,
+      compressedIndices: null,
+      surgeGoldenBoost: 0,
+      surgeFragmentBoost: 0,
     },
     // Automation system
     automation: {

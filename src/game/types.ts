@@ -119,6 +119,12 @@ export interface CascadeState {
   lastSpawnTime: number // For timing between spawns
   spawnInterval: number // ms between spawns (100ms default)
   guaranteedCrits: number // Stacked guaranteed crits from inner dedup merges
+  // Extended cascade data (populated during active cascade)
+  scopePath: string[] | null // Full path to the package whose internals are cascading
+  subDepQueue: Array<{ parentIndex: number; identity: PackageIdentity }> | null
+  compressedIndices: Set<number> | null
+  surgeGoldenBoost: number // Additive golden chance from surge
+  surgeFragmentBoost: number // Additive fragment chance from surge
 }
 
 // Onboarding milestone tracking for staged HUD reveal
