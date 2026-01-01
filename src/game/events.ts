@@ -2,6 +2,20 @@
 // Replaces scattered callback registration patterns with a unified system
 
 import type { Position } from './types'
+import type { EfficiencyTier } from './formulas'
+
+// Particle types (defined here to avoid circular imports with Vue components)
+export type ParticleType =
+  | 'bandwidth-cost'
+  | 'bandwidth-gain'
+  | 'weight-gain'
+  | 'weight-loss'
+  | 'gravity-pulse'
+  | 'efficiency-up'
+  | 'efficiency-down'
+  | 'stability-up'
+  | 'stability-down'
+  | 'fragment-collect'
 
 /**
  * Game event definitions
@@ -18,12 +32,59 @@ export interface GameEvents {
 
   // Prestige events
   'prestige:start': { onComplete: () => void }
+  'prestige:complete': void
 
   // Automation events
   'automation:resolve-complete': { scopePath: string[]; position: Position }
 
   // Duplicate detection events
   'packages:changed': void // Signal that packages were added/removed/merged
+
+  // Particle events
+  'particles:spawn': { type: ParticleType; x: number; y: number }
+  'particles:burst': { type: ParticleType; x: number; y: number; count: number }
+
+  // Input events (from touch/mouse handlers)
+  'input:select': { worldX: number; worldY: number }
+  'input:deselect': void
+  'input:action': { worldX: number; worldY: number }
+  'input:wire-tap': { worldX: number; worldY: number }
+  'input:drag-start': { worldX: number; worldY: number }
+  'input:drag-move': { worldX: number; worldY: number }
+  'input:drag-end': { worldX: number; worldY: number }
+  'input:drag-cancel': void
+
+  // Momentum/activity events (bandwidth generation feedback)
+  'game:package-resolved': { amount: number }
+  'game:conflict-resolved': { amount: number; position?: Position }
+  'game:symlink-merged': {
+    amount: number
+    weightSaved: number
+    position: Position
+  }
+  'game:scope-stabilized': {
+    amount: number
+    scopeId: string
+    packageCount: number
+  }
+  'game:golden-spawned': { amount: number }
+  'game:fragment-collected': { amount: number }
+
+  // Quality events (efficiency/stability feedback)
+  'quality:efficiency-improved': {
+    delta: number
+    newValue: number
+    newTier: EfficiencyTier
+  }
+  'quality:efficiency-tier-up': {
+    oldTier: EfficiencyTier
+    newTier: EfficiencyTier
+  }
+  'quality:stability-improved': {
+    newValue: number
+    scopesStable: number
+    scopesTotal: number
+  }
 }
 
 type EventCallback<T> = T extends void ? () => void : (data: T) => void
