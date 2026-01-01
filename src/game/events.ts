@@ -48,8 +48,8 @@ export interface GameEvents {
   'input:select': { worldX: number; worldY: number }
   'input:deselect': void
   'input:action': { worldX: number; worldY: number }
-  'input:wire-tap': { worldX: number; worldY: number }
-  'input:drag-start': { worldX: number; worldY: number }
+  'input:wire-tap': { worldX: number; worldY: number; wireId: string }
+  'input:drag-start': { worldX: number; worldY: number; nodeId: string }
   'input:drag-move': { worldX: number; worldY: number }
   'input:drag-end': { worldX: number; worldY: number }
   'input:drag-cancel': void

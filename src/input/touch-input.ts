@@ -1,13 +1,12 @@
 /**
  * Touch input handler for mobile devices
  *
- * Gesture model:
- * - Tap = Select (node or wire)
- * - Double-tap = Action (enter scope, install from root)
- * - Long-press (300ms) + drag = Symlink merge
- * - Two-finger pan = Camera pan
- * - Pinch = Camera zoom
- * - Tap empty space = Deselect / exit scope
+ * Gesture model (reworked for responsiveness):
+ * - Touch node → immediate drag (move node / symlink)
+ * - Touch empty → immediate camera pan
+ * - Touch wire → select wire (show action bar)
+ * - Tap (lift without moving) → select / double-tap for action
+ * - Two-finger → pinch zoom + pan
  */
 
 import { gameState } from '../game/state'
@@ -15,49 +14,20 @@ import { emit } from '../game/events'
 
 // Gesture configuration
 const CONFIG = {
-  // Timing (ms)
-  tapMaxDuration: 200,
-  doubleTapMaxGap: 300,
-  longPressThreshold: 300,
-
   // Distance thresholds (pixels)
-  tapMaxDistance: 10,
-  dragThreshold: 15,
-
-  // Touch targets (minimum interactive size)
-  minTouchTarget: 44,
+  tapMaxDistance: 12, // Movement under this = tap, not drag
+  doubleTapMaxGap: 300, // ms between taps for double-tap
 
   // Zoom limits
   minZoom: 0.3,
   maxZoom: 3,
 }
 
-// Touch state tracking
-interface TouchState {
-  // Single touch tracking
-  startTime: number
-  startPos: { x: number; y: number }
-  currentPos: { x: number; y: number }
-  identifier: number
-
-  // Gesture detection
-  isLongPress: boolean
-  isDragging: boolean
-  longPressTimer: ReturnType<typeof setTimeout> | null
-}
-
-interface PinchState {
-  active: boolean
-  initialDistance: number
-  initialZoom: number
-  centerX: number
-  centerY: number
-}
-
-interface DoubleTapState {
-  lastTapTime: number
-  lastTapPos: { x: number; y: number } | null
-}
+// What's under the touch point
+export type HitTestResult =
+  | { type: 'node'; id: string; isDuplicate: boolean }
+  | { type: 'wire'; id: string; isConflicted: boolean }
+  | { type: 'empty' }
 
 // Coordinate conversion function type
 export type ScreenToWorldFn = (
@@ -65,37 +35,72 @@ export type ScreenToWorldFn = (
   screenY: number
 ) => { x: number; y: number }
 
+// Hit test function type
+export type HitTestFn = (worldX: number, worldY: number) => HitTestResult
+
+// Touch state tracking
+interface TouchState {
+  startTime: number
+  startPos: { x: number; y: number }
+  currentPos: { x: number; y: number }
+  identifier: number
+}
+
+// What we're doing with the current touch
+type DragMode = 'none' | 'node' | 'pan'
+
+interface PinchState {
+  active: boolean
+  initialDistance: number
+  initialZoom: number
+}
+
+interface DoubleTapState {
+  lastTapTime: number
+  lastTapPos: { x: number; y: number } | null
+}
+
 export class TouchInputHandler {
   private canvas: HTMLCanvasElement
   private screenToWorld: ScreenToWorldFn
+  private hitTest: HitTestFn
 
   // Touch tracking
   private primaryTouch: TouchState | null = null
   private secondaryTouch: TouchState | null = null
+
+  // Current drag mode
+  private dragMode: DragMode = 'none'
+  private hasMoved = false
+
+  // Pinch zoom state
   private pinchState: PinchState = {
     active: false,
     initialDistance: 0,
     initialZoom: 1,
-    centerX: 0,
-    centerY: 0,
   }
+
+  // Two-finger pan
+  private lastPanCenter = { x: 0, y: 0 }
+
+  // Double-tap detection
   private doubleTapState: DoubleTapState = {
     lastTapTime: 0,
     lastTapPos: null,
   }
 
-  // Pan tracking (for two-finger pan)
-  private isPanning = false
-  private lastPanCenter = { x: 0, y: 0 }
-
-  constructor(canvas: HTMLCanvasElement, screenToWorld: ScreenToWorldFn) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    screenToWorld: ScreenToWorldFn,
+    hitTest: HitTestFn
+  ) {
     this.canvas = canvas
     this.screenToWorld = screenToWorld
+    this.hitTest = hitTest
     this.setupEventListeners()
   }
 
   private setupEventListeners(): void {
-    // Prevent default touch behaviors (scrolling, zooming page)
     this.canvas.addEventListener('touchstart', this.handleTouchStart, {
       passive: false,
     })
@@ -129,36 +134,47 @@ export class TouchInputHandler {
           startPos: { ...pos },
           currentPos: { ...pos },
           identifier: touch.identifier,
-          isLongPress: false,
-          isDragging: false,
-          longPressTimer: null,
         }
+        this.hasMoved = false
 
-        // Start long-press detection
-        this.primaryTouch.longPressTimer = setTimeout(() => {
-          if (this.primaryTouch && !this.primaryTouch.isDragging) {
-            this.primaryTouch.isLongPress = true
-            // Trigger drag start for symlink
-            const worldPos = this.screenToWorld(
-              this.primaryTouch.currentPos.x,
-              this.primaryTouch.currentPos.y
-            )
-            emit('input:drag-start', { worldX: worldPos.x, worldY: worldPos.y })
-          }
-        }, CONFIG.longPressThreshold)
+        // Immediately determine what we're touching
+        const worldPos = this.screenToWorld(pos.x, pos.y)
+        const hit = this.hitTest(worldPos.x, worldPos.y)
+
+        if (hit.type === 'node') {
+          // Start node drag immediately
+          this.dragMode = 'node'
+          emit('input:drag-start', {
+            worldX: worldPos.x,
+            worldY: worldPos.y,
+            nodeId: hit.id,
+          })
+        } else if (hit.type === 'wire') {
+          // Wire tap - select it, don't drag
+          this.dragMode = 'none'
+          emit('input:wire-tap', {
+            worldX: worldPos.x,
+            worldY: worldPos.y,
+            wireId: hit.id,
+          })
+        } else {
+          // Empty space - start camera pan
+          this.dragMode = 'pan'
+        }
       } else if (!this.secondaryTouch) {
-        // Second finger down - cancel long press, start pinch/pan
-        this.cancelLongPress()
-
+        // Second finger down - switch to pinch/pan mode
         this.secondaryTouch = {
           startTime: Date.now(),
           startPos: { ...pos },
           currentPos: { ...pos },
           identifier: touch.identifier,
-          isLongPress: false,
-          isDragging: false,
-          longPressTimer: null,
         }
+
+        // Cancel any node drag
+        if (this.dragMode === 'node') {
+          emit('input:drag-cancel')
+        }
+        this.dragMode = 'none'
 
         // Initialize pinch state
         const distance = this.getDistance(
@@ -174,18 +190,8 @@ export class TouchInputHandler {
           active: true,
           initialDistance: distance,
           initialZoom: gameState.camera.zoom,
-          centerX: center.x,
-          centerY: center.y,
         }
-
-        this.isPanning = true
         this.lastPanCenter = center
-
-        // Cancel any ongoing drag
-        if (this.primaryTouch.isDragging) {
-          emit('input:drag-cancel')
-          this.primaryTouch.isDragging = false
-        }
       }
     }
   }
@@ -216,75 +222,86 @@ export class TouchInputHandler {
 
     // Two-finger gesture (pinch/pan)
     if (this.primaryTouch && this.secondaryTouch && this.pinchState.active) {
-      const currentDistance = this.getDistance(
-        this.primaryTouch.currentPos,
-        this.secondaryTouch.currentPos
-      )
-      const currentCenter = this.getCenter(
-        this.primaryTouch.currentPos,
-        this.secondaryTouch.currentPos
-      )
-
-      // Pinch zoom
-      const scale = currentDistance / this.pinchState.initialDistance
-      const newZoom = Math.max(
-        CONFIG.minZoom,
-        Math.min(CONFIG.maxZoom, this.pinchState.initialZoom * scale)
-      )
-
-      // Zoom toward pinch center
-      const rect = this.canvas.getBoundingClientRect()
-      const centerX = currentCenter.x - rect.width / 2
-      const centerY = currentCenter.y - rect.height / 2
-
-      const worldCenterX = centerX / gameState.camera.zoom - gameState.camera.x
-      const worldCenterY = centerY / gameState.camera.zoom - gameState.camera.y
-
-      gameState.camera.zoom = newZoom
-
-      const newWorldCenterX = centerX / newZoom - gameState.camera.x
-      const newWorldCenterY = centerY / newZoom - gameState.camera.y
-
-      gameState.camera.x += newWorldCenterX - worldCenterX
-      gameState.camera.y += newWorldCenterY - worldCenterY
-
-      // Two-finger pan
-      if (this.isPanning) {
-        const dx = currentCenter.x - this.lastPanCenter.x
-        const dy = currentCenter.y - this.lastPanCenter.y
-
-        gameState.camera.x += dx / gameState.camera.zoom
-        gameState.camera.y += dy / gameState.camera.zoom
-
-        this.lastPanCenter = currentCenter
-      }
-
+      this.handlePinchMove()
       return
     }
 
-    // Single finger drag
+    // Single finger
     if (this.primaryTouch && !this.secondaryTouch) {
       const dx = this.primaryTouch.currentPos.x - this.primaryTouch.startPos.x
       const dy = this.primaryTouch.currentPos.y - this.primaryTouch.startPos.y
       const distance = Math.sqrt(dx * dx + dy * dy)
 
-      // Check if we've moved enough to be considered a drag
-      if (distance > CONFIG.dragThreshold) {
-        this.cancelLongPress()
+      // Check if we've moved enough to not be a tap
+      if (distance > CONFIG.tapMaxDistance) {
+        this.hasMoved = true
+      }
 
-        if (this.primaryTouch.isLongPress) {
-          // Long-press drag (symlink)
-          this.primaryTouch.isDragging = true
-          const worldPos = this.screenToWorld(
-            this.primaryTouch.currentPos.x,
-            this.primaryTouch.currentPos.y
-          )
-          emit('input:drag-move', { worldX: worldPos.x, worldY: worldPos.y })
-        }
-        // Note: Regular drag without long-press doesn't pan on single finger
-        // This prevents accidental camera movement when trying to tap
+      if (this.dragMode === 'node') {
+        // Dragging a node
+        const worldPos = this.screenToWorld(
+          this.primaryTouch.currentPos.x,
+          this.primaryTouch.currentPos.y
+        )
+        emit('input:drag-move', { worldX: worldPos.x, worldY: worldPos.y })
+      } else if (this.dragMode === 'pan' && this.hasMoved) {
+        // Panning camera
+        const dx = this.primaryTouch.currentPos.x - this.primaryTouch.startPos.x
+        const dy = this.primaryTouch.currentPos.y - this.primaryTouch.startPos.y
+
+        // Incremental pan for smooth feel
+        gameState.camera.x += dx / gameState.camera.zoom
+        gameState.camera.y += dy / gameState.camera.zoom
+
+        // Update start pos for next frame (incremental)
+        this.primaryTouch.startPos = { ...this.primaryTouch.currentPos }
       }
     }
+  }
+
+  private handlePinchMove(): void {
+    if (!this.primaryTouch || !this.secondaryTouch) return
+
+    const currentDistance = this.getDistance(
+      this.primaryTouch.currentPos,
+      this.secondaryTouch.currentPos
+    )
+    const currentCenter = this.getCenter(
+      this.primaryTouch.currentPos,
+      this.secondaryTouch.currentPos
+    )
+
+    // Pinch zoom
+    const scale = currentDistance / this.pinchState.initialDistance
+    const newZoom = Math.max(
+      CONFIG.minZoom,
+      Math.min(CONFIG.maxZoom, this.pinchState.initialZoom * scale)
+    )
+
+    // Zoom toward pinch center
+    const rect = this.canvas.getBoundingClientRect()
+    const centerX = currentCenter.x - rect.width / 2
+    const centerY = currentCenter.y - rect.height / 2
+
+    const worldCenterX = centerX / gameState.camera.zoom - gameState.camera.x
+    const worldCenterY = centerY / gameState.camera.zoom - gameState.camera.y
+
+    gameState.camera.zoom = newZoom
+
+    const newWorldCenterX = centerX / newZoom - gameState.camera.x
+    const newWorldCenterY = centerY / newZoom - gameState.camera.y
+
+    gameState.camera.x += newWorldCenterX - worldCenterX
+    gameState.camera.y += newWorldCenterY - worldCenterY
+
+    // Two-finger pan
+    const panDx = currentCenter.x - this.lastPanCenter.x
+    const panDy = currentCenter.y - this.lastPanCenter.y
+
+    gameState.camera.x += panDx / gameState.camera.zoom
+    gameState.camera.y += panDy / gameState.camera.zoom
+
+    this.lastPanCenter = currentCenter
   }
 
   private handleTouchEnd = (e: TouchEvent): void => {
@@ -299,29 +316,37 @@ export class TouchInputHandler {
         this.primaryTouch &&
         touch.identifier === this.primaryTouch.identifier
       ) {
-        this.cancelLongPress()
+        const worldPos = this.screenToWorld(
+          this.primaryTouch.currentPos.x,
+          this.primaryTouch.currentPos.y
+        )
 
-        const elapsed = Date.now() - this.primaryTouch.startTime
-        const dx = this.primaryTouch.currentPos.x - this.primaryTouch.startPos.x
-        const dy = this.primaryTouch.currentPos.y - this.primaryTouch.startPos.y
-        const distance = Math.sqrt(dx * dx + dy * dy)
-
-        if (this.primaryTouch.isDragging) {
-          // End symlink drag
-          const worldPos = this.screenToWorld(
-            this.primaryTouch.currentPos.x,
-            this.primaryTouch.currentPos.y
-          )
-          emit('input:drag-end', { worldX: worldPos.x, worldY: worldPos.y })
-        } else if (
-          elapsed < CONFIG.tapMaxDuration &&
-          distance < CONFIG.tapMaxDistance
-        ) {
-          // This was a tap
-          this.handleTap(this.primaryTouch.currentPos)
+        if (this.dragMode === 'node') {
+          if (this.hasMoved) {
+            // End node drag
+            emit('input:drag-end', { worldX: worldPos.x, worldY: worldPos.y })
+          } else {
+            // Didn't move - cancel drag, treat as tap
+            emit('input:drag-cancel')
+            this.handleTap(this.primaryTouch.currentPos)
+          }
+        } else if (this.dragMode === 'pan') {
+          if (!this.hasMoved) {
+            // Didn't move - treat as tap on empty space
+            this.handleTap(this.primaryTouch.currentPos)
+          }
+          // If moved, pan already happened, nothing to do
+        } else if (this.dragMode === 'none') {
+          // Wire was tapped, already handled in touchstart
+          // But check for tap in case it was a quick touch
+          if (!this.hasMoved) {
+            this.handleTap(this.primaryTouch.currentPos)
+          }
         }
 
         this.primaryTouch = null
+        this.dragMode = 'none'
+        this.hasMoved = false
       }
 
       if (
@@ -330,7 +355,6 @@ export class TouchInputHandler {
       ) {
         this.secondaryTouch = null
         this.pinchState.active = false
-        this.isPanning = false
       }
     }
   }
@@ -338,17 +362,15 @@ export class TouchInputHandler {
   private handleTouchCancel = (e: TouchEvent): void => {
     e.preventDefault()
 
-    // Cancel any ongoing operations
-    this.cancelLongPress()
-
-    if (this.primaryTouch?.isDragging) {
+    if (this.dragMode === 'node') {
       emit('input:drag-cancel')
     }
 
     this.primaryTouch = null
     this.secondaryTouch = null
+    this.dragMode = 'none'
+    this.hasMoved = false
     this.pinchState.active = false
-    this.isPanning = false
   }
 
   private handleTap(screenPos: { x: number; y: number }): void {
@@ -374,22 +396,12 @@ export class TouchInputHandler {
       }
     }
 
-    // Single tap - select or deselect
+    // Single tap - record for potential double-tap
     this.doubleTapState.lastTapTime = now
     this.doubleTapState.lastTapPos = { ...screenPos }
 
-    // First check for wire tap
-    emit('input:wire-tap', { worldX: worldPos.x, worldY: worldPos.y })
-
-    // Then check for node selection (callback decides what to do)
+    // Emit select event (GameCanvas handles the logic)
     emit('input:select', { worldX: worldPos.x, worldY: worldPos.y })
-  }
-
-  private cancelLongPress(): void {
-    if (this.primaryTouch?.longPressTimer) {
-      clearTimeout(this.primaryTouch.longPressTimer)
-      this.primaryTouch.longPressTimer = null
-    }
   }
 
   private getTouchPos(touch: Touch): { x: number; y: number } {
@@ -419,16 +431,11 @@ export class TouchInputHandler {
     }
   }
 
-  /**
-   * Clean up event listeners
-   */
   destroy(): void {
     this.canvas.removeEventListener('touchstart', this.handleTouchStart)
     this.canvas.removeEventListener('touchmove', this.handleTouchMove)
     this.canvas.removeEventListener('touchend', this.handleTouchEnd)
     this.canvas.removeEventListener('touchcancel', this.handleTouchCancel)
-
-    this.cancelLongPress()
   }
 }
 

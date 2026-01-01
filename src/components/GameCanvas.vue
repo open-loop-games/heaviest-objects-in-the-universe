@@ -22,7 +22,7 @@ import {
   endDrag,
   triggerWiggle,
 } from '../game/ui-state'
-import { TouchInputHandler } from '../input/touch-input'
+import { TouchInputHandler, type HitTestResult } from '../input/touch-input'
 import {
   isInPackageScope,
   getCurrentScopeWires,
@@ -1140,8 +1140,56 @@ const DOUBLE_TAP_THRESHOLD = 300
 function setupTouchInput() {
   if (!canvasRef.value) return
 
-  touchInputHandler = new TouchInputHandler(canvasRef.value, (x, y) =>
-    renderer.screenToWorld(x, y)
+  // Hit test function for touch input - determines what's under the touch point
+  const hitTest = (worldX: number, worldY: number): HitTestResult => {
+    // Check for node hit first (larger touch target)
+    const clickedPkg = findPackageAtPosition(
+      { x: worldX, y: worldY },
+      44 / gameState.camera.zoom // 44px touch target
+    )
+
+    if (clickedPkg) {
+      return {
+        type: 'node',
+        id: clickedPkg.id,
+        isDuplicate: hasDuplicates(clickedPkg.id),
+      }
+    }
+
+    // Check for wire hit
+    const wireRenderer = renderer.getWireRenderer()
+    const clickedWireId = wireRenderer.findWireAtPosition(
+      worldX,
+      worldY,
+      30 / gameState.camera.zoom // Larger hit area for touch
+    )
+
+    if (clickedWireId) {
+      const wires = getCurrentScopeWires()
+      let wire = wires.get(clickedWireId)
+
+      // Also check sibling wires at root scope
+      if (!wire && !isInPackageScope()) {
+        const siblingWires = getSiblingWires()
+        wire = siblingWires.get(clickedWireId)
+      }
+
+      if (wire) {
+        return {
+          type: 'wire',
+          id: clickedWireId,
+          isConflicted: wire.conflicted,
+        }
+      }
+    }
+
+    return { type: 'empty' }
+  }
+
+  touchInputHandler = new TouchInputHandler(
+    canvasRef.value,
+    (x, y) => renderer.screenToWorld(x, y),
+    hitTest
   )
 
   // Subscribe to touch input events
@@ -1152,11 +1200,11 @@ function setupTouchInput() {
     on('input:action', ({ worldX, worldY }) => {
       handleTouchAction({ x: worldX, y: worldY })
     }),
-    on('input:wire-tap', ({ worldX, worldY }) => {
-      handleTouchWireTap({ x: worldX, y: worldY })
+    on('input:wire-tap', ({ wireId }) => {
+      handleTouchWireTapById(wireId)
     }),
-    on('input:drag-start', ({ worldX, worldY }) => {
-      handleTouchDragStart({ x: worldX, y: worldY })
+    on('input:drag-start', ({ worldX, worldY, nodeId }) => {
+      handleTouchDragStartById({ x: worldX, y: worldY }, nodeId)
     }),
     on('input:drag-move', ({ worldX, worldY }) => {
       handleTouchDragMove({ x: worldX, y: worldY })
@@ -1338,35 +1386,29 @@ function handleTouchAction(worldPos: { x: number; y: number }) {
   }
 }
 
-function handleTouchWireTap(worldPos: { x: number; y: number }) {
-  // Wire taps are handled in onSelect, but this allows for explicit wire-only checks
-  const wireRenderer = renderer.getWireRenderer()
-  const clickedWireId = wireRenderer.findWireAtPosition(
-    worldPos.x,
-    worldPos.y,
-    30 / gameState.camera.zoom
-  )
+/**
+ * Handle wire tap by wire ID (new touch model - ID provided by hit test)
+ */
+function handleTouchWireTapById(wireId: string) {
+  const wires = getCurrentScopeWires()
+  let wire = wires.get(wireId)
 
-  if (clickedWireId) {
-    const wires = getCurrentScopeWires()
-    let wire = wires.get(clickedWireId)
+  if (!wire && !isInPackageScope()) {
+    const siblingWires = getSiblingWires()
+    wire = siblingWires.get(wireId)
+  }
 
-    if (!wire && !isInPackageScope()) {
-      const siblingWires = getSiblingWires()
-      wire = siblingWires.get(clickedWireId)
-    }
+  if (wire && wire.conflicted) {
+    selectedWireId.value = wireId
+    mobileSelection?.setWire(wireId)
+    mobileSelectedNodeId.value = null
 
-    if (wire && wire.conflicted) {
-      selectedWireId.value = clickedWireId
-      mobileSelection?.setWire(clickedWireId)
-      mobileSelectedNodeId.value = null
-
-      // Also update position for potential desktop fallback
-      const endpoints = wireRenderer.getWireEndpoints(clickedWireId)
-      if (endpoints) {
-        const screenPos = renderer.worldToScreen(endpoints.midX, endpoints.midY)
-        wireActionPosition.value = screenPos
-      }
+    // Update position for action button placement
+    const wireRenderer = renderer.getWireRenderer()
+    const endpoints = wireRenderer.getWireEndpoints(wireId)
+    if (endpoints) {
+      const screenPos = renderer.worldToScreen(endpoints.midX, endpoints.midY)
+      wireActionPosition.value = screenPos
     }
   }
 }
@@ -1375,12 +1417,40 @@ function handleTouchWireTap(worldPos: { x: number; y: number }) {
 let touchDragSource: Package | null = null
 let touchDragTarget: Package | null = null
 
-function handleTouchDragStart(worldPos: { x: number; y: number }) {
-  const clickedPkg = findPackageAtPosition(worldPos, 40 / gameState.camera.zoom)
+/**
+ * Handle drag start by node ID (new touch model - ID provided by hit test)
+ * This enables immediate drag without waiting for long-press
+ */
+function handleTouchDragStartById(
+  _worldPos: { x: number; y: number },
+  nodeId: string
+) {
+  // Get package from current scope (same as findPackageAtPosition uses)
+  let clickedPkg: Package | undefined
+
+  if (isInPackageScope()) {
+    // Check if it's the scope root
+    const scopeRoot = getCurrentScopeRoot()
+    if (scopeRoot && scopeRoot.id === nodeId) {
+      clickedPkg = scopeRoot
+    } else {
+      // Check internal packages
+      const scopePackages = getCurrentScopePackages()
+      clickedPkg = scopePackages.get(nodeId)
+    }
+  } else {
+    clickedPkg = gameState.packages.get(nodeId)
+  }
+
   if (!clickedPkg) return
 
-  // Only allow drag on duplicates
-  if (clickedPkg.state === 'ready' && hasDuplicates(clickedPkg.id)) {
+  // All nodes can be dragged for position adjustment in internal scope
+  // At root scope, only duplicates can be dragged (for cross-package symlink)
+  const canDrag =
+    isInPackageScope() ||
+    (clickedPkg.parentId === gameState.rootId && hasDuplicates(clickedPkg.id))
+
+  if (canDrag && clickedPkg.state === 'ready') {
     touchDragSource = clickedPkg
     touchDragTarget = null
     renderer.setSymlinkDragState(clickedPkg.id, null)
