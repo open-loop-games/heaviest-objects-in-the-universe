@@ -85,6 +85,12 @@ export interface GameEvents {
     scopesStable: number
     scopesTotal: number
   }
+
+  // Physics events (decouples symlinks → physics)
+  'physics:trigger-organize': { relocatedIds: string[] }
+
+  // Scope stabilization event (decouples scope → mutations)
+  'scope:stabilized': { packageCount: number }
 }
 
 type EventCallback<T> = T extends void ? () => void : (data: T) => void

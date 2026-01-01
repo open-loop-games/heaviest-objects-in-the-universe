@@ -11,18 +11,10 @@ import {
   isCurrentScopeRoot,
 } from './scope'
 import type { Package } from './types'
-import { triggerOrganizeBoost, markPackageRelocated } from './physics'
 import { updateCrossPackageDuplicates } from './cross-package'
 import { onSymlinkMerged } from './mutations'
 import { emit } from './events'
-
-// Halo colors for duplicate groups (cycle through these)
-export const HALO_COLORS = [
-  0x22d3ee, // Cyan
-  0xe879f9, // Magenta
-  0xfacc15, // Yellow
-  0x84cc16, // Lime
-]
+import { HALO_COLORS } from './config'
 
 export interface DuplicateGroup {
   identityName: string
@@ -331,6 +323,8 @@ export function performSymlinkMerge(
   }
 
   // === TRANSFER CHILDREN ===
+  // Collect IDs for physics relocation (at root scope)
+  const relocatedIds: string[] = []
   for (const childId of source.children) {
     const child = packages.get(childId)
     if (child) {
@@ -338,9 +332,9 @@ export function performSymlinkMerge(
       if (!target.children.includes(childId)) {
         target.children.push(childId)
       }
-      // At root scope, mark relocated for phasing
+      // At root scope, collect subtree for relocation
       if (!inScope) {
-        markSubtreeRelocated(childId, packages)
+        collectSubtreeIds(childId, packages, relocatedIds)
       }
     }
   }
@@ -355,12 +349,10 @@ export function performSymlinkMerge(
   }
 
   // === POST-MERGE ACTIONS ===
-  // === OPTION B: Recompute anchor for target (now a hub with more connections) ===
-  // Mark target for relocation so physics pulls it toward optimal position
+  // Mark target and children for physics relocation via event
   if (!inScope) {
-    markPackageRelocated(targetId)
-    // Trigger organize boost for root scope
-    triggerOrganizeBoost()
+    relocatedIds.push(targetId)
+    emit('physics:trigger-organize', { relocatedIds })
   }
 
   if (inScope) {
@@ -383,17 +375,18 @@ export function performSymlinkMerge(
 }
 
 /**
- * Helper: Mark a subtree as relocated for physics phasing
+ * Helper: Collect all package IDs in a subtree for physics relocation
  */
-function markSubtreeRelocated(
+function collectSubtreeIds(
   pkgId: string,
-  packages: Map<string, Package>
+  packages: Map<string, Package>,
+  result: string[]
 ): void {
-  markPackageRelocated(pkgId)
+  result.push(pkgId)
   const pkg = packages.get(pkgId)
   if (pkg) {
     for (const childId of pkg.children) {
-      markSubtreeRelocated(childId, packages)
+      collectSubtreeIds(childId, packages, result)
     }
   }
 }

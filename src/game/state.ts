@@ -112,3 +112,19 @@ export const computed_tierProgress: ComputedRef<number> = computed(() => {
 
   return Math.min(1, progress / range)
 })
+
+// ============================================
+// RESOURCE MUTATIONS (simple state changes)
+// ============================================
+
+/**
+ * Spend bandwidth if available
+ * @returns true if spent successfully, false if insufficient
+ */
+export function spendBandwidth(amount: number): boolean {
+  if (gameState.resources.bandwidth >= amount) {
+    gameState.resources.bandwidth -= amount
+    return true
+  }
+  return false
+}

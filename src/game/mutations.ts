@@ -23,7 +23,7 @@ import {
   getCurrentScopeWires,
   isInPackageScope,
 } from './scope'
-import { emit } from './events'
+import { emit, on } from './events'
 import { getCompressionMultiplier, getStabilizationBonus } from './upgrades'
 import { getEfficiencyTierRank } from './formulas'
 import { updateEfficiencyTracking } from './prestige'
@@ -289,14 +289,6 @@ export function removeWire(id: string): void {
 // RESOURCE MUTATIONS
 // ============================================
 
-export function spendBandwidth(amount: number): boolean {
-  if (gameState.resources.bandwidth >= amount) {
-    gameState.resources.bandwidth -= amount
-    return true
-  }
-  return false
-}
-
 export function updateEfficiency(): void {
   const newEfficiency = calculateEfficiency(gameState)
   gameState.stats.currentEfficiency = newEfficiency
@@ -403,3 +395,12 @@ export function collectCacheFragment(packageId: string): boolean {
 
   return true
 }
+
+// ============================================
+// EVENT SUBSCRIPTIONS
+// ============================================
+
+// Handle scope stabilization event (decouples scope → mutations)
+on('scope:stabilized', ({ packageCount }) => {
+  onScopeStabilized(packageCount)
+})

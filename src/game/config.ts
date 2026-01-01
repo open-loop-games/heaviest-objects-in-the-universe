@@ -33,6 +33,18 @@ export const TIER_THRESHOLDS = [0, 9, 21, 42, 63] as const
 export const TIER_MAX_DEPTH = [1, 2, 3, 4, 5] as const
 
 // ============================================
+// DUPLICATE HALO COLORS
+// ============================================
+
+// Halo colors for duplicate groups (cycle through these)
+export const HALO_COLORS = [
+  0x22d3ee, // Cyan
+  0xe879f9, // Magenta
+  0xfacc15, // Yellow
+  0x84cc16, // Lime
+]
+
+// ============================================
 // COMPRESSION SCALING
 // ============================================
 

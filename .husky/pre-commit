@@ -1,3 +1,4 @@
 pnpm lint-staged
+pnpm circular
 pnpm typecheck
 pnpm build

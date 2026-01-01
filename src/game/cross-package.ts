@@ -5,7 +5,7 @@ import { toRaw } from 'vue'
 import { gameState } from './state'
 import type { Package, Wire } from './types'
 import { areIncompatible } from './registry'
-import { HALO_COLORS } from './symlinks'
+import { HALO_COLORS } from './config'
 
 // ============================================
 // CROSS-PACKAGE CONFLICTS (Phase 4)

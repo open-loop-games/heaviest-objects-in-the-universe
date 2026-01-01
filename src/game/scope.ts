@@ -4,7 +4,7 @@
 import type { Package, Wire, InternalState } from './types'
 import { gameState } from './state'
 import { countScopeDuplicates } from './formulas'
-import { onScopeStabilized } from './mutations'
+import { emit } from './events'
 
 // ============================================
 // SCOPE DEPTH HELPERS
@@ -421,10 +421,10 @@ export function recalculateStateAtPath(scopePath: string[]): void {
 
   pkg.internalState = newState
 
-  // Momentum loop: Generate burst when scope becomes stable
+  // Momentum loop: Generate burst when scope becomes stable (via event)
   if (previousState !== 'stable' && newState === 'stable') {
     const packageCount = pkg.internalPackages?.size ?? 0
-    onScopeStabilized(packageCount)
+    emit('scope:stabilized', { packageCount })
   }
 
   // Propagate state change up the tree

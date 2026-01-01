@@ -1,9 +1,9 @@
 // Package creation and management logic
 
 import { toRaw } from 'vue'
-import { gameState, gameConfig } from './state'
+import { gameState, gameConfig, spendBandwidth } from './state'
 import { recalculateStateAtPath, _injectCascade } from './scope'
-import { addPackage, addWire, spendBandwidth } from './mutations'
+import { addPackage, addWire } from './mutations'
 import { generateId, generateWireId } from './id-generator'
 import { type Package, type Wire } from './types'
 import { rollDependencyCount, getIdentitySize } from './formulas'

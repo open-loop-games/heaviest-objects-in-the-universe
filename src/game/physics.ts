@@ -7,6 +7,7 @@ import { collapseState, markPackageAbsorbed, dragState } from './ui-state'
 import type { Package } from './types'
 import { getAllDuplicateGroups } from './symlinks'
 import { getPackageAtPath } from './scope'
+import { on } from './events'
 
 // Radial layout configuration
 const RADIAL_CONFIG = {
@@ -951,3 +952,16 @@ export function updateCollapsePhysics(deltaTime: number): boolean {
   // Complete when all absorbed or time is up
   return allAbsorbed || collapseState.value.progress >= 1
 }
+
+// ============================================
+// EVENT SUBSCRIPTIONS
+// ============================================
+
+// Handle physics:trigger-organize event from symlinks module
+// This decouples symlinks → physics to break circular dependency
+on('physics:trigger-organize', ({ relocatedIds }) => {
+  for (const pkgId of relocatedIds) {
+    markPackageRelocated(pkgId)
+  }
+  triggerOrganizeBoost()
+})

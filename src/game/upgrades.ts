@@ -1,8 +1,7 @@
 // Upgrade definitions and purchase logic
 // 2 core upgrades: Bandwidth, Efficiency
 
-import { gameState } from './state'
-import { spendBandwidth } from './mutations'
+import { gameState, spendBandwidth } from './state'
 
 export interface UpgradeDefinition {
   id: string
