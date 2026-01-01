@@ -526,6 +526,11 @@ export function getFirstSpawnedIndicators(
 
   const inScope = isInPackageScope()
 
+  // Skip first-spawned teaching after first prestige (tutorial complete)
+  if (gameState.onboarding.firstPrestigeComplete) {
+    return { indicators, vignettes }
+  }
+
   if (!inScope && gameState.onboarding.firstClickComplete) {
     if (!tutorialState.getLastFirstClickState()) {
       tutorialState.setLastFirstClickState(true)

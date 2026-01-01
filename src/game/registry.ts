@@ -1544,6 +1544,13 @@ const INCOMPATIBLE_PAIRS: [string, string][] = [
   ['vue', 'angular'],
   ['svelte', 'react'],
   ['svelte', 'vue'],
+  ['svelte', 'angular'],
+  ['ember', 'react'],
+  ['ember', 'vue'],
+
+  // Meta-frameworks (same ecosystem conflicts)
+  ['next', 'gatsby'],
+  ['next', 'remix'],
 
   // Legacy vs Modern (redundant functionality)
   ['moment', 'date-fns'],
@@ -1551,15 +1558,23 @@ const INCOMPATIBLE_PAIRS: [string, string][] = [
   ['lodash', 'underscore'],
 
   // Bundler conflicts
-  ['webpack', 'parcel'],
+  ['webpack', 'vite'],
   ['webpack', 'rollup'],
+  ['gulp', 'grunt'],
 
   // Test runner conflicts
   ['jest', 'mocha'],
   ['jest', 'vitest'],
+  ['mocha', 'vitest'],
+  ['cypress', 'playwright'],
 
-  // Linter wars
-  ['eslint', 'tslint'],
+  // Validation libraries (all do schema validation)
+  ['zod', 'yup'],
+  ['zod', 'joi'],
+  ['yup', 'joi'],
+
+  // ORM conflicts
+  ['prisma', 'sequelize'],
 ]
 
 /**
@@ -1612,17 +1627,37 @@ export function checkIncompatibilityWithPackages(
 
 /**
  * Upgrade paths - what a conflicting package can transform into
+ * Upgrading generates 2x bandwidth (better than pruning)
  */
 const UPGRADE_PATHS: Record<string, string> = {
-  // Legacy to modern
+  // Legacy → Modern
   moment: 'date-fns',
   request: 'axios',
   underscore: 'lodash',
-  tslint: 'eslint',
 
-  // Framework alternatives (less common direction)
+  // Old bundlers → Modern
+  webpack: 'vite',
+  gulp: 'vite',
+  grunt: 'vite',
+  rollup: 'vite',
+
+  // Test runners → Modern
+  mocha: 'vitest',
+  jest: 'vitest',
+  cypress: 'playwright',
+
+  // Frameworks (opinionated defaults)
   angular: 'react',
   vue: 'react',
+  ember: 'react',
+  gatsby: 'next',
+
+  // Validation → Modern
+  yup: 'zod',
+  joi: 'zod',
+
+  // ORM
+  sequelize: 'prisma',
 }
 
 /**

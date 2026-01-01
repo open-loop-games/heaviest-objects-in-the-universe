@@ -59,9 +59,14 @@ export function performPrestige(): void {
     gameState.onboarding.firstPrestigeComplete = true
   }
 
-  // Convert fragments to bonus tokens
+  // Convert fragments to bonus tokens (scaled by efficiency/stability)
+  // Poor quality runs get reduced fragment conversion (20% floor, 100% at perfect quality)
+  const avgQuality =
+    (gameState.stats.currentEfficiency + gameState.stats.currentStability) / 2
+  const qualityMultiplier = 0.2 + 0.8 * Math.min(1, avgQuality)
   const fragmentBonus = Math.floor(
-    gameState.resources.cacheFragments / FRAGMENT_TO_TOKEN_RATIO
+    (gameState.resources.cacheFragments / FRAGMENT_TO_TOKEN_RATIO) *
+      qualityMultiplier
   )
 
   // Add meta rewards (base reward + fragment bonus)

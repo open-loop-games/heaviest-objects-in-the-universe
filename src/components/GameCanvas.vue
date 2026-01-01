@@ -52,7 +52,6 @@ import {
 } from '../game/packages'
 import { enterPackageScope, recalculateStateAtPath } from '../game/scope'
 import { getUpgradePath, findIdentityByName } from '../game/registry'
-import { getEffectiveInstallCost } from '../game/upgrades'
 import {
   hasDuplicates,
   canSymlink,
@@ -138,9 +137,9 @@ const canAffordPrune = computed(() => {
   return canAffordConflictResolve()
 })
 
-// Computed: can afford upgrade
+// Computed: can always afford upgrade (generates BW instead of costing)
 const canAffordUpgrade = computed(() => {
-  return gameState.resources.bandwidth >= getEffectiveInstallCost() * 2
+  return true
 })
 
 // Computed: has upgrade path
@@ -706,9 +705,9 @@ function handleUpgrade() {
   const newIdentity = findIdentityByName(upgradeName)
   if (!newIdentity) return
 
-  // Spend bandwidth (2x install cost)
-  const cost = getEffectiveInstallCost() * 2
-  gameState.resources.bandwidth -= cost
+  // Generate 2x bandwidth (upgrade is better than prune!)
+  onConflictResolved()
+  onConflictResolved()
 
   // Visual feedback
   const effects = renderer.getEffectsRenderer()
