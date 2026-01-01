@@ -3,6 +3,24 @@
 import type { GameConfig, GameState } from './types'
 
 // ============================================
+// PLATFORM-SPECIFIC DEFAULTS
+// ============================================
+
+/** Check if running on mobile (touch + small screen) */
+function isMobilePlatform(): boolean {
+  if (typeof window === 'undefined') return false
+  const isTouchPrimary =
+    'ontouchstart' in window || navigator.maxTouchPoints > 0
+  const isSmallScreen = window.innerWidth < 768
+  return isTouchPrimary && isSmallScreen
+}
+
+/** Default zoom level - smaller on mobile to show more of the graph */
+export function getDefaultZoom(): number {
+  return isMobilePlatform() ? 0.7 : 1
+}
+
+// ============================================
 // TIER SYSTEM
 // ============================================
 
@@ -236,7 +254,7 @@ export function createInitialState(): GameState {
     camera: {
       x: 0,
       y: 0,
-      zoom: 1,
+      zoom: getDefaultZoom(),
     },
   }
 }

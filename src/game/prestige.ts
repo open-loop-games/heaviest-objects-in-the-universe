@@ -1,6 +1,6 @@
 // Prestige system - reset and meta-progression logic
 
-import { FRAGMENT_TO_TOKEN_RATIO } from './config'
+import { FRAGMENT_TO_TOKEN_RATIO, getDefaultZoom } from './config'
 import { calculatePrestigeReward } from './formulas'
 import { gameState, computed_canPrestige, syncEcosystemTier } from './state'
 import { getPrestigeThreshold } from './formulas'
@@ -110,7 +110,7 @@ export function performPrestige(): void {
   // Reset camera
   gameState.camera.x = 0
   gameState.camera.y = 0
-  gameState.camera.zoom = 1
+  gameState.camera.zoom = getDefaultZoom()
 
   // Save immediately after prestige
   saveToLocalStorage()
@@ -156,7 +156,7 @@ export function softReset(): void {
   // Reset camera
   gameState.camera.x = 0
   gameState.camera.y = 0
-  gameState.camera.zoom = 1
+  gameState.camera.zoom = getDefaultZoom()
 
   // Reset onboarding for this run (but intro already seen)
   gameState.onboarding.firstClickComplete = false

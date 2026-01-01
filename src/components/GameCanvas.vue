@@ -71,6 +71,7 @@ import { on, emit } from '../game/events'
 import type { Package } from '../game/types'
 import { Colors } from '../rendering/colors'
 import { setSelectedConflictWire } from '../onboarding/tutorial-state'
+import { getDefaultZoom } from '../game/config'
 
 // Inject platform detection
 const platform = inject<Ref<'desktop' | 'mobile'>>('platform')
@@ -1277,6 +1278,13 @@ function handleTouchSelect(worldPos: { x: number; y: number }) {
     mobileSelection?.setNode(clickedPkg.id)
     selectedWireId.value = null
 
+    // Show duplicate hint lines if this is a duplicate
+    if (clickedPkg.state === 'ready' && hasDuplicates(clickedPkg.id)) {
+      renderer.setHoveredDuplicate(clickedPkg.id)
+    } else {
+      renderer.setHoveredDuplicate(null)
+    }
+
     // Check for double-tap (enter scope / action)
     const now = Date.now()
     if (
@@ -1310,6 +1318,8 @@ function handleTouchDeselect() {
   mobileSelection?.clear()
   lastTapNodeId = null
   lastTapTime = 0
+  // Clear duplicate hint lines
+  renderer.setHoveredDuplicate(null)
 }
 
 function handleTouchAction(worldPos: { x: number; y: number }) {
@@ -1355,7 +1365,7 @@ function handleTouchAction(worldPos: { x: number; y: number }) {
     clickedPkg.state === 'ready'
   ) {
     if (enterPackageScope(clickedPkg.id)) {
-      setCameraTarget(0, 0)
+      setCameraTarget(0, 0, getDefaultZoom())
       effects.spawnRipple(0, 0, Colors.borderInstalling)
       handleTouchDeselect()
     }
@@ -1369,7 +1379,7 @@ function handleTouchAction(worldPos: { x: number; y: number }) {
     clickedPkg.state === 'ready'
   ) {
     if (enterPackageScope(clickedPkg.id)) {
-      setCameraTarget(0, 0)
+      setCameraTarget(0, 0, getDefaultZoom())
       effects.spawnRipple(0, 0, Colors.borderInstalling)
       handleTouchDeselect()
     }

@@ -19,6 +19,7 @@
 import { ref } from 'vue'
 import { saveToLocalStorage } from '../../game/persistence'
 import { hardReset } from '../../game/prestige'
+import { createRootPackage } from '../../game/packages'
 
 defineProps<{
   open: boolean
@@ -55,10 +56,9 @@ function handleResetClick() {
   if (confirmingReset.value) {
     // Second tap - actually reset
     hardReset()
+    createRootPackage()
     confirmingReset.value = false
     emit('close')
-    // Reload the page to get fresh state
-    window.location.reload()
   } else {
     // First tap - enter confirmation mode
     confirmingReset.value = true
