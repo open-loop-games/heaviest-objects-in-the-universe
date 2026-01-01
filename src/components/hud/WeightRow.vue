@@ -38,32 +38,6 @@ const segmentIndices = Array.from({ length: SEGMENTS }, (_, i) => i)
 const LAST_SEGMENT = SEGMENTS - 1
 
 // ============================================
-// MAGNITUDE DOTS (B, K, M, G)
-// ============================================
-
-const magnitude = computed(() => {
-  const w = gameState.resources.weight * 1024
-  if (w < 1000) return 0 // B
-  if (w < 1000000) return 1 // K
-  if (w < 1000000000) return 2 // M
-  return 3 // G
-})
-
-// How far through current magnitude (0-1) for milestone detection
-const weightFillPercent = computed(() => {
-  const w = gameState.resources.weight * 1024
-  if (w < 1000) return w / 1000
-  if (w < 1000000) return (w - 1000) / (1000000 - 1000)
-  if (w < 1000000000) return (w - 1000000) / (1000000000 - 1000000)
-  return Math.min(1, (w - 1000000000) / 1000000000)
-})
-
-// Weight milestone: approaching next magnitude
-const weightMilestone = computed(() => {
-  return weightFillPercent.value > 0.8
-})
-
-// ============================================
 // COMPRESSION UPGRADE (P3+ only)
 // ============================================
 
@@ -98,15 +72,10 @@ function handleCompressionLeave() {
 <template>
   <div
     class="resource-row weight-row"
-    :class="{
-      'prestige-ready': prestigeProgress >= 1,
-      'milestone-near': weightMilestone,
-    }"
+    :class="{ 'prestige-ready': prestigeProgress >= 1 }"
   >
     <!-- Weight icon -->
-    <div class="resource-icon" :class="{ 'milestone-pulse': weightMilestone }">
-      ◆
-    </div>
+    <div class="resource-icon">◆</div>
 
     <!-- Segmented weight bar -->
     <div class="resource-bar">
@@ -127,16 +96,6 @@ function handleCompressionLeave() {
           :style="{ height: partialFill * 100 + '%' }"
         ></div>
       </div>
-    </div>
-
-    <!-- Magnitude dots (B, K, M, G) -->
-    <div class="magnitude-dots">
-      <span
-        v-for="i in 4"
-        :key="i"
-        class="mag-dot"
-        :class="{ active: magnitude >= i - 1 }"
-      />
     </div>
 
     <!-- Compression pips (P3+ only) -->
@@ -178,11 +137,6 @@ function handleCompressionLeave() {
   transition: all var(--hud-t-normal) ease-out;
   width: 24px;
   text-align: center;
-}
-
-.resource-icon.milestone-pulse {
-  animation: milestone-glow 1.2s ease-in-out infinite;
-  text-shadow: 0 0 12px rgba(255, 170, 90, 0.6);
 }
 
 /* Segmented bar */
@@ -247,27 +201,6 @@ function handleCompressionLeave() {
   );
   box-shadow: 0 0 8px rgba(122, 90, 255, 0.6);
   animation: hud-pulse 1s ease-in-out infinite alternate;
-}
-
-/* Magnitude dots (B, K, M, G) */
-.magnitude-dots {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  align-items: center;
-}
-
-.mag-dot {
-  width: 4px;
-  height: 4px;
-  background: rgba(255, 170, 90, 0.2);
-  border-radius: 50%;
-  transition: all var(--hud-t-normal) ease;
-}
-
-.mag-dot.active {
-  background: var(--hud-weight);
-  box-shadow: 0 0 3px rgba(255, 170, 90, 0.6);
 }
 
 /* Upgrade pips container */
@@ -348,18 +281,6 @@ function handleCompressionLeave() {
   }
   50% {
     box-shadow: 0 0 8px currentColor;
-  }
-}
-
-@keyframes milestone-glow {
-  0%,
-  100% {
-    text-shadow: 0 0 8px rgba(255, 170, 90, 0.4);
-    transform: scale(1);
-  }
-  50% {
-    text-shadow: 0 0 16px rgba(255, 170, 90, 0.8);
-    transform: scale(1.1);
   }
 }
 </style>
