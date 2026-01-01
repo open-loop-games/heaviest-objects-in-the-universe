@@ -35,15 +35,7 @@ import {
   isInPackageScope,
 } from './scope'
 import { saveToLocalStorage, clearSavedGame } from './persistence'
-
-// Callback to avoid circular dependency with packages.ts
-let _recalculateStateAtPath: ((scopePath: string[]) => void) | null = null
-
-export function setMutationsRecalculateCallback(
-  fn: (scopePath: string[]) => void
-): void {
-  _recalculateStateAtPath = fn
-}
+import { emit } from './events'
 import { getCompressionMultiplier, getStabilizationBonus } from './upgrades'
 import {
   getEfficiencyTier,
@@ -173,10 +165,8 @@ const recentGeneration: GenerationEvent[] = []
 
 function cleanOldEvents(): void {
   const cutoff = Date.now() - MOMENTUM_DAMPENING_WINDOW
-  while (
-    recentGeneration.length > 0 &&
-    recentGeneration[0]!.timestamp < cutoff
-  ) {
+  // Use optional chaining for safety (though length check makes it safe)
+  while (recentGeneration[0] && recentGeneration[0].timestamp < cutoff) {
     recentGeneration.shift()
   }
 }
@@ -462,9 +452,9 @@ export function resolveWireConflict(wireId: string): boolean {
     gameState.onboarding.firstInnerConflictSeen = true
   }
 
-  // Recalculate scope state
-  if (isInPackageScope() && _recalculateStateAtPath) {
-    _recalculateStateAtPath([...gameState.scopeStack])
+  // Emit event for scope state recalculation
+  if (isInPackageScope()) {
+    emit('scope:recalculate', { scopePath: [...gameState.scopeStack] })
   }
 
   return true
@@ -498,16 +488,11 @@ export function collectCacheFragment(packageId: string): boolean {
 // PRESTIGE & RESET
 // ============================================
 
-// Callback for triggering collapse animation before prestige
-let onPrestigeAnimationStart: ((onComplete: () => void) => void) | null = null
+// Prestige completion callback (set by UI to handle post-prestige actions)
 let onPrestigeComplete: (() => void) | null = null
 
-export function setPrestigeAnimationCallback(
-  animationStart: (onComplete: () => void) => void,
-  afterPrestige: () => void
-): void {
-  onPrestigeAnimationStart = animationStart
-  onPrestigeComplete = afterPrestige
+export function setPrestigeCompleteCallback(callback: () => void): void {
+  onPrestigeComplete = callback
 }
 
 export function performPrestige(): void {
@@ -579,21 +564,15 @@ export function performPrestige(): void {
 export function triggerPrestigeWithAnimation(): void {
   if (!computed_canPrestige.value) return
 
-  if (onPrestigeAnimationStart) {
-    // Play animation, then prestige
-    onPrestigeAnimationStart(() => {
+  // Emit prestige start event with completion callback
+  emit('prestige:start', {
+    onComplete: () => {
       performPrestige()
       if (onPrestigeComplete) {
         onPrestigeComplete()
       }
-    })
-  } else {
-    // No animation, just prestige
-    performPrestige()
-    if (onPrestigeComplete) {
-      onPrestigeComplete()
-    }
-  }
+    },
+  })
 }
 
 /**

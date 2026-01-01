@@ -29,6 +29,7 @@ import {
 import {
   isInPackageScope,
   getCurrentScopeWires,
+  getCurrentScopePackages,
   getCurrentScopeRoot,
   isPackageCompressed,
   exitScope,
@@ -37,7 +38,7 @@ import {
 import {
   removePackageWithSubtree,
   removeWire,
-  setPrestigeAnimationCallback,
+  setPrestigeCompleteCallback,
   canAffordConflictResolve,
   collectCacheFragment,
 } from '../game/mutations'
@@ -55,7 +56,6 @@ import {
   enterPackageScope,
   recalculateStateAtPath,
 } from '../game/packages'
-import { setSpawnEffectCallback, setCritEffectCallback } from '../game/cascade'
 import { getUpgradePath, findIdentityByName } from '../game/registry'
 import { getEffectiveInstallCost } from '../game/upgrades'
 import {
@@ -71,8 +71,8 @@ import {
   performCrossPackageSymlink,
   getSharedInternalDeps,
 } from '../game/cross-package'
-import { setAutoResolveCallback } from '../game/automation'
 import { onConflictResolved } from '../game/mutations'
+import { on } from '../game/events'
 import type { Package } from '../game/types'
 import { Colors } from '../rendering/colors'
 import { setSelectedConflictWire } from '../onboarding/tutorial-state'
@@ -116,6 +116,9 @@ let symlinkDragSource: Package | null = null
 let symlinkDragStartPos: { x: number; y: number } | null = null
 let symlinkDropTarget: Package | null = null
 let isDraggingSymlink = false
+
+// Event bus unsubscribe functions (for cleanup on unmount)
+const eventUnsubscribers: Array<() => void> = []
 
 // Computed: selected wire data (scope-aware, including sibling wires)
 const selectedWire = computed(() => {
@@ -211,57 +214,70 @@ onMounted(async () => {
     startGameLoop()
     startAutoSave()
 
-    // Set up prestige animation callback
-    setPrestigeAnimationCallback(
-      // Animation start: trigger black hole collapse
-      (onComplete) => {
-        // Exit to root scope first so all packages are visible during collapse
-        exitToRoot()
-        renderer.getBlackHoleRenderer().startCollapse(onComplete)
-      },
-      // After prestige: create new root package
-      () => {
-        createRootPackage()
-        previousPackageStates.clear()
+    // Set up prestige callbacks using event bus
+    setPrestigeCompleteCallback(() => {
+      createRootPackage()
+      previousPackageStates.clear()
+    })
+
+    // Subscribe to prestige start event
+    const unsubPrestige = on('prestige:start', ({ onComplete }) => {
+      // Exit to root scope first so all packages are visible during collapse
+      exitToRoot()
+      renderer.getBlackHoleRenderer().startCollapse(onComplete)
+    })
+
+    // Subscribe to cascade spawn effects
+    const unsubSpawnEffect = on(
+      'cascade:spawn-effect',
+      ({ position, isConflict }) => {
+        const effects = renderer.getEffectsRenderer()
+        if (isConflict) {
+          effects.spawnConflictFlash(position.x, position.y)
+        } else {
+          effects.spawnBurst(position.x, position.y, Colors.borderInstalling)
+          effects.spawnRipple(position.x, position.y, Colors.borderInstalling)
+        }
       }
     )
 
-    // Set up cascade spawn effect callback (for staggered spawning)
-    setSpawnEffectCallback((position, isConflict) => {
-      const effects = renderer.getEffectsRenderer()
-      if (isConflict) {
-        effects.spawnConflictFlash(position.x, position.y)
-      } else {
-        effects.spawnBurst(position.x, position.y, Colors.borderInstalling)
-        effects.spawnRipple(position.x, position.y, Colors.borderInstalling)
-      }
-    })
-
-    // Set up crit effect callback (when cascade doubles)
-    setCritEffectCallback((count) => {
+    // Subscribe to crit effects (when cascade doubles)
+    const unsubCrit = on('cascade:crit', ({ count }) => {
       const effects = renderer.getEffectsRenderer()
       effects.spawnCrit(count)
     })
 
-    // Set up automation effect callbacks (for auto-resolve and auto-dedup)
-    setAutoResolveCallback((_scopePath, position) => {
-      const effects = renderer.getEffectsRenderer()
-      effects.spawnAutoCompleteEffect(position.x, position.y, 'resolve')
-    })
+    // Subscribe to automation resolve complete effects
+    const unsubAutoResolve = on(
+      'automation:resolve-complete',
+      ({ position }) => {
+        const effects = renderer.getEffectsRenderer()
+        effects.spawnAutoCompleteEffect(position.x, position.y, 'resolve')
+      }
+    )
+
+    // Store unsubscribe functions for cleanup
+    eventUnsubscribers.push(
+      unsubPrestige,
+      unsubSpawnEffect,
+      unsubCrit,
+      unsubAutoResolve
+    )
 
     // Save on page unload
     window.addEventListener('beforeunload', handleBeforeUnload)
 
     // Track install completions for particle effects
+    // PERF: Only check packages in current scope (visible to player)
     onTick(() => {
       // Update wire action button position every frame (for pan/zoom tracking)
       updateWireActionPosition()
 
       const effects = renderer.getEffectsRenderer()
-      // Use toRaw() to avoid Vue reactivity tracking in tick callback
-      const rawPackages = toRaw(gameState.packages)
+      // Only iterate packages in current scope - visual effects only matter for visible packages
+      const scopePackages = toRaw(getCurrentScopePackages())
 
-      for (const pkg of rawPackages.values()) {
+      for (const pkg of scopePackages.values()) {
         const prevState = previousPackageStates.get(pkg.id)
 
         // Detect new package spawning as conflict (no previous state + conflict)
@@ -282,10 +298,13 @@ onMounted(async () => {
         previousPackageStates.set(pkg.id, pkg.state)
       }
 
-      // Clean up old entries
-      for (const id of previousPackageStates.keys()) {
-        if (!rawPackages.has(id)) {
-          previousPackageStates.delete(id)
+      // Cleanup stale entries periodically (every 60 frames ~= 1 second)
+      // to avoid memory growth from removed packages
+      if (previousPackageStates.size > scopePackages.size * 2) {
+        for (const id of previousPackageStates.keys()) {
+          if (!scopePackages.has(id)) {
+            previousPackageStates.delete(id)
+          }
         }
       }
     })
@@ -320,6 +339,12 @@ onUnmounted(() => {
     touchInputHandler.destroy()
     touchInputHandler = null
   }
+
+  // Clean up event bus subscriptions
+  for (const unsubscribe of eventUnsubscribers) {
+    unsubscribe()
+  }
+  eventUnsubscribers.length = 0
 })
 
 function handleBeforeUnload() {

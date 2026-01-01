@@ -13,6 +13,7 @@ import {
 } from './upgrades'
 import { AUTO_RESOLVE_DRAIN } from './config'
 import type { Package } from './types'
+import { emit } from './events'
 
 // ============================================
 // AUTOMATION TIMING CONSTANTS
@@ -183,18 +184,6 @@ function recalculateInternalStateAtPath(scopePath: string[]): void {
 // AUTOMATION UPDATE (CALLED FROM GAME LOOP)
 // ============================================
 
-// Callback for visual effects when automation completes
-// Includes position for spawning effects at the right location
-let onAutoResolveComplete:
-  | ((scopePath: string[], position: { x: number; y: number }) => void)
-  | null = null
-
-export function setAutoResolveCallback(
-  callback: (scopePath: string[], position: { x: number; y: number }) => void
-): void {
-  onAutoResolveComplete = callback
-}
-
 /**
  * Main automation update - call this from the game loop
  * @param now Current timestamp
@@ -267,8 +256,11 @@ export function updateAutomation(now: number, _deltaTime: number = 0): void {
           // Complete the resolve (no momentum generation - automation doesn't reward)
           const success = resolveWireAtPath(auto.resolveTargetWireId, scopePath)
 
-          if (success && onAutoResolveComplete) {
-            onAutoResolveComplete(scopePath, effectPosition)
+          if (success) {
+            emit('automation:resolve-complete', {
+              scopePath,
+              position: effectPosition,
+            })
           }
 
           // Reset state

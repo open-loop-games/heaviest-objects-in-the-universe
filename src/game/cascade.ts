@@ -24,7 +24,6 @@ import {
   type Package,
   type Wire,
   type PendingSpawn,
-  type Position,
   type InternalState,
 } from './types'
 import {
@@ -36,32 +35,7 @@ import {
 import { getPackageAtPath } from './scope'
 import { getIdentitySize } from './formulas'
 import { consumeSurge, isSurgeUnlocked } from './upgrades'
-
-// Callback for particle effects when a dep spawns
-let onSpawnEffect: ((position: Position, isConflict: boolean) => void) | null =
-  null
-
-export function setSpawnEffectCallback(
-  callback: (position: Position, isConflict: boolean) => void
-): void {
-  onSpawnEffect = callback
-}
-
-// Callback for crit effect (when cascade doubles)
-let onCritEffect: ((count: number) => void) | null = null
-
-export function setCritEffectCallback(callback: (count: number) => void): void {
-  onCritEffect = callback
-}
-
-// Callback for state recalculation (set by packages.ts to avoid circular import)
-let onCascadeEnd: ((scopePath: string[]) => void) | null = null
-
-export function setCascadeEndCallback(
-  callback: (scopePath: string[]) => void
-): void {
-  onCascadeEnd = callback
-}
+import { emit } from './events'
 
 // Constants for cascade behavior
 const BASE_SPAWN_INTERVAL = 120 // Initial ms between spawns
@@ -73,18 +47,8 @@ const SPAWN_INTERVAL_SPEEDUP = 0.85 // Deeper layers spawn faster (base multipli
 // Note: COMPRESSED_CHANCE and MAX_COMPRESSED_DEPTH are now dynamic
 // Use getCompressionChance(depth) and getMaxCompressedDepth() from state.ts
 
-// Extended cascade state stored on gameState.cascade
-interface CascadeData {
-  scopePath: string[] // Full path to the package whose internals are cascading
-  subDepQueue: Array<{ parentIndex: number; identity: PackageIdentity }>
-  compressedIndices: Set<number>
-  // Surge boosts (consumed at cascade start)
-  surgeGoldenBoost: number // Additive golden chance
-  surgeFragmentBoost: number // Additive fragment chance
-}
-
 // Queue for pending cascades (FIFO - first entered scope gets completed first)
-const cascadeQueue: string[][] = []
+let cascadeQueue: string[][] = []
 
 /**
  * Check if cascade is currently active
@@ -119,6 +83,11 @@ export function startCascade(scopePath: string[]): void {
  */
 function startCascadeImmediate(scopePath: string[], pkg: Package): void {
   if (!pkg.internalPackages || !pkg.internalWires) return
+  if (scopePath.length === 0) return // Defensive check
+
+  // Extract scope package ID safely
+  const scopePackageId = scopePath[scopePath.length - 1]
+  if (!scopePackageId) return
 
   const depth = scopePath.length
   const isStarterKit = pkg.identity?.name === 'starter-kit'
@@ -152,9 +121,7 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
       if (hasGuaranteedCrit) {
         gameState.cascade.guaranteedCrits--
       }
-      if (onCritEffect) {
-        onCritEffect(count)
-      }
+      emit('cascade:crit', { count })
     }
 
     // Apply surge size multiplier
@@ -206,7 +173,7 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
     const identity = depIdentities[i]!
 
     pendingSpawns.push({
-      packageId: scopePath[scopePath.length - 1]!, // Parent is last in path
+      packageId: scopePackageId, // Parent is last in path
       identity,
       position: {
         x: Math.cos(angle) * dist,
@@ -243,17 +210,17 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
     }
   }
 
-  // Store cascade data
-  const cascadeData = gameState.cascade as unknown as CascadeData
-  cascadeData.scopePath = [...scopePath]
-  cascadeData.subDepQueue = subDepPlaceholders
-  cascadeData.compressedIndices = compressedIndices
-  cascadeData.surgeGoldenBoost = surgeBoost.goldenBoost
-  cascadeData.surgeFragmentBoost = surgeBoost.fragmentBoost
+  // Store cascade data (now properly typed on CascadeState)
+  const cascade = gameState.cascade
+  cascade.scopePath = [...scopePath]
+  cascade.subDepQueue = subDepPlaceholders
+  cascade.compressedIndices = compressedIndices
+  cascade.surgeGoldenBoost = surgeBoost.goldenBoost
+  cascade.surgeFragmentBoost = surgeBoost.fragmentBoost
 
   // Start the cascade
-  gameState.cascade.active = true
-  gameState.cascade.scopePackageId = scopePath[scopePath.length - 1]!
+  cascade.active = true
+  cascade.scopePackageId = scopePath[scopePath.length - 1] ?? null
   gameState.cascade.pendingSpawns = pendingSpawns
   gameState.cascade.lastSpawnTime = Date.now()
   // Faster spawns at deeper levels
@@ -292,10 +259,16 @@ export function updateCascade(): void {
  */
 function spawnNextFromQueue(): void {
   const cascade = gameState.cascade
-  const cascadeData = cascade as unknown as CascadeData
 
-  const scopePath = cascadeData.scopePath
+  const scopePath = cascade.scopePath
   if (!scopePath || scopePath.length === 0) {
+    endCascade()
+    return
+  }
+
+  // Extract scope package ID safely (we've validated length > 0 above)
+  const scopePackageId = scopePath[scopePath.length - 1]
+  if (!scopePackageId) {
     endCascade()
     return
   }
@@ -322,10 +295,10 @@ function spawnNextFromQueue(): void {
   const spawn = cascade.pendingSpawns[0]
   if (!spawn) {
     // Queue empty - check for sub-deps to add
-    if (cascadeData.subDepQueue && cascadeData.subDepQueue.length > 0) {
+    if (cascade.subDepQueue && cascade.subDepQueue.length > 0) {
       const internalPkgIds = Array.from(targetPackages.keys())
 
-      for (const subDep of cascadeData.subDepQueue) {
+      for (const subDep of cascade.subDepQueue) {
         const parentId = internalPkgIds[subDep.parentIndex]
         if (!parentId) continue
 
@@ -343,7 +316,7 @@ function spawnNextFromQueue(): void {
           Math.random() * 30
 
         cascade.pendingSpawns.push({
-          packageId: scopePath[scopePath.length - 1]!,
+          packageId: scopePackageId,
           identity: subDep.identity,
           position: {
             x: Math.cos(subAngle) * subDistance,
@@ -362,7 +335,7 @@ function spawnNextFromQueue(): void {
         })
       }
 
-      cascadeData.subDepQueue = []
+      cascade.subDepQueue = []
 
       if (cascade.pendingSpawns.length > 0) {
         return
@@ -394,7 +367,7 @@ function spawnNextFromQueue(): void {
   const isCompressed =
     depth <= maxDepth &&
     !spawn.isSubDep &&
-    cascadeData.compressedIndices?.has(spawnIndex)
+    cascade.compressedIndices?.has(spawnIndex)
 
   // Create the package
   const id = generateId()
@@ -404,8 +377,8 @@ function spawnNextFromQueue(): void {
   const effectiveDepth = depth + spawn.depth
 
   // Get surge boosts for this cascade
-  const surgeGoldenBoost = cascadeData.surgeGoldenBoost ?? 0
-  const surgeFragmentBoost = cascadeData.surgeFragmentBoost ?? 0
+  const surgeGoldenBoost = cascade.surgeGoldenBoost
+  const surgeFragmentBoost = cascade.surgeFragmentBoost
 
   // Roll for golden package (depth 3+ only, boosted by surge)
   const goldenChance = GOLDEN_SPAWN_CHANCE + surgeGoldenBoost
@@ -505,8 +478,11 @@ function spawnNextFromQueue(): void {
 
   // Trigger particle effect only if viewing the cascading scope
   // (prevents effects playing on wrong layer when navigating away)
-  if (onSpawnEffect && isViewingCascadeScope()) {
-    onSpawnEffect(spawn.position, isConflicted)
+  if (isViewingCascadeScope()) {
+    emit('cascade:spawn-effect', {
+      position: spawn.position,
+      isConflict: isConflicted,
+    })
   }
 }
 
@@ -515,8 +491,7 @@ function spawnNextFromQueue(): void {
  * Exported so UI can conditionally show cascade-related effects
  */
 export function isViewingCascadeScope(): boolean {
-  const cascadeData = gameState.cascade as unknown as CascadeData
-  const scopePath = cascadeData.scopePath
+  const scopePath = gameState.cascade.scopePath
   if (!scopePath) return false
 
   const viewStack = gameState.scopeStack
@@ -551,27 +526,25 @@ function checkInternalIncompatibility(
  * End the cascade and trigger state recalculation
  */
 function endCascade(): void {
-  const cascadeData = gameState.cascade as unknown as CascadeData
-  const scopePath = cascadeData.scopePath ? [...cascadeData.scopePath] : []
+  const cascade = gameState.cascade
+  const scopePath = cascade.scopePath ? [...cascade.scopePath] : []
 
-  gameState.cascade.active = false
-  gameState.cascade.scopePackageId = null
-  gameState.cascade.pendingSpawns = []
+  // Reset cascade state to initial values
+  cascade.active = false
+  cascade.scopePackageId = null
+  cascade.pendingSpawns = []
+  cascade.scopePath = null
+  cascade.subDepQueue = null
+  cascade.compressedIndices = null
+  cascade.surgeGoldenBoost = 0
+  cascade.surgeFragmentBoost = 0
 
   // Clear starved state
   setCascadeStarved(false)
 
-  // Clear cascade data
-  const cd = gameState.cascade as Record<string, unknown>
-  cd.scopePath = undefined
-  cd.subDepQueue = undefined
-  cd.compressedIndices = undefined
-  cd.surgeGoldenBoost = undefined
-  cd.surgeFragmentBoost = undefined
-
-  // Trigger state recalculation callback
-  if (onCascadeEnd && scopePath.length > 0) {
-    onCascadeEnd(scopePath)
+  // Emit cascade end event for state recalculation
+  if (scopePath.length > 0) {
+    emit('cascade:end', { scopePath })
   }
 
   // Process next cascade in queue (FIFO)
@@ -621,6 +594,12 @@ export function getAllPendingSpawns(): PendingSpawn[] {
  * Get the current cascade scope path
  */
 export function getCascadeScopePath(): string[] {
-  const cascadeData = gameState.cascade as unknown as CascadeData
-  return cascadeData.scopePath ? [...cascadeData.scopePath] : []
+  return gameState.cascade.scopePath ? [...gameState.cascade.scopePath] : []
+}
+
+/**
+ * Clear the cascade queue (e.g., on prestige)
+ */
+export function clearCascadeQueue(): void {
+  cascadeQueue = []
 }

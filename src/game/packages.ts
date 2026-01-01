@@ -24,8 +24,9 @@ import {
   STARTER_KIT_IDENTITY,
   type PackageIdentity,
 } from './registry'
-import { setRecalculateCallback } from './symlinks'
-import { onScopeStabilized, setMutationsRecalculateCallback } from './mutations'
+import { markDuplicateGroupsDirty } from './symlinks'
+import { onScopeStabilized } from './mutations'
+import { on } from './events'
 
 // Re-export ID initialization for save/load
 export { initIdCounterFromState } from './id-generator'
@@ -319,7 +320,7 @@ export function spawnDependencies(packageId: string): Package[] {
 // ============================================
 
 // Import cascade and scope systems
-import { startCascade, isCascadeActive, setCascadeEndCallback } from './cascade'
+import { startCascade, isCascadeActive } from './cascade'
 import { getScopeDepth } from './scope'
 
 /**
@@ -455,14 +456,22 @@ export function recalculateStateAtPath(scopePath: string[]): void {
   }
 }
 
-/**
- * Handle cascade completion - recalculate state for the scope and propagate up
- */
-function handleCascadeEnd(scopePath: string[]): void {
-  recalculateStateAtPath(scopePath)
-}
+// ============================================
+// EVENT SUBSCRIPTIONS
+// ============================================
 
-// Register callbacks
-setRecalculateCallback(recalculateStateAtPath)
-setMutationsRecalculateCallback(recalculateStateAtPath)
-setCascadeEndCallback(handleCascadeEnd)
+// Subscribe to cascade end events
+on('cascade:end', ({ scopePath }) => {
+  recalculateStateAtPath(scopePath)
+  markDuplicateGroupsDirty()
+})
+
+// Subscribe to scope recalculation requests
+on('scope:recalculate', ({ scopePath }) => {
+  recalculateStateAtPath(scopePath)
+})
+
+// Subscribe to package changes (for duplicate detection)
+on('packages:changed', () => {
+  markDuplicateGroupsDirty()
+})

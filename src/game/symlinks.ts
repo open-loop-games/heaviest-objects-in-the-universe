@@ -14,20 +14,7 @@ import type { Package } from './types'
 import { triggerOrganizeBoost, markPackageRelocated } from './physics'
 import { updateCrossPackageDuplicates } from './cross-package'
 import { emitQualityEvent, onSymlinkMerged } from './mutations'
-
-// Callbacks to avoid circular dependency
-// Set by packages.ts on initialization - takes full scope path for arbitrary depth
-let _recalculateStateAtPath: ((scopePath: string[]) => void) | null = null
-
-export function setRecalculateCallback(
-  fn: (scopePath: string[]) => void
-): void {
-  _recalculateStateAtPath = fn
-}
-
-function getRecalculateStateAtPath() {
-  return _recalculateStateAtPath
-}
+import { emit } from './events'
 
 // Halo colors for duplicate groups (cycle through these)
 export const HALO_COLORS = [
@@ -44,8 +31,20 @@ export interface DuplicateGroup {
   haloColorIndex: number
 }
 
-// Cache of duplicate groups (recalculated each frame, scope-aware)
+// Cache of duplicate groups (recalculated when dirty)
 const duplicateGroups: Map<string, DuplicateGroup> = new Map()
+
+// Dirty flag for duplicate group recalculation
+let duplicateGroupsDirty = true
+let lastScopeStackLength = -1
+
+/**
+ * Mark duplicate groups as needing recalculation.
+ * Call this when packages are added, removed, or merged.
+ */
+export function markDuplicateGroupsDirty(): void {
+  duplicateGroupsDirty = true
+}
 
 // ============================================
 // DUPLICATE DETECTION (SCOPE-AWARE)
@@ -54,9 +53,20 @@ const duplicateGroups: Map<string, DuplicateGroup> = new Map()
 /**
  * Find all duplicate package groups (packages with same identity)
  * SCOPE-AWARE: Uses getCurrentScopePackages() so it works both at root and inside packages
- * Call this each frame or when packages change
+ * Uses dirty flag to avoid recalculating every frame
  */
 export function updateDuplicateGroups(): void {
+  // Also invalidate on scope change
+  const currentScopeLength = gameState.scopeStack.length
+  if (currentScopeLength !== lastScopeStackLength) {
+    duplicateGroupsDirty = true
+    lastScopeStackLength = currentScopeLength
+  }
+
+  // Skip recalculation if not dirty
+  if (!duplicateGroupsDirty) return
+  duplicateGroupsDirty = false
+
   duplicateGroups.clear()
 
   const identityGroups = new Map<string, string[]>()
@@ -362,16 +372,17 @@ export function performSymlinkMerge(
     // Merging duplicates in inner scope grants a guaranteed crit on next pop
     gameState.cascade.guaranteedCrits++
 
-    // Recalculate internal state (celebration handled inside recalculateStateAtPath)
-    const recalcFn = getRecalculateStateAtPath()
-    if (recalcFn) {
-      recalcFn([...gameState.scopeStack])
-    }
+    // Emit event for scope state recalculation
+    emit('scope:recalculate', { scopePath: [...gameState.scopeStack] })
   }
 
-  // Immediately refresh duplicate groups to clear stale halos
+  // Mark duplicate groups as dirty and refresh immediately
+  markDuplicateGroupsDirty()
   updateDuplicateGroups()
   updateCrossPackageDuplicates()
+
+  // Also emit packages changed for any other listeners
+  emit('packages:changed')
 
   return weightSaved
 }

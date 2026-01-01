@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { gameState } from '../../game/state'
 import {
   getUpgradeLevel,
@@ -71,12 +71,18 @@ function handleMouseUp() {
   isDragging.value = false
 }
 
-// Global mouseup to end drag
-if (typeof window !== 'undefined') {
-  window.addEventListener('mouseup', () => {
-    isDragging.value = false
-  })
+// Global mouseup to end drag - stored as named function for cleanup
+function handleGlobalMouseUp() {
+  isDragging.value = false
 }
+
+onMounted(() => {
+  window.addEventListener('mouseup', handleGlobalMouseUp)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('mouseup', handleGlobalMouseUp)
+})
 
 // ============================================
 // UPGRADE PIPS
