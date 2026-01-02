@@ -129,7 +129,9 @@ export function canPurchaseUpgrade(upgradeId: string): boolean {
   if (level >= upgrade.maxLevel) return false
 
   const cost = getUpgradeCost(upgradeId)
-  return gameState.resources.bandwidth >= cost
+  // Reserve enough bandwidth to spawn at least one package (base install cost)
+  const reserve = 25 * gameState.meta.ecosystemTier
+  return gameState.resources.bandwidth >= cost + reserve
 }
 
 // Purchase an upgrade

@@ -89,9 +89,10 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
   const depth = scopePath.length
   const isStarterKit = pkg.identity?.name === 'starter-kit'
 
-  // Consume surge boost if available (only at depth 1, unlocked after P2)
+  // Consume surge boost if available (unlocked after P2)
+  // Strategic choice: use early for size, or save for deeper cascades with better reward chances
   let surgeBoost = { sizeMultiplier: 1, goldenBoost: 0, fragmentBoost: 0 }
-  if (depth === 1 && isSurgeUnlocked()) {
+  if (isSurgeUnlocked()) {
     surgeBoost = consumeSurge()
   }
 
