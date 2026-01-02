@@ -160,6 +160,9 @@ export class GameRenderer {
     this.nodeRenderer = new NodeRenderer(this.app)
     this.worldContainer.addChild(this.nodeRenderer.getContainer())
 
+    // Badges layer (above nodes so badges are never occluded by other nodes)
+    this.worldContainer.addChild(this.nodeRenderer.getBadgesContainer())
+
     this.effectsRenderer = new EffectsRenderer(this.app)
     this.worldContainer.addChild(this.effectsRenderer.getContainer())
 
@@ -305,6 +308,13 @@ export class GameRenderer {
 
     // Update cross-package systems (sibling conflicts)
     updateCrossPackageConflicts()
+
+    // Determine if badges should render in elevated layer (above all nodes)
+    // Elevated when: physics is settled AND no symlink drag is active
+    const isSymlinkDragActive = this.symlinkDragSource !== null
+    const physicsSettled = getCleanliness() > 0.8 && !isOrganizing()
+    const badgesShouldElevate = physicsSettled && !isSymlinkDragActive
+    this.nodeRenderer.setBadgesElevated(badgesShouldElevate)
 
     // Use toRaw() to avoid Vue reactivity tracking in render loop
     // Use scope-aware getters for packages and wires

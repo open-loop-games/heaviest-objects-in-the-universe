@@ -293,6 +293,9 @@ export function getCursorHintState(): {
   show: boolean
   elapsed: number
 } | null {
+  // Skip cursor hints for players who have prestiged
+  if (gameState.meta.cacheTokens > 0) return null
+
   const now = Date.now()
 
   // Scenario 1: First click not done yet

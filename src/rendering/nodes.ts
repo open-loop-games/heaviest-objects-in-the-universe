@@ -73,17 +73,31 @@ interface NodeContainer {
   lastIconKey: string | null
 }
 
+interface BadgeData {
+  graphics: Graphics
+  nodeId: string
+}
+
 export class NodeRenderer {
   private app: Application
   private nodesLayer: Container
+  private badgesLayer: Container
   private nodeContainers: Map<string, NodeContainer> = new Map()
+  private badgeContainers: Map<string, BadgeData> = new Map()
   private queuedDepsGraphics: Graphics
+  private badgesElevated = false // When true, badges render in elevated layer above all nodes
 
   constructor(app: Application) {
     this.app = app
     this.nodesLayer = new Container()
     this.nodesLayer.label = 'nodes'
     this.app.stage.addChild(this.nodesLayer)
+
+    // Badges layer (separate from nodes for z-ordering - badges always on top)
+    this.badgesLayer = new Container()
+    this.badgesLayer.label = 'badges'
+    // Note: badgesLayer is NOT added here - it's retrieved via getBadgesContainer()
+    // and added to the world container at a higher z-index by the renderer
 
     // Graphics for rendering queued deps (awaiting bandwidth)
     this.queuedDepsGraphics = new Graphics()
@@ -206,6 +220,100 @@ export class NodeRenderer {
     // Apply dimming for first conflict treatment
     const dimAmount = effects?.dimAmount || 0
     nodeData.container.alpha = 1 - dimAmount * 0.4 // Dim to 0.6 at max
+
+    // Update badges in separate layer (always on top of all nodes)
+    this.updateBadge(pkg, effects, nodeData.container.x, nodeData.container.y)
+  }
+
+  /**
+   * Update badge graphics in the elevated badges layer
+   * Badges render above all nodes to prevent occlusion
+   * Only used when badgesElevated is true; otherwise badges are drawn inline in drawNode
+   */
+  private updateBadge(
+    pkg: Package,
+    effects: NodeEffects | undefined,
+    nodeX: number,
+    nodeY: number
+  ): void {
+    // Skip elevated badges when not in elevated mode (drawNode handles them)
+    if (!this.badgesElevated) {
+      // Clean up any existing badge for this node
+      const badgeData = this.badgeContainers.get(pkg.id)
+      if (badgeData) {
+        this.badgesLayer.removeChild(badgeData.graphics)
+        badgeData.graphics.destroy()
+        this.badgeContainers.delete(pkg.id)
+      }
+      return
+    }
+
+    const radius = getNodeRadius(pkg)
+
+    // Determine if any badges should show
+    const showDrillDown =
+      effects?.internalState &&
+      effects.internalState !== 'stable' &&
+      !effects.isGhost
+    const showCacheFragment = effects?.hasCacheFragment && !effects.isGhost
+    const showStableCheckmark = effects?.isScopeRootStable && !effects.isGhost
+    const showClickHint =
+      effects?.showHint &&
+      (effects?.pulseIntensity ?? 0) > 0.5 &&
+      !effects.isGhost
+
+    const hasBadge =
+      showDrillDown || showCacheFragment || showStableCheckmark || showClickHint
+
+    // Get or create badge graphics
+    let badgeData = this.badgeContainers.get(pkg.id)
+
+    if (!hasBadge) {
+      // Remove badge if no longer needed
+      if (badgeData) {
+        this.badgesLayer.removeChild(badgeData.graphics)
+        badgeData.graphics.destroy()
+        this.badgeContainers.delete(pkg.id)
+      }
+      return
+    }
+
+    if (!badgeData) {
+      const graphics = new Graphics()
+      graphics.label = `badge-${pkg.id}`
+      badgeData = { graphics, nodeId: pkg.id }
+      this.badgeContainers.set(pkg.id, badgeData)
+      this.badgesLayer.addChild(graphics)
+    }
+
+    const graphics = badgeData.graphics
+    graphics.clear()
+
+    // Position badge container at node position
+    graphics.x = nodeX
+    graphics.y = nodeY
+
+    // Draw badges (positions are relative to node center)
+    if (
+      showDrillDown &&
+      effects?.internalState &&
+      (effects.internalState === 'pristine' ||
+        effects.internalState === 'unstable')
+    ) {
+      this.drawDrillDownIndicator(graphics, radius, effects.internalState)
+    }
+
+    if (showCacheFragment) {
+      this.drawCacheFragmentIndicator(graphics, radius)
+    }
+
+    if (showStableCheckmark) {
+      this.drawStableCheckmark(graphics, radius)
+    }
+
+    if (showClickHint && effects) {
+      this.drawClickHint(graphics, effects.pulseIntensity, radius)
+    }
   }
 
   /**
@@ -304,10 +412,7 @@ export class NodeRenderer {
     // Portal rings for top-level packages (drawn on top of main circle)
     if (effects?.internalState) {
       this.drawPortalRings(graphics, radius, effects.internalState)
-      // Drill-down badge with down arrow (only if not stable)
-      if (effects.internalState !== 'stable') {
-        this.drawDrillDownIndicator(graphics, radius, effects.internalState)
-      }
+      // Note: Drill-down badge is now rendered in the badges layer (above all nodes)
     }
 
     // Installation progress ring
@@ -338,19 +443,33 @@ export class NodeRenderer {
       graphics.stroke({ color: Colors.borderConflict, width: 2, alpha: 0.7 })
     }
 
-    // Cache fragment indicator - purple diamond pip at bottom
-    if (effects?.hasCacheFragment) {
-      this.drawCacheFragmentIndicator(graphics, radius)
-    }
+    // Badges: drawn inline when not elevated, or in separate layer when elevated
+    // When elevated (physics settled, no drag), badges render above all nodes
+    // When not elevated, badges render with their node (can be occluded but less intrusive)
+    if (!this.badgesElevated) {
+      // Drill-down badge (only if not stable)
+      if (
+        effects?.internalState &&
+        (effects.internalState === 'pristine' ||
+          effects.internalState === 'unstable')
+      ) {
+        this.drawDrillDownIndicator(graphics, radius, effects.internalState)
+      }
 
-    // Stable scope root checkmark badge at bottom
-    if (effects?.isScopeRootStable) {
-      this.drawStableCheckmark(graphics, radius)
-    }
+      // Cache fragment indicator
+      if (effects?.hasCacheFragment) {
+        this.drawCacheFragmentIndicator(graphics, radius)
+      }
 
-    // Click hint for root (pulsing arrow or indicator)
-    if (effects?.showHint && pulseIntensity > 0.5) {
-      this.drawClickHint(graphics, pulseIntensity, radius)
+      // Stable scope root checkmark badge
+      if (effects?.isScopeRootStable) {
+        this.drawStableCheckmark(graphics, radius)
+      }
+
+      // Click hint for root
+      if (effects?.showHint && pulseIntensity > 0.5) {
+        this.drawClickHint(graphics, pulseIntensity, radius)
+      }
     }
   }
 
@@ -845,6 +964,14 @@ export class NodeRenderer {
       nodeData.container.destroy()
       this.nodeContainers.delete(id)
     }
+
+    // Also remove badge if present
+    const badgeData = this.badgeContainers.get(id)
+    if (badgeData) {
+      this.badgesLayer.removeChild(badgeData.graphics)
+      badgeData.graphics.destroy()
+      this.badgeContainers.delete(id)
+    }
   }
 
   /**
@@ -881,6 +1008,13 @@ export class NodeRenderer {
     this.nodesLayer.removeChildren()
     // Re-add the queued deps graphics after clearing
     this.nodesLayer.addChild(this.queuedDepsGraphics)
+
+    // Clear badges layer
+    for (const badgeData of this.badgeContainers.values()) {
+      badgeData.graphics.destroy()
+    }
+    this.badgeContainers.clear()
+    this.badgesLayer.removeChildren()
   }
 
   /**
@@ -888,6 +1022,32 @@ export class NodeRenderer {
    */
   getContainer(): Container {
     return this.nodesLayer
+  }
+
+  /**
+   * Get the badges container (rendered above nodes for visibility)
+   */
+  getBadgesContainer(): Container {
+    return this.badgesLayer
+  }
+
+  /**
+   * Set whether badges should render in elevated layer (above all nodes)
+   * When false, badges render inline with their nodes (can be occluded)
+   * When true, badges render in separate layer (always visible)
+   */
+  setBadgesElevated(elevated: boolean): void {
+    if (this.badgesElevated === elevated) return
+    this.badgesElevated = elevated
+
+    // Clear elevated badges when switching to non-elevated mode
+    if (!elevated) {
+      for (const badgeData of this.badgeContainers.values()) {
+        badgeData.graphics.destroy()
+      }
+      this.badgeContainers.clear()
+      this.badgesLayer.removeChildren()
+    }
   }
 
   // ============================================

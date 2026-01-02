@@ -163,8 +163,11 @@ export function getConflictIndicators(
     }
   }
 
-  // First conflict flash vignette
-  if (tutorialState.getHasSeenFirstConflict()) {
+  // First conflict flash vignette (skip for prestiged players)
+  if (
+    tutorialState.getHasSeenFirstConflict() &&
+    gameState.meta.cacheTokens === 0
+  ) {
     const elapsed = now - tutorialState.getFirstConflictTime()
     if (elapsed < 500) {
       const flashProgress = elapsed / 500
@@ -202,6 +205,7 @@ export function getInnerConflictIndicators(
   const scopeRoot = getCurrentScopeRoot()
 
   const isFirstInnerConflictTeaching =
+    gameState.meta.cacheTokens === 0 &&
     gameState.onboarding.firstSymlinkSeen &&
     !gameState.onboarding.firstInnerConflictSeen
 
@@ -344,7 +348,9 @@ export function getDuplicateIndicators(
   const scopePackages = inScope ? getCurrentScopePackages() : gameState.packages
 
   const isFirstDuplicate =
-    !gameState.onboarding.firstSymlinkSeen && duplicateGroups.length > 0
+    gameState.meta.cacheTokens === 0 &&
+    !gameState.onboarding.firstSymlinkSeen &&
+    duplicateGroups.length > 0
 
   if (isFirstDuplicate && !tutorialState.getHasSeenFirstDuplicate()) {
     tutorialState.setHasSeenFirstDuplicate(true)
@@ -473,7 +479,11 @@ export function getScopeExitIndicators(bounds: ScreenBounds): {
   const indicators: EdgeIndicator[] = []
   const vignettes: Vignette[] = []
 
-  if (!isInPackageScope() || gameState.onboarding.firstScopeExited) {
+  if (
+    !isInPackageScope() ||
+    gameState.onboarding.firstScopeExited ||
+    gameState.meta.cacheTokens > 0
+  ) {
     return { indicators, vignettes }
   }
 
@@ -526,8 +536,11 @@ export function getFirstSpawnedIndicators(
 
   const inScope = isInPackageScope()
 
-  // Skip first-spawned teaching after first prestige (tutorial complete)
-  if (gameState.onboarding.firstPrestigeComplete) {
+  // Skip first-spawned teaching for prestiged players
+  if (
+    gameState.onboarding.firstPrestigeComplete ||
+    gameState.meta.cacheTokens > 0
+  ) {
     return { indicators, vignettes }
   }
 
@@ -632,8 +645,11 @@ export function getPrestigeIndicators(
     })
   }
 
-  // First prestige teaching - from left edge to prestige panel top
-  if (!gameState.onboarding.firstPrestigeComplete) {
+  // First prestige teaching - from left edge to prestige panel top (skip for prestiged players)
+  if (
+    !gameState.onboarding.firstPrestigeComplete &&
+    gameState.meta.cacheTokens === 0
+  ) {
     // Panel: left 24px, padding 16px horiz / 12px vert, container 100x100
     // Total: 132px wide x 124px tall
     const panelCenterX = 24 + 66 // left offset + half panel width
