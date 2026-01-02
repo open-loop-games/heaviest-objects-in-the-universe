@@ -263,10 +263,11 @@ export class GameRenderer {
     // Update black hole effects
     this.blackHoleRenderer.update(deltaTime, screenWidth, screenHeight)
 
-    // Hide wires, ghost lines, and background layers during collapse animation
+    // Hide wires, ghost lines, badges, and background layers during collapse animation
     const collapseAnimating = this.blackHoleRenderer.isCollapseAnimating()
     this.wireRenderer.getContainer().visible = !collapseAnimating
     this.ghostLinesGraphics.visible = !collapseAnimating
+    this.nodeRenderer.getBadgesContainer().visible = !collapseAnimating
     // Force hide inception background layers during collapse - they would be distracting
     // (updateBackgroundLayers will restore proper visibility when not collapsing)
     if (collapseAnimating) {
