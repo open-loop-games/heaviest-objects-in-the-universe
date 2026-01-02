@@ -142,9 +142,16 @@ function deserializePackageFromSave(
     return null
   }
 
+  // Check if this package is a compressed package (has internal scope)
+  // A package with internalState set OR with internal arrays in save data is compressed
+  const isCompressedPackage =
+    pkg.internalState !== null ||
+    Array.isArray(data.internalPackages) ||
+    Array.isArray(data.internalWires)
+
   // Restore internal packages recursively
+  const internalMap = new Map<string, Package>()
   if (data.internalPackages && Array.isArray(data.internalPackages)) {
-    const internalMap = new Map<string, Package>()
     for (const entry of data.internalPackages) {
       if (!Array.isArray(entry) || entry.length !== 2) continue
       const [id, innerData] = entry as [unknown, unknown]
@@ -158,12 +165,11 @@ function deserializePackageFromSave(
         internalMap.set(id, innerPkg)
       }
     }
-    pkg.internalPackages = internalMap.size > 0 ? internalMap : null
   }
 
   // Restore internal wires with validation
+  const wireMap = new Map<string, Wire>()
   if (data.internalWires && Array.isArray(data.internalWires)) {
-    const wireMap = new Map<string, Wire>()
     for (const entry of data.internalWires) {
       if (!Array.isArray(entry) || entry.length !== 2) continue
       const [id, wireData] = entry as [unknown, unknown]
@@ -175,14 +181,20 @@ function deserializePackageFromSave(
         wireMap.set(id, wire)
       }
     }
-    pkg.internalWires = wireMap.size > 0 ? wireMap : null
   }
 
-  // If we have internal packages, ensure internalState is set
-  if (pkg.internalPackages && pkg.internalPackages.size > 0) {
+  // Preserve empty Maps for compressed packages (pristine state before first entry)
+  // Only set to null for non-compressed packages (leaf nodes)
+  if (isCompressedPackage) {
+    pkg.internalPackages = internalMap
+    pkg.internalWires = wireMap
+    // Ensure internalState is set for compressed packages
     if (!pkg.internalState) {
-      pkg.internalState = 'stable' // Default to stable for loaded scopes
+      pkg.internalState = internalMap.size > 0 ? 'stable' : 'pristine'
     }
+  } else {
+    pkg.internalPackages = null
+    pkg.internalWires = null
   }
 
   return pkg
