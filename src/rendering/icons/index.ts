@@ -82,10 +82,17 @@ function getDeviconPaths(iconKey: string): {
 
 function tintSvgLight(svgText: string): string {
   let result = svgText
+  // Replace existing fill attributes
   result = result.replace(/fill="(?!none)[^"]*"/gi, `fill="${ICON_TINT_COLOR}"`)
   result = result.replace(
     /fill:\s*(?!none)[^;"}]*/gi,
     `fill:${ICON_TINT_COLOR}`
+  )
+  // Add fill to paths/shapes that don't have one (they default to black)
+  // Match <path, <rect, <circle, <polygon, <ellipse without a fill attribute
+  result = result.replace(
+    /<(path|rect|circle|polygon|ellipse)(\s+)(?![^>]*\bfill[=:])/gi,
+    `<$1$2fill="${ICON_TINT_COLOR}" `
   )
   return result
 }
