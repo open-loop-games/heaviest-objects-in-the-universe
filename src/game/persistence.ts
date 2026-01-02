@@ -225,6 +225,110 @@ function validateWire(data: Record<string, unknown>): Wire | null {
 }
 
 /**
+ * Reset transient state that shouldn't persist across sessions.
+ * Cascades and active automation are in-progress operations that
+ * can't meaningfully resume after a load.
+ */
+function resetTransientState(): void {
+  // Reset cascade state - can't resume mid-cascade after load
+  // (compressedIndices is a Set which doesn't serialize, and timing would be wrong)
+  gameState.cascade = {
+    active: false,
+    scopePackageId: null,
+    pendingSpawns: [],
+    lastSpawnTime: 0,
+    spawnInterval: 100,
+    guaranteedCrits: gameState.cascade.guaranteedCrits ?? 0, // Preserve earned crits
+    scopePath: null,
+    subDepQueue: null,
+    compressedIndices: null,
+    surgeGoldenBoost: 0,
+    surgeFragmentBoost: 0,
+  }
+
+  // Reset active automation state (preserve toggle settings)
+  gameState.automation.resolveActive = false
+  gameState.automation.resolveTargetWireId = null
+  gameState.automation.resolveTargetScope = null
+  gameState.automation.processStartTime = 0
+}
+
+/**
+ * Validate and fix scope state to prevent softlocks.
+ * Ensures scopeStack only references packages that exist.
+ */
+function validateScopeState(): void {
+  // Ensure scopeStack is an array
+  if (!Array.isArray(gameState.scopeStack)) {
+    gameState.scopeStack = []
+    gameState.currentScope = 'root'
+    return
+  }
+
+  // Validate each scope in the stack exists and has internal maps
+  const validatedStack: string[] = []
+  for (const scopeId of gameState.scopeStack) {
+    if (typeof scopeId !== 'string') break
+
+    // First level: check top-level packages
+    if (validatedStack.length === 0) {
+      const pkg = gameState.packages.get(scopeId)
+      if (!pkg || !pkg.internalPackages || !pkg.internalWires) break
+      validatedStack.push(scopeId)
+    } else {
+      // Deeper levels: traverse into internal packages
+      let current = gameState.packages.get(validatedStack[0]!)
+      for (let i = 1; i < validatedStack.length && current; i++) {
+        current = current.internalPackages?.get(validatedStack[i]!) ?? undefined
+      }
+      const innerPkg = current?.internalPackages?.get(scopeId)
+      if (!innerPkg || !innerPkg.internalPackages || !innerPkg.internalWires)
+        break
+      validatedStack.push(scopeId)
+    }
+  }
+
+  // Update scope state
+  gameState.scopeStack = validatedStack
+  gameState.currentScope =
+    validatedStack.length > 0
+      ? validatedStack[validatedStack.length - 1]!
+      : 'root'
+}
+
+/**
+ * Fix interrupted cascade states.
+ * If a scope is 'unstable' but empty/nearly empty (cascade was interrupted),
+ * reset to 'pristine' so re-entering triggers a fresh cascade.
+ */
+function fixInterruptedCascades(pkg: Package): void {
+  if (!pkg.internalPackages || !pkg.internalWires) return
+
+  // If unstable but empty, reset to pristine
+  if (pkg.internalState === 'unstable' && pkg.internalPackages.size === 0) {
+    pkg.internalState = 'pristine'
+  }
+
+  // Recursively check nested compressed packages
+  for (const innerPkg of pkg.internalPackages.values()) {
+    if (innerPkg.internalPackages) {
+      fixInterruptedCascades(innerPkg)
+    }
+  }
+}
+
+/**
+ * Fix all interrupted cascades in the game state.
+ */
+function fixAllInterruptedCascades(): void {
+  for (const pkg of gameState.packages.values()) {
+    if (pkg.internalPackages) {
+      fixInterruptedCascades(pkg)
+    }
+  }
+}
+
+/**
  * Migrate game state to ensure all required fields exist
  * Called after loading a save to handle backwards compatibility
  */
@@ -341,6 +445,15 @@ export function loadGame(saveString: string): boolean {
 
     // Migrate missing fields for backwards compatibility
     migrateGameState()
+
+    // Reset transient state that can't persist (cascades, active automation)
+    resetTransientState()
+
+    // Fix interrupted cascades (empty unstable scopes -> pristine)
+    fixAllInterruptedCascades()
+
+    // Validate scope references to prevent softlocks
+    validateScopeState()
 
     // Sync derived values after loading
     syncEcosystemTier()
