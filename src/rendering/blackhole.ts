@@ -1,8 +1,11 @@
 // Black hole and gravity effects renderer for prestige visualization
+// NOTE: These dramatic effects (vignette, shake, gravity lines) only trigger
+// at Tier 5 when approaching collapse. Tiers 1-4 use the cleaner "ship" prestige.
 
 import { Graphics, Container, type Application } from 'pixi.js'
 import { Colors } from './colors'
 import { gameState, computed_gravity } from '../game/state'
+import { on } from '../game/events'
 import {
   startCollapse as startCollapseState,
   endCollapse as endCollapseState,
@@ -107,6 +110,10 @@ export class BlackHoleRenderer {
   private shakeIntensity = 0
   private shakeOffset = { x: 0, y: 0 }
 
+  // Collapse hold state (from UI gesture)
+  private collapseHoldProgress = 0
+  private isHoldingCollapse = false
+
   // Prestige panel target position (screen coordinates)
   private prestigeTargetX = 0
   private prestigeTargetY = 0
@@ -174,6 +181,30 @@ export class BlackHoleRenderer {
         alpha: 0.4 + Math.random() * 0.4,
       })
     }
+
+    // Subscribe to collapse hold events for effect intensification
+    on('collapse:hold-start', () => {
+      this.isHoldingCollapse = true
+      this.collapseHoldProgress = 0
+    })
+
+    on('collapse:hold-progress', ({ progress }) => {
+      this.collapseHoldProgress = progress
+    })
+
+    on('collapse:hold-cancel', () => {
+      this.isHoldingCollapse = false
+      this.collapseHoldProgress = 0
+    })
+
+    on('collapse:locked', () => {
+      // Player is locked in - effects remain at high intensity
+    })
+
+    on('collapse:complete', () => {
+      this.isHoldingCollapse = false
+      this.collapseHoldProgress = 0
+    })
   }
 
   /**
@@ -182,6 +213,14 @@ export class BlackHoleRenderer {
    */
   private getGravityProgress(): number {
     return Math.min(1, computed_gravity.value)
+  }
+
+  /**
+   * Check if we're at Tier 5 (collapse tier)
+   * Dramatic effects only show at Tier 5 - lower tiers use cleaner "ship" prestige
+   */
+  private isCollapseTier(): boolean {
+    return gameState.meta.ecosystemTier >= 5
   }
 
   /**
@@ -229,46 +268,238 @@ export class BlackHoleRenderer {
       return
     }
 
-    // Update screen shake
-    if (progress >= GRAVITY_STAGES.COLLAPSE_IMMINENT) {
-      this.shakeIntensity =
-        (progress - GRAVITY_STAGES.COLLAPSE_IMMINENT) /
-        (1 - GRAVITY_STAGES.COLLAPSE_IMMINENT)
-      const shake = this.shakeIntensity * 2
-      this.shakeOffset.x = (Math.random() - 0.5) * shake
-      this.shakeOffset.y = (Math.random() - 0.5) * shake
+    // All dramatic pre-prestige effects only show at Tier 5 (collapse tier)
+    // Tiers 1-4 use the cleaner "ship" prestige with no screen effects
+    const showDramaticEffects = this.isCollapseTier()
+
+    // During collapse hold, effects intensify based on hold progress
+    // This creates the "draining" feel as the player commits to collapse
+    const holdIntensity = this.isHoldingCollapse ? this.collapseHoldProgress : 0
+
+    // Update screen shake (Tier 5 only)
+    // Shake is driven by hold progress when holding, otherwise by gravity progress
+    if (showDramaticEffects) {
+      if (this.isHoldingCollapse) {
+        // Shake intensifies with hold progress (accelerating curve matches drain)
+        this.shakeIntensity = holdIntensity * holdIntensity // Quadratic for drama
+        const shake = this.shakeIntensity * 8 // Stronger shake during hold
+        this.shakeOffset.x = (Math.random() - 0.5) * shake
+        this.shakeOffset.y = (Math.random() - 0.5) * shake
+      } else if (progress >= GRAVITY_STAGES.COLLAPSE_IMMINENT) {
+        this.shakeIntensity =
+          (progress - GRAVITY_STAGES.COLLAPSE_IMMINENT) /
+          (1 - GRAVITY_STAGES.COLLAPSE_IMMINENT)
+        const shake = this.shakeIntensity * 2
+        this.shakeOffset.x = (Math.random() - 0.5) * shake
+        this.shakeOffset.y = (Math.random() - 0.5) * shake
+      } else {
+        this.shakeIntensity = 0
+        this.shakeOffset.x = 0
+        this.shakeOffset.y = 0
+      }
     } else {
       this.shakeIntensity = 0
       this.shakeOffset.x = 0
       this.shakeOffset.y = 0
     }
 
-    // Draw effects based on progress
-    if (progress >= GRAVITY_STAGES.WARP_START) {
-      this.drawBackgroundWarp(progress, screenWidth, screenHeight)
+    // Skip all visual effects if not at collapse tier
+    if (!showDramaticEffects) {
+      return
     }
 
-    if (progress >= GRAVITY_STAGES.PULL_VISIBLE) {
-      this.drawGravityField(progress, screenWidth, screenHeight)
+    // During hold, force effects to maximum intensity and add hold-specific visuals
+    const effectProgress = this.isHoldingCollapse
+      ? Math.max(progress, 0.9 + holdIntensity * 0.1) // Lock effects at high intensity
+      : progress
+
+    // Draw effects based on progress (Tier 5 only)
+    if (effectProgress >= GRAVITY_STAGES.WARP_START) {
+      this.drawBackgroundWarp(effectProgress, screenWidth, screenHeight)
+    }
+
+    if (effectProgress >= GRAVITY_STAGES.PULL_VISIBLE) {
+      this.drawGravityField(effectProgress, screenWidth, screenHeight)
     }
 
     // Removed center black hole core - collapse now targets prestige panel instead
 
     // Draw pulsing vignette as prestige approaches (starts at 80%, intensifies at 100%)
-    if (progress >= GRAVITY_STAGES.PRESTIGE_NEAR) {
-      this.drawPrestigeVignette(screenWidth, screenHeight, progress)
+    // During hold, vignette intensifies dramatically
+    if (
+      effectProgress >= GRAVITY_STAGES.PRESTIGE_NEAR ||
+      this.isHoldingCollapse
+    ) {
+      const vignetteProgress = this.isHoldingCollapse
+        ? 1.0 + holdIntensity * 0.5 // Extra intensity during hold
+        : effectProgress
+      this.drawPrestigeVignette(screenWidth, screenHeight, vignetteProgress)
+    }
+
+    // Draw hold-specific effects (tier arc drain visualization in world space)
+    if (this.isHoldingCollapse) {
+      this.drawCollapseHoldEffects(holdIntensity, screenWidth, screenHeight)
     }
 
     // Update and draw ambient particles streaming to prestige panel (starts at 80%)
-    if (progress >= GRAVITY_STAGES.PRESTIGE_NEAR) {
+    // During hold, spawn rate increases dramatically
+    if (
+      effectProgress >= GRAVITY_STAGES.PRESTIGE_NEAR ||
+      this.isHoldingCollapse
+    ) {
       this.updateAmbientParticles(
         deltaTime,
-        progress,
+        this.isHoldingCollapse ? 1.5 : effectProgress, // Faster spawns during hold
         screenWidth,
         screenHeight
       )
       this.drawAmbientParticles(screenWidth, screenHeight)
     }
+  }
+
+  /**
+   * Draw effects specific to collapse hold gesture
+   * Visualizes the "draining" of tier arcs into the central mass
+   */
+  private drawCollapseHoldEffects(
+    holdProgress: number,
+    screenWidth: number,
+    screenHeight: number
+  ): void {
+    const centerX = 0 // World center (core container is at screen center)
+    const centerY = 0
+
+    // Pulsing dark core that grows with hold progress
+    const coreSize = 30 + holdProgress * 50
+    const corePulse = 1 + Math.sin(this.phase * 6) * 0.1 * (1 + holdProgress)
+
+    // Dark void growing at center
+    this.coreGraphics.circle(centerX, centerY, coreSize * corePulse)
+    this.coreGraphics.fill({ color: 0x000000, alpha: 0.6 + holdProgress * 0.3 })
+
+    // Event horizon glow - gets more intense and unstable
+    const horizonSize = coreSize * 1.3 * corePulse
+    this.coreGraphics.circle(centerX, centerY, horizonSize)
+    this.coreGraphics.stroke({
+      color: holdProgress > 0.8 ? 0xff5aff : 0xaa7aff,
+      width: 2 + holdProgress * 3,
+      alpha: 0.5 + holdProgress * 0.4,
+    })
+
+    // Inner glow ring
+    this.coreGraphics.circle(centerX, centerY, coreSize * 0.6)
+    this.coreGraphics.stroke({
+      color: 0xff7aff,
+      width: 1.5,
+      alpha: 0.4 + Math.sin(this.phase * 8) * 0.2,
+    })
+
+    // Spiral energy lines converging (representing tier arcs draining)
+    const numSpirals = 5 // One for each tier
+    for (let i = 0; i < numSpirals; i++) {
+      const tierProgress = Math.max(0, Math.min(1, holdProgress * 5 - i))
+      if (tierProgress <= 0) continue
+
+      const baseAngle =
+        (Math.PI * 2 * i) / numSpirals + this.phase * (2 + i * 0.5)
+      const spiralLength = 150 + (1 - tierProgress) * 100
+
+      // Draw spiral converging inward
+      const points: { x: number; y: number }[] = []
+      for (let t = 0; t <= 1; t += 0.05) {
+        const dist = spiralLength * (1 - t * tierProgress)
+        const angle = baseAngle + t * Math.PI * 0.5
+        points.push({
+          x: centerX + Math.cos(angle) * dist,
+          y: centerY + Math.sin(angle) * dist,
+        })
+      }
+
+      if (points.length > 1) {
+        const first = points[0]!
+        this.coreGraphics.moveTo(first.x, first.y)
+        for (let j = 1; j < points.length; j++) {
+          this.coreGraphics.lineTo(points[j]!.x, points[j]!.y)
+        }
+        this.coreGraphics.stroke({
+          color: this.getTierColor(i),
+          width: 2 * tierProgress,
+          alpha: 0.6 * tierProgress,
+        })
+      }
+    }
+
+    // Particle burst effect at high progress (point of no return)
+    if (holdProgress > 0.8) {
+      const burstIntensity = (holdProgress - 0.8) / 0.2
+      const numBurstParticles = Math.floor(burstIntensity * 12)
+
+      for (let i = 0; i < numBurstParticles; i++) {
+        const angle = (Math.PI * 2 * i) / numBurstParticles + this.phase * 3
+        const dist = coreSize * 1.5 + Math.sin(this.phase * 10 + i) * 10
+        const px = centerX + Math.cos(angle) * dist
+        const py = centerY + Math.sin(angle) * dist
+
+        this.coreGraphics.circle(px, py, 2 + burstIntensity * 2)
+        this.coreGraphics.fill({
+          color: 0xff5aff,
+          alpha: 0.6 * burstIntensity,
+        })
+      }
+    }
+
+    // Overlay vignette intensification (screen space)
+    const vignetteIntensity = 0.2 + holdProgress * 0.4
+    const edgeInset = 100 - holdProgress * 60 // Closes in as progress increases
+
+    // Draw closing vignette from edges
+    for (let i = 0; i < 4; i++) {
+      const layerInset = edgeInset + i * 40
+      const layerAlpha = vignetteIntensity * (1 - i / 4) * 0.4
+
+      // Use overlay graphics for screen-space vignette
+      // Top
+      this.vignetteGraphics.rect(0, 0, screenWidth, layerInset)
+      this.vignetteGraphics.fill({ color: 0x0a0510, alpha: layerAlpha })
+      // Bottom
+      this.vignetteGraphics.rect(
+        0,
+        screenHeight - layerInset,
+        screenWidth,
+        layerInset
+      )
+      this.vignetteGraphics.fill({ color: 0x0a0510, alpha: layerAlpha })
+      // Left
+      this.vignetteGraphics.rect(
+        0,
+        layerInset,
+        layerInset,
+        screenHeight - layerInset * 2
+      )
+      this.vignetteGraphics.fill({ color: 0x0a0510, alpha: layerAlpha })
+      // Right
+      this.vignetteGraphics.rect(
+        screenWidth - layerInset,
+        layerInset,
+        layerInset,
+        screenHeight - layerInset * 2
+      )
+      this.vignetteGraphics.fill({ color: 0x0a0510, alpha: layerAlpha })
+    }
+  }
+
+  /**
+   * Get color for tier (matches PrestigeOrbit tier arc colors)
+   */
+  private getTierColor(tierIndex: number): number {
+    const colors = [
+      0x5aaaff, // Tier 2 - blue
+      0x5affc8, // Tier 3 - cyan
+      0xffc85a, // Tier 4 - gold
+      0xff8cc8, // Tier 5 - pink
+      0xff5aff, // Extra - magenta
+    ]
+    return colors[tierIndex] ?? 0xaa7aff
   }
 
   /**
@@ -1038,6 +1269,25 @@ export class BlackHoleRenderer {
     converter: (x: number, y: number) => { x: number; y: number }
   ): void {
     this.worldToScreen = converter
+  }
+
+  /**
+   * Set collapse hold progress (0-1) from UI gesture
+   * This intensifies visual effects during the hold-to-collapse interaction
+   */
+  setCollapseHoldProgress(progress: number, isHolding: boolean): void {
+    this.collapseHoldProgress = progress
+    this.isHoldingCollapse = isHolding
+  }
+
+  /**
+   * Get current collapse hold state
+   */
+  getCollapseHoldState(): { progress: number; isHolding: boolean } {
+    return {
+      progress: this.collapseHoldProgress,
+      isHolding: this.isHoldingCollapse,
+    }
   }
 
   /**

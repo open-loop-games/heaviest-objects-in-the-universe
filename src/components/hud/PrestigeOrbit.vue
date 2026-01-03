@@ -1,18 +1,27 @@
 <script setup lang="ts">
-import { ref, computed, watch, onWatcherCleanup } from 'vue'
+import {
+  ref,
+  computed,
+  watch,
+  onMounted,
+  onUnmounted,
+  onWatcherCleanup,
+} from 'vue'
+import { setShipButtonPos } from '../../onboarding/tutorial-state'
 import {
   gameState,
   computed_gravity,
   computed_prestigeReward,
   computed_canPrestige,
 } from '../../game/state'
-import { triggerPrestigeWithAnimation } from '../../game/prestige'
+import { triggerShipWithAnimation } from '../../game/ship'
 import { calculateStabilityRatio } from '../../game/formulas'
 import {
   isAutomationProcessing,
   getAutomationProcessingType,
 } from '../../game/automation'
 import { TIER_THRESHOLDS, FRAGMENT_TO_TOKEN_RATIO } from '../../game/config'
+import { on, emit } from '../../game/events'
 
 // ============================================
 // PRESTIGE STATE
@@ -32,6 +41,10 @@ const showCacheTokens = computed(
     gameState.onboarding.firstPrestigeComplete || gameState.meta.cacheTokens > 0
 )
 
+// Show gravity pull effect only when ship is fully ready
+// Draws attention without being too noisy during approach
+const showGravityPull = computed(() => gravityReady.value)
+
 // Show quality indicators after first conflict or symlink opportunity
 const showQualityIndicators = computed(() => {
   return (
@@ -39,6 +52,122 @@ const showQualityIndicators = computed(() => {
     gameState.stats.totalSymlinksCreated > 0 ||
     gameState.packages.size >= 10
   )
+})
+
+// Current ecosystem tier (1-5) for central mass visual
+const ecosystemTier = computed(() => gameState.meta.ecosystemTier)
+
+// Mass visual state based on tier
+const massState = computed(() => {
+  const tier = ecosystemTier.value
+  if (tier >= 5) return 'critical' // Unstable, ready for collapse
+  if (tier >= 4) return 'warping' // Gravity distortion
+  if (tier >= 3) return 'forming' // Dark core forming
+  if (tier >= 2) return 'breathing' // Gentle pulse
+  return 'dormant' // Static, inert
+})
+
+// ============================================
+// COLLAPSE HOLD STATE
+// ============================================
+
+// Can collapse at Tier 5
+const collapseReady = computed(() => ecosystemTier.value >= 5)
+
+// Reactive collapse hold state (updated via events)
+const collapseHoldProgress = ref(0)
+const collapseHoldLocked = ref(false)
+const collapseHoldDrainedTiers = ref(0)
+const isHoldingCollapse = ref(false)
+const collapseCancelled = ref(false)
+
+// Hold gesture handlers
+function onMassHoldStart(e: MouseEvent | TouchEvent) {
+  if (!collapseReady.value) return
+  e.preventDefault()
+  isHoldingCollapse.value = true
+  emit('collapse:begin-hold')
+}
+
+function onMassHoldEnd() {
+  if (!isHoldingCollapse.value) return
+  isHoldingCollapse.value = false
+  emit('collapse:end-hold')
+}
+
+// Subscribe to collapse events
+let unsubProgress: (() => void) | null = null
+let unsubLocked: (() => void) | null = null
+let unsubCancel: (() => void) | null = null
+let unsubComplete: (() => void) | null = null
+
+onMounted(() => {
+  unsubProgress = on('collapse:hold-progress', ({ progress, drainedTiers }) => {
+    collapseHoldProgress.value = progress
+    collapseHoldDrainedTiers.value = drainedTiers
+  })
+
+  unsubLocked = on('collapse:locked', () => {
+    collapseHoldLocked.value = true
+  })
+
+  unsubCancel = on('collapse:hold-cancel', () => {
+    // Trigger cancel animation before resetting
+    collapseCancelled.value = true
+    isHoldingCollapse.value = false
+
+    // Animate refill over 400ms then reset
+    setTimeout(() => {
+      collapseHoldProgress.value = 0
+      collapseHoldLocked.value = false
+      collapseHoldDrainedTiers.value = 0
+      collapseCancelled.value = false
+    }, 400)
+  })
+
+  unsubComplete = on('collapse:complete', () => {
+    collapseHoldProgress.value = 0
+    collapseHoldLocked.value = false
+    collapseHoldDrainedTiers.value = 0
+    isHoldingCollapse.value = false
+  })
+
+  // Handle mouse/touch release anywhere (in case they drag off)
+  window.addEventListener('mouseup', onMassHoldEnd)
+  window.addEventListener('touchend', onMassHoldEnd)
+  window.addEventListener('touchcancel', onMassHoldEnd)
+
+  // Subscribe to ship reward for token collection celebration
+  unsubShipReward = on('ship:reward', ({ tierBefore, tierAfter }) => {
+    // Trigger collecting animation
+    isCollectingTokens.value = true
+    setTimeout(() => {
+      isCollectingTokens.value = false
+    }, 1000)
+
+    // Tier up celebration
+    if (tierAfter > tierBefore) {
+      tierUpCelebration.value = true
+      setTimeout(() => {
+        tierUpCelebration.value = false
+      }, 1500)
+    }
+  })
+})
+
+onUnmounted(() => {
+  unsubProgress?.()
+  unsubLocked?.()
+  unsubCancel?.()
+  unsubComplete?.()
+  unsubShipReward?.()
+  setShipButtonPos(null)
+  if (gravityParticleInterval) {
+    clearInterval(gravityParticleInterval)
+  }
+  window.removeEventListener('mouseup', onMassHoldEnd)
+  window.removeEventListener('touchend', onMassHoldEnd)
+  window.removeEventListener('touchcancel', onMassHoldEnd)
 })
 
 // ============================================
@@ -152,15 +281,37 @@ const tierArcProgress = computed(() => {
 })
 
 // SVG arc calculations for tier rings
+// During collapse hold, tiers drain in reverse order (5→4→3→2→1)
 const tierArcPaths = computed(() => {
   const radii = [70, 78, 86, 94] as const
+  const holdProgress = isHoldingCollapse.value ? collapseHoldProgress.value : 0
 
   return tierArcProgress.value.map((tier, i) => {
     const r = radii[i] ?? 70 // Fallback to first radius
     const circumference = 2 * Math.PI * r
     // Each arc is a quarter (90 degrees = 25% of circumference)
     const arcLength = circumference * 0.25
-    const filledLength = arcLength * tier.progress
+
+    // During hold, drain tiers in reverse order (tier 5 first, tier 2 last)
+    // Each tier drains over 20% of the hold progress
+    // Tier 5 (i=3): drains at 0-20%, Tier 4 (i=2): 20-40%, etc.
+    let effectiveProgress = tier.progress
+    if (holdProgress > 0 && tier.complete) {
+      const reversedIndex = 3 - i // 3,2,1,0 for tiers 5,4,3,2
+      const drainStart = reversedIndex * 0.2 // 0%, 20%, 40%, 60%
+      const drainEnd = drainStart + 0.25 // 25%, 45%, 65%, 85%
+
+      if (holdProgress >= drainEnd) {
+        effectiveProgress = 0 // Fully drained
+      } else if (holdProgress > drainStart) {
+        // Partially drained
+        const drainAmount =
+          (holdProgress - drainStart) / (drainEnd - drainStart)
+        effectiveProgress = tier.progress * (1 - drainAmount)
+      }
+    }
+
+    const filledLength = arcLength * effectiveProgress
 
     // Starting rotation for each quadrant (in degrees from top)
     const startAngle = i * 90 - 90 // Start from top
@@ -173,9 +324,33 @@ const tierArcPaths = computed(() => {
       dashArray: `${filledLength} ${circumference}`,
       trackDashArray: `${arcLength} ${circumference}`,
       rotation: startAngle,
+      draining: holdProgress > 0 && effectiveProgress < tier.progress,
     }
   })
 })
+
+// ============================================
+// TIER DRAIN HELPERS (for collapse hold)
+// ============================================
+
+// Check if a tier (by index 0-3) is currently draining
+function isTierDraining(index: number): boolean {
+  if (!isHoldingCollapse.value) return false
+  const holdProgress = collapseHoldProgress.value
+  const reversedIndex = 3 - index // 3,2,1,0 for tiers 5,4,3,2
+  const drainStart = reversedIndex * 0.2
+  const drainEnd = drainStart + 0.25
+  return holdProgress > drainStart && holdProgress < drainEnd
+}
+
+// Check if a tier (by index 0-3) has been fully drained
+function isTierDrained(index: number): boolean {
+  if (!isHoldingCollapse.value) return false
+  const holdProgress = collapseHoldProgress.value
+  const reversedIndex = 3 - index
+  const drainEnd = reversedIndex * 0.2 + 0.25
+  return holdProgress >= drainEnd
+}
 
 // ============================================
 // AUTOMATION INDICATOR
@@ -187,6 +362,32 @@ const automationType = computed(() => getAutomationProcessingType())
 
 // Flash state for completion effect
 const showAutomationFlash = ref(false)
+
+// Token collection celebration state
+const isCollectingTokens = ref(false)
+const tierUpCelebration = ref(false)
+let unsubShipReward: (() => void) | null = null
+
+// Gravity pull particle interval
+let gravityParticleInterval: ReturnType<typeof setInterval> | null = null
+
+// Ship button ref for position tracking
+const shipButtonRef = ref<HTMLButtonElement | null>(null)
+
+// Update ship button position for ghost hand hints
+function updateShipButtonPosition() {
+  if (!shipButtonRef.value) {
+    setShipButtonPos(null)
+    return
+  }
+
+  const rect = shipButtonRef.value.getBoundingClientRect()
+  // Center of the button
+  setShipButtonPos({
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  })
+}
 
 // Watch for automation completion to trigger flash
 // Uses onWatcherCleanup for automatic timeout cleanup
@@ -202,19 +403,84 @@ watch(automationActive, (active, wasActive) => {
   }
 })
 
+// Update ship button position when gravity becomes ready
+watch(
+  gravityReady,
+  (ready) => {
+    if (ready) {
+      // Delay slightly for button animation to complete
+      setTimeout(updateShipButtonPosition, 350)
+    } else {
+      setShipButtonPos(null)
+    }
+  },
+  { immediate: true }
+)
+
+// Gravity pull particles - request from visible packages when ship is ready
+watch(
+  showGravityPull,
+  (active) => {
+    if (active) {
+      // Steady rate of ~2 particles/sec when ship is ready
+      gravityParticleInterval = setInterval(() => {
+        emit('gravity:pull-particle')
+      }, 500)
+    } else {
+      if (gravityParticleInterval) {
+        clearInterval(gravityParticleInterval)
+        gravityParticleInterval = null
+      }
+    }
+  },
+  { immediate: true }
+)
+
 // ============================================
 // HANDLERS
 // ============================================
 
 function handlePrestige() {
   if (computed_canPrestige.value) {
-    triggerPrestigeWithAnimation()
+    triggerShipWithAnimation()
   }
 }
 </script>
 
 <template>
-  <div class="orbital-decay" :class="{ ready: gravityReady }">
+  <div
+    class="orbital-decay"
+    :class="{
+      ready: gravityReady,
+      collecting: isCollectingTokens,
+      'tier-up': tierUpCelebration,
+      'gravity-pull': showGravityPull,
+    }"
+  >
+    <!-- Ship button - appears when ready to ship -->
+    <button
+      ref="shipButtonRef"
+      class="ship-button"
+      :class="{ visible: gravityReady, pulsing: gravityReady }"
+      :disabled="!gravityReady"
+      @click="handlePrestige"
+    >
+      <svg class="ship-icon" viewBox="0 0 24 24">
+        <!-- Box base -->
+        <rect x="4" y="10" width="16" height="10" rx="2" class="box-base" />
+        <!-- Box lid (open when ready) -->
+        <path
+          class="box-lid"
+          :d="gravityReady ? 'M4 10 L12 4 L20 10' : 'M4 10 L12 8 L20 10'"
+        />
+        <!-- Upload arrow (visible when ready) -->
+        <g class="upload-arrow" :class="{ visible: gravityReady }">
+          <line x1="12" y1="14" x2="12" y2="6" />
+          <polyline points="8,9 12,5 16,9" />
+        </g>
+      </svg>
+    </button>
+
     <!-- Inner container for horizontal orbit + reward layout -->
     <div class="orbital-decay-inner">
       <!-- Orbiting weight icons -->
@@ -247,11 +513,12 @@ function handlePrestige() {
           <g
             v-for="arc in tierArcPaths"
             :key="arc.tier"
-            v-memo="[arc.progress, arc.complete, arc.dashArray]"
+            v-memo="[arc.progress, arc.complete, arc.dashArray, arc.draining]"
             class="tier-arc-group"
             :class="{
-              complete: arc.complete,
+              complete: arc.complete && !arc.draining,
               active: arc.progress > 0 && !arc.complete,
+              draining: arc.draining,
             }"
             :style="{ '--arc-rotation': arc.rotation + 'deg' }"
           >
@@ -278,12 +545,14 @@ function handlePrestige() {
         <!-- Tier unlock icons (positioned at arc endpoints) -->
         <div v-if="showCacheTokens" class="tier-unlock-icons">
           <span
-            v-for="arc in tierArcProgress"
+            v-for="(arc, i) in tierArcProgress"
             :key="'icon-' + arc.tier"
             class="tier-unlock-icon"
             :class="{
-              complete: arc.complete,
+              complete: arc.complete && !isTierDraining(i),
               active: arc.progress > 0 && !arc.complete,
+              draining: isTierDraining(i),
+              drained: isTierDrained(i),
               ['tier-' + arc.tier]: true,
               'auto-active':
                 arc.tier === 2 &&
@@ -326,16 +595,59 @@ function handlePrestige() {
           />
         </svg>
 
-        <!-- Central singularity -->
-        <button
-          class="singularity"
-          :class="{ active: gravityReady, pulsing: gravityPercent > 70 }"
-          :disabled="!gravityReady"
-          @click="handlePrestige"
+        <!-- Central npm mass (holdable at Tier 5 for collapse) -->
+        <div
+          class="npm-mass"
+          :class="[
+            massState,
+            {
+              ready: gravityReady,
+              holdable: collapseReady,
+              holding: isHoldingCollapse,
+              locked: collapseHoldLocked,
+              cancelled: collapseCancelled,
+            },
+          ]"
+          :style="
+            isHoldingCollapse ? { '--hold-progress': collapseHoldProgress } : {}
+          "
+          @mousedown="onMassHoldStart"
+          @touchstart="onMassHoldStart"
         >
-          <span class="singularity-core">●</span>
-          <span class="event-horizon" v-if="gravityReady"></span>
-        </button>
+          <!-- Outer glow layers (tier 3+) -->
+          <div v-if="ecosystemTier >= 3" class="mass-glow outer"></div>
+          <div v-if="ecosystemTier >= 4" class="mass-glow inner"></div>
+
+          <!-- Gravity warp rings (tier 4+) -->
+          <svg v-if="ecosystemTier >= 4" class="warp-rings" viewBox="0 0 80 80">
+            <circle class="warp-ring" cx="40" cy="40" r="32" />
+            <circle class="warp-ring delayed" cx="40" cy="40" r="36" />
+          </svg>
+
+          <!-- npm hexagon shape -->
+          <svg class="mass-shape" viewBox="0 0 40 40">
+            <!-- Hexagon path -->
+            <polygon
+              class="mass-hex"
+              points="20,2 36,11 36,29 20,38 4,29 4,11"
+            />
+            <!-- Inner dark core (tier 3+) -->
+            <polygon
+              v-if="ecosystemTier >= 3"
+              class="mass-core"
+              points="20,8 30,14 30,26 20,32 10,26 10,14"
+            />
+            <!-- npm-style notch/chunk (the signature npm look) -->
+            <rect class="mass-notch" x="14" y="16" width="6" height="12" />
+          </svg>
+
+          <!-- Crackling effects (tier 5) -->
+          <div v-if="ecosystemTier >= 5" class="mass-crackle">
+            <span class="crack c1"></span>
+            <span class="crack c2"></span>
+            <span class="crack c3"></span>
+          </div>
+        </div>
       </div>
 
       <!-- Cache token reward preview (quality styling) -->
@@ -403,17 +715,284 @@ function handlePrestige() {
   border-radius: 12px;
   border: 1px solid rgba(122, 90, 255, 0.2);
   pointer-events: auto;
+  overflow: visible;
 }
 
 .orbital-decay-inner {
   display: flex;
   align-items: center;
   gap: 12px;
+  overflow: visible;
 }
 
 .orbital-decay.ready {
   border-color: rgba(122, 90, 255, 0.6);
   box-shadow: 0 0 20px rgba(122, 90, 255, 0.3);
+}
+
+/* Token collection celebration */
+.orbital-decay.collecting {
+  animation: collect-pulse 0.3s ease-out;
+}
+
+.orbital-decay.collecting::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 16px;
+  border: 2px solid rgba(90, 255, 255, 0.8);
+  animation: collect-ring 0.8s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes collect-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 30px rgba(90, 255, 255, 0.6);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes collect-ring {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+}
+
+/* Tier up celebration */
+.orbital-decay.tier-up {
+  animation: tier-up-flash 0.5s ease-out;
+}
+
+.orbital-decay.tier-up::before {
+  content: '★';
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 24px;
+  color: #ffff5a;
+  text-shadow:
+    0 0 16px rgba(255, 255, 90, 1),
+    0 0 32px rgba(255, 200, 90, 0.8);
+  animation: tier-up-star 1.5s ease-out forwards;
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes tier-up-flash {
+  0% {
+    box-shadow: 0 0 20px rgba(122, 90, 255, 0.3);
+  }
+  30% {
+    box-shadow:
+      0 0 40px rgba(255, 255, 90, 0.8),
+      0 0 60px rgba(255, 200, 90, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 20px rgba(122, 90, 255, 0.3);
+  }
+}
+
+@keyframes tier-up-star {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-10px) scale(1.5);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-30px) scale(0.8);
+  }
+}
+
+/* Gravity pull effect for experienced players when ship ready */
+.orbital-decay.gravity-pull {
+  animation: gravity-pull-glow 2s ease-in-out infinite;
+}
+
+.orbital-decay.gravity-pull::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 16px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(167, 139, 250, 0.15) 0%,
+    transparent 70%
+  );
+  animation: gravity-pull-pulse 1.5s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@keyframes gravity-pull-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 20px rgba(122, 90, 255, 0.3),
+      inset 0 0 20px rgba(122, 90, 255, 0.05);
+  }
+  50% {
+    box-shadow:
+      0 0 35px rgba(122, 90, 255, 0.5),
+      inset 0 0 30px rgba(122, 90, 255, 0.1);
+  }
+}
+
+@keyframes gravity-pull-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+/* ============================================
+   SHIP BUTTON
+   ============================================ */
+.ship-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 0;
+  padding: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+  background: rgba(40, 30, 60, 0.6);
+  border: 2px solid rgba(90, 70, 140, 0.3);
+  border-radius: 8px;
+  cursor: not-allowed;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease,
+    height 0.3s ease,
+    margin 0.3s ease,
+    padding 0.3s ease,
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+  pointer-events: none;
+}
+
+.ship-button.visible {
+  height: 40px;
+  margin-bottom: 8px;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  cursor: pointer;
+  background: rgba(60, 40, 100, 0.8);
+  border-color: rgba(122, 90, 255, 0.6);
+}
+
+.ship-button.visible:hover {
+  background: rgba(80, 50, 130, 0.9);
+  border-color: rgba(122, 90, 255, 0.9);
+  box-shadow: 0 0 16px rgba(122, 90, 255, 0.4);
+}
+
+.ship-button.visible:active {
+  transform: scale(0.96);
+}
+
+.ship-button.pulsing {
+  animation: ship-button-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes ship-button-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(122, 90, 255, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(122, 90, 255, 0.6);
+  }
+}
+
+.ship-icon {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: rgba(180, 160, 220, 0.5);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition:
+    stroke 0.3s ease,
+    filter 0.3s ease;
+}
+
+.ship-button.visible .ship-icon {
+  stroke: #c0a0ff;
+  filter: drop-shadow(0 0 4px rgba(180, 140, 255, 0.5));
+}
+
+.ship-button.visible:hover .ship-icon {
+  stroke: #e0c0ff;
+  filter: drop-shadow(0 0 8px rgba(200, 160, 255, 0.8));
+}
+
+.ship-icon .box-base {
+  fill: rgba(90, 70, 140, 0.3);
+  stroke: inherit;
+}
+
+.ship-button.visible .ship-icon .box-base {
+  fill: rgba(122, 90, 255, 0.2);
+}
+
+.ship-icon .box-lid {
+  fill: none;
+  stroke: inherit;
+  transition: d 0.3s ease;
+}
+
+.ship-icon .upload-arrow {
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+.ship-icon .upload-arrow.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.ship-button.visible .ship-icon .upload-arrow {
+  animation: arrow-float 1s ease-in-out infinite;
+}
+
+@keyframes arrow-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
 }
 
 .orbit-container {
@@ -423,6 +1002,7 @@ function handlePrestige() {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: visible;
 }
 
 /* Larger orbit container when tier arcs are visible */
@@ -436,6 +1016,7 @@ function handlePrestige() {
   width: calc(var(--orbit-radius) * 2);
   height: calc(var(--orbit-radius) * 2);
   animation: orbit-spin var(--orbit-speed) linear infinite;
+  z-index: 10;
 }
 
 .orbiter {
@@ -457,10 +1038,6 @@ function handlePrestige() {
   pointer-events: none;
 }
 
-.orbit-container.collapsed .orbiter {
-  animation: collapse-in 0.5s ease-in forwards;
-}
-
 @keyframes orbit-spin {
   from {
     transform: rotate(0deg);
@@ -470,91 +1047,418 @@ function handlePrestige() {
   }
 }
 
-@keyframes collapse-in {
-  to {
-    transform: rotate(var(--angle)) translateX(0)
-      rotate(calc(-1 * var(--angle)));
-    opacity: 0;
-  }
-}
-
-/* Central singularity (black hole / prestige button) */
-.singularity {
+/* ============================================
+   NPM MASS (Central Visual)
+   ============================================ */
+.npm-mass {
   position: relative;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: radial-gradient(circle, #1a1a2e 0%, #0a0a15 70%);
-  border: 2px solid #3a3a5a;
-  cursor: not-allowed;
-  transition: all 0.3s;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: visible;
+  z-index: 5;
 }
 
-.singularity-core {
-  font-size: 18px;
-  color: #5a5a7a;
-  transition: all 0.3s;
+.mass-shape {
+  width: 40px;
+  height: 40px;
+  position: relative;
+  z-index: 2;
+  overflow: visible;
 }
 
-.singularity.pulsing {
-  animation: singularity-pulse 0.8s ease-in-out infinite;
+.mass-hex {
+  fill: #2a1a3a;
+  stroke: #5a4a6a;
+  stroke-width: 1.5;
+  transition: all 0.5s ease;
 }
 
-.singularity.pulsing .singularity-core {
-  color: #ff7a5a;
+.mass-notch {
+  fill: #1a0a2a;
+  transition: all 0.5s ease;
 }
 
-.singularity.active {
+.mass-core {
+  fill: #0a0010;
+  opacity: 0;
+  transition: all 0.5s ease;
+}
+
+/* Tier 1: Dormant - static, muted */
+.npm-mass.dormant .mass-hex {
+  fill: #1a1225;
+  stroke: #3a3a4a;
+}
+
+/* Tier 2: Breathing - gentle pulse */
+.npm-mass.breathing .mass-hex {
+  fill: #2a1a3a;
+  stroke: #6a5a7a;
+  animation: mass-breathe 3s ease-in-out infinite;
+}
+
+.npm-mass.breathing .mass-notch {
+  animation: mass-breathe 3s ease-in-out infinite 0.1s;
+}
+
+/* Tier 3: Forming - dark core visible */
+.npm-mass.forming .mass-hex {
+  fill: #3a2a4a;
+  stroke: #7a5aff;
+}
+
+.npm-mass.forming .mass-core {
+  opacity: 1;
+  animation: core-pulse 2s ease-in-out infinite;
+}
+
+/* Tier 4: Warping - gravity distortion */
+.npm-mass.warping .mass-hex {
+  fill: #4a3a5a;
+  stroke: #9a7aff;
+  filter: drop-shadow(0 0 4px rgba(122, 90, 255, 0.5));
+}
+
+.npm-mass.warping .mass-core {
+  opacity: 1;
+  fill: #050008;
+}
+
+/* Tier 5: Critical - unstable, crackling */
+.npm-mass.critical .mass-hex {
+  fill: #5a4a6a;
+  stroke: #ff7aff;
+  filter: drop-shadow(0 0 8px rgba(255, 122, 255, 0.6));
+  animation: mass-critical 0.5s ease-in-out infinite;
+}
+
+.npm-mass.critical .mass-core {
+  opacity: 1;
+  fill: #000;
+  animation: core-critical 0.3s ease-in-out infinite;
+}
+
+/* Ready state (can ship) - add glow */
+.npm-mass.ready .mass-hex {
+  filter: drop-shadow(0 0 6px rgba(122, 90, 255, 0.8));
+}
+
+/* Holdable state (Tier 5 - can collapse) */
+.npm-mass.holdable {
   cursor: pointer;
-  border-color: #7a5aff;
-  box-shadow:
-    0 0 20px rgba(122, 90, 255, 0.6),
-    inset 0 0 15px rgba(122, 90, 255, 0.3);
 }
 
-.singularity.active .singularity-core {
-  color: #fff;
-  text-shadow: 0 0 10px #fff;
-}
-
-.singularity.active:hover {
-  transform: scale(1.1);
-  box-shadow:
-    0 0 30px rgba(122, 90, 255, 0.8),
-    inset 0 0 20px rgba(122, 90, 255, 0.5);
-}
-
-/* Event horizon ring effect when ready */
-.event-horizon {
+.npm-mass.holdable::after {
+  content: '';
   position: absolute;
-  width: 50px;
-  height: 50px;
+  inset: -4px;
+  border: 2px dashed rgba(255, 122, 255, 0.4);
   border-radius: 50%;
-  border: 2px solid rgba(122, 90, 255, 0.6);
-  animation: event-horizon-pulse 1.5s ease-out infinite;
+  animation: holdable-hint 2s ease-in-out infinite;
+  pointer-events: none;
 }
 
-@keyframes singularity-pulse {
+@keyframes holdable-hint {
   0%,
   100% {
+    opacity: 0.3;
     transform: scale(1);
   }
   50% {
-    transform: scale(1.1);
+    opacity: 0.7;
+    transform: scale(1.05);
   }
 }
 
-@keyframes event-horizon-pulse {
+/* Holding state - active collapse charge */
+.npm-mass.holding {
+  transform: scale(1.1);
+  transition: transform 0.2s ease;
+}
+
+.npm-mass.holding .mass-hex {
+  stroke: #ff5aff;
+  filter: drop-shadow(0 0 12px rgba(255, 90, 255, 0.8));
+  animation: holding-pulse 0.3s ease-in-out infinite;
+}
+
+.npm-mass.holding::after {
+  border-color: rgba(255, 90, 255, 0.8);
+  border-style: solid;
+  animation: holding-ring 0.5s linear infinite;
+}
+
+/* Progress ring during hold */
+.npm-mass.holding::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border: 3px solid transparent;
+  border-top-color: #ff5aff;
+  border-radius: 50%;
+  transform: rotate(calc(var(--hold-progress, 0) * 360deg));
+  transition: transform 0.1s linear;
+  pointer-events: none;
+}
+
+@keyframes holding-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 12px rgba(255, 90, 255, 0.8));
+  }
+  50% {
+    filter: drop-shadow(0 0 20px rgba(255, 90, 255, 1));
+  }
+}
+
+@keyframes holding-ring {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Locked state (>80% - point of no return) */
+.npm-mass.locked .mass-hex {
+  stroke: #ff0000;
+  fill: #3a0a1a;
+  animation: locked-shake 0.1s ease-in-out infinite;
+}
+
+.npm-mass.locked::after {
+  border-color: #ff0000;
+}
+
+@keyframes locked-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-2px);
+  }
+  75% {
+    transform: translateX(2px);
+  }
+}
+
+/* Cancelled state - "exhale" relief animation */
+.npm-mass.cancelled {
+  animation: cancel-exhale 0.4s ease-out forwards;
+}
+
+.npm-mass.cancelled .mass-hex {
+  animation: cancel-hex-relief 0.4s ease-out forwards;
+}
+
+.npm-mass.cancelled::after {
+  animation: cancel-ring-fade 0.4s ease-out forwards;
+}
+
+@keyframes cancel-exhale {
   0% {
-    transform: scale(1);
-    opacity: 1;
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 20px rgba(255, 90, 255, 0.8));
+  }
+  40% {
+    transform: scale(0.9);
   }
   100% {
-    transform: scale(2);
+    transform: scale(1);
+    filter: drop-shadow(0 0 8px rgba(122, 90, 255, 0.4));
+  }
+}
+
+@keyframes cancel-hex-relief {
+  0% {
+    fill: #3a0a2a;
+    stroke: #ff5aff;
+  }
+  100% {
+    fill: #1a0a2a;
+    stroke: #7a5aff;
+  }
+}
+
+@keyframes cancel-ring-fade {
+  0% {
+    opacity: 1;
+    border-color: #ff5aff;
+  }
+  100% {
     opacity: 0;
+    border-color: transparent;
+  }
+}
+
+/* Glow layers */
+.mass-glow {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.mass-glow.outer {
+  background: radial-gradient(
+    circle,
+    rgba(122, 90, 255, 0.15) 0%,
+    transparent 70%
+  );
+  transform: scale(1.8);
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+.mass-glow.inner {
+  background: radial-gradient(
+    circle,
+    rgba(90, 60, 180, 0.2) 0%,
+    transparent 60%
+  );
+  transform: scale(1.4);
+  animation: glow-pulse 2s ease-in-out infinite 0.5s;
+}
+
+/* Warp rings (tier 4+) */
+.warp-rings {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.warp-ring {
+  fill: none;
+  stroke: rgba(122, 90, 255, 0.2);
+  stroke-width: 1;
+  animation: warp-rotate 8s linear infinite;
+  transform-origin: center;
+}
+
+.warp-ring.delayed {
+  animation-delay: -4s;
+  stroke: rgba(90, 60, 180, 0.15);
+}
+
+/* Crackling effects (tier 5) */
+.mass-crackle {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.crack {
+  position: absolute;
+  width: 2px;
+  height: 8px;
+  background: linear-gradient(to bottom, #ff7aff, transparent);
+  border-radius: 1px;
+}
+
+.crack.c1 {
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-15deg);
+  animation: crack-flash 0.8s ease-in-out infinite;
+}
+
+.crack.c2 {
+  bottom: 6px;
+  right: 4px;
+  transform: rotate(45deg);
+  animation: crack-flash 0.6s ease-in-out infinite 0.2s;
+}
+
+.crack.c3 {
+  bottom: 8px;
+  left: 6px;
+  transform: rotate(-30deg);
+  animation: crack-flash 0.7s ease-in-out infinite 0.4s;
+}
+
+/* Animations */
+@keyframes mass-breathe {
+  0%,
+  100% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+@keyframes core-pulse {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes mass-critical {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+  25% {
+    transform: scale(1.02) rotate(0.5deg);
+  }
+  75% {
+    transform: scale(0.98) rotate(-0.5deg);
+  }
+}
+
+@keyframes core-critical {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes warp-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes crack-flash {
+  0%,
+  100% {
+    opacity: 0;
+    height: 6px;
+  }
+  50% {
+    opacity: 1;
+    height: 10px;
   }
 }
 
@@ -702,6 +1606,40 @@ function handlePrestige() {
   }
 }
 
+/* Draining tier arcs during collapse hold */
+.tier-arc-group.draining .tier-arc-fill {
+  animation: tier-arc-drain 0.3s ease-out infinite;
+  filter: drop-shadow(0 0 8px rgba(255, 90, 255, 0.8));
+}
+
+.tier-arc-group.draining .tier-arc-fill.tier-2 {
+  stroke: #ff5aff;
+}
+
+.tier-arc-group.draining .tier-arc-fill.tier-3 {
+  stroke: #ff5aff;
+}
+
+.tier-arc-group.draining .tier-arc-fill.tier-4 {
+  stroke: #ff5aff;
+}
+
+.tier-arc-group.draining .tier-arc-fill.tier-5 {
+  stroke: #ff5aff;
+}
+
+@keyframes tier-arc-drain {
+  0%,
+  100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 8px rgba(255, 90, 255, 0.8));
+  }
+  50% {
+    opacity: 0.7;
+    filter: drop-shadow(0 0 12px rgba(255, 90, 255, 1));
+  }
+}
+
 /* Tier unlock icons container */
 .tier-unlock-icons {
   position: absolute;
@@ -808,6 +1746,98 @@ function handlePrestige() {
   50% {
     opacity: 0.8;
   }
+}
+
+/* Draining tier icons during collapse hold */
+.tier-unlock-icon.draining {
+  color: #ff5aff !important;
+  text-shadow: 0 0 12px rgba(255, 90, 255, 1) !important;
+  animation: tier-icon-drain 0.2s ease-in-out infinite !important;
+}
+
+@keyframes tier-icon-drain {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translateX(-50%) scale(0.9);
+    opacity: 0.7;
+  }
+}
+
+/* Position-specific drain animations */
+.tier-unlock-icon.draining.tier-2 {
+  animation: tier-icon-drain-right 0.2s ease-in-out infinite !important;
+}
+
+.tier-unlock-icon.draining.tier-3 {
+  animation: tier-icon-drain-bottom 0.2s ease-in-out infinite !important;
+}
+
+.tier-unlock-icon.draining.tier-4 {
+  animation: tier-icon-drain-left 0.2s ease-in-out infinite !important;
+}
+
+.tier-unlock-icon.draining.tier-5 {
+  animation: tier-icon-drain-top 0.2s ease-in-out infinite !important;
+}
+
+@keyframes tier-icon-drain-right {
+  0%,
+  100% {
+    transform: translateY(-50%) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-50%) scale(0.9);
+    opacity: 0.7;
+  }
+}
+
+@keyframes tier-icon-drain-bottom {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translateX(-50%) scale(0.9);
+    opacity: 0.7;
+  }
+}
+
+@keyframes tier-icon-drain-left {
+  0%,
+  100% {
+    transform: translateY(-50%) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-50%) scale(0.9);
+    opacity: 0.7;
+  }
+}
+
+@keyframes tier-icon-drain-top {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translateX(-50%) scale(0.9);
+    opacity: 0.7;
+  }
+}
+
+/* Drained (empty) tier icons */
+.tier-unlock-icon.drained {
+  opacity: 0.2 !important;
+  color: #4a4a6a !important;
+  text-shadow: none !important;
+  animation: none !important;
 }
 
 @keyframes tier-5-complete {
