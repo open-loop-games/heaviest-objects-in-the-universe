@@ -241,22 +241,22 @@ export class DuplicatesAnimation extends BaseAnimation {
     const cy = ANIMATION_HEIGHT / 2 + y
     const radius = 16
 
-    // Symlink glow
+    // Symlink glow (green, not cyan)
     this.ctx.beginPath()
     this.ctx.arc(cx, cy, radius + 4, 0, Math.PI * 2)
-    this.ctx.fillStyle = hexToCSS(Colors.wireSymlink, 0.2 * alpha)
+    this.ctx.fillStyle = hexToCSS(Colors.borderReady, 0.2 * alpha)
     this.ctx.fill()
 
-    // Node fill
+    // Node fill (stays green/ready, not optimized cyan)
     this.ctx.beginPath()
     this.ctx.arc(cx, cy, radius - 2, 0, Math.PI * 2)
-    this.ctx.fillStyle = hexToCSS(Colors.nodeOptimized, 0.6 * alpha)
+    this.ctx.fillStyle = hexToCSS(Colors.nodeReady, 0.6 * alpha)
     this.ctx.fill()
 
-    // Node border
+    // Node border (green)
     this.ctx.beginPath()
     this.ctx.arc(cx, cy, radius, 0, Math.PI * 2)
-    this.ctx.strokeStyle = hexToCSS(Colors.borderOptimized, alpha)
+    this.ctx.strokeStyle = hexToCSS(Colors.borderReady, alpha)
     this.ctx.lineWidth = 2
     this.ctx.stroke()
   }

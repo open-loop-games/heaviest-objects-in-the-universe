@@ -13,7 +13,9 @@ export type GhostHintType =
   | 'click-package' // Click spawned package to dive in
   | 'drag-merge' // Drag duplicate to merge
   | 'click-conflict' // Click conflict wire then X
-  | 'click-prestige' // Click singularity to prestige
+  | 'click-prestige' // Click singularity to prestige (legacy)
+  | 'click-ship' // Click ship button to ship packages
+  | 'click-fragment' // Click fragment pip on golden package
 
 // ============================================
 // TIMER STATE
@@ -24,12 +26,16 @@ export let clickPackageInactiveTime = 0
 export let dragMergeInactiveTime = 0
 export let clickConflictInactiveTime = 0
 export let clickPrestigeInactiveTime = 0
+export let clickShipInactiveTime = 0
+export let clickFragmentInactiveTime = 0
 
 // Track when conditions first became true
 export let clickPackageConditionMet = false
 export let dragMergeConditionMet = false
 export let clickConflictConditionMet = false
 export let clickPrestigeConditionMet = false
+export let clickShipConditionMet = false
+export let clickFragmentConditionMet = false
 
 // ============================================
 // RESET FUNCTIONS
@@ -44,11 +50,15 @@ export function resetHintTimers(): void {
   dragMergeInactiveTime = now
   clickConflictInactiveTime = now
   clickPrestigeInactiveTime = now
+  clickShipInactiveTime = now
+  clickFragmentInactiveTime = now
   // Also reset condition flags so timers restart fresh
   clickPackageConditionMet = false
   dragMergeConditionMet = false
   clickConflictConditionMet = false
   clickPrestigeConditionMet = false
+  clickShipConditionMet = false
+  clickFragmentConditionMet = false
 }
 
 /**
@@ -72,6 +82,14 @@ export function resetHintTimer(type: GhostHintType): void {
     case 'click-prestige':
       clickPrestigeInactiveTime = now
       clickPrestigeConditionMet = false
+      break
+    case 'click-ship':
+      clickShipInactiveTime = now
+      clickShipConditionMet = false
+      break
+    case 'click-fragment':
+      clickFragmentInactiveTime = now
+      clickFragmentConditionMet = false
       break
   }
 }
@@ -104,6 +122,19 @@ export function setClickPrestigeTimer(
 ): void {
   clickPrestigeInactiveTime = time
   clickPrestigeConditionMet = conditionMet
+}
+
+export function setClickShipTimer(time: number, conditionMet: boolean): void {
+  clickShipInactiveTime = time
+  clickShipConditionMet = conditionMet
+}
+
+export function setClickFragmentTimer(
+  time: number,
+  conditionMet: boolean
+): void {
+  clickFragmentInactiveTime = time
+  clickFragmentConditionMet = conditionMet
 }
 
 // ============================================

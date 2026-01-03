@@ -142,36 +142,40 @@ export class InstallAnimation extends BaseAnimation {
     const cy = ANIMATION_HEIGHT / 2
     const radius = 20 * pulse
 
-    // Outer glow
+    // Outer golden ring (root anchor indicator)
     this.ctx.beginPath()
-    this.ctx.arc(cx, cy, radius + 4, 0, Math.PI * 2)
-    this.ctx.fillStyle = hexToCSS(Colors.borderInstalling, 0.2)
+    this.ctx.arc(cx, cy, radius + 6, 0, Math.PI * 2)
+    this.ctx.strokeStyle = hexToCSS(0xffd700, 0.6)
+    this.ctx.lineWidth = 2
+    this.ctx.stroke()
+
+    // Inner warm glow
+    this.ctx.beginPath()
+    this.ctx.arc(cx, cy, radius + 3, 0, Math.PI * 2)
+    this.ctx.fillStyle = hexToCSS(0xffa500, 0.15)
     this.ctx.fill()
 
-    // Main circle fill
+    // Main circle fill (green/ready)
     this.ctx.beginPath()
     this.ctx.arc(cx, cy, radius - 2, 0, Math.PI * 2)
-    this.ctx.fillStyle = hexToCSS(Colors.nodeInstalling, 0.6)
+    this.ctx.fillStyle = hexToCSS(Colors.nodeReady, 0.6)
     this.ctx.fill()
 
-    // Main circle border
+    // Main circle border (green/ready, thicker for root)
     this.ctx.beginPath()
     this.ctx.arc(cx, cy, radius, 0, Math.PI * 2)
-    this.ctx.strokeStyle = hexToCSS(Colors.borderInstalling, 1)
-    this.ctx.lineWidth = 2
+    this.ctx.strokeStyle = hexToCSS(Colors.borderReady, 1)
+    this.ctx.lineWidth = 3
     this.ctx.stroke()
 
-    // Center icon (download arrow)
-    const iconSize = 8
-    this.ctx.beginPath()
-    this.ctx.moveTo(cx, cy - iconSize)
-    this.ctx.lineTo(cx, cy + iconSize * 0.5)
-    this.ctx.moveTo(cx - iconSize * 0.5, cy)
-    this.ctx.lineTo(cx, cy + iconSize * 0.5)
-    this.ctx.lineTo(cx + iconSize * 0.5, cy)
-    this.ctx.strokeStyle = hexToCSS(Colors.borderInstalling, 1)
-    this.ctx.lineWidth = 2
-    this.ctx.stroke()
+    // Center icon (package box)
+    const boxW = 12
+    const boxH = 8
+    this.ctx.fillStyle = hexToCSS(Colors.borderReady, 0.8)
+    this.ctx.fillRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH)
+    this.ctx.strokeStyle = hexToCSS(Colors.borderReady, 1)
+    this.ctx.lineWidth = 1.5
+    this.ctx.strokeRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH)
   }
 
   private drawSpawnedPackage(
@@ -198,11 +202,57 @@ export class InstallAnimation extends BaseAnimation {
     this.ctx.fillStyle = hexToCSS(Colors.nodeReady, 0.6 * alpha)
     this.ctx.fill()
 
-    // Main circle border
+    // Main circle border (green)
     this.ctx.beginPath()
     this.ctx.arc(cx, cy, radius, 0, Math.PI * 2)
     this.ctx.strokeStyle = hexToCSS(Colors.borderReady, alpha)
     this.ctx.lineWidth = 2
+    this.ctx.stroke()
+
+    // Cyan dashed portal ring (indicates internal scope)
+    if (scale > 0.5) {
+      this.ctx.beginPath()
+      this.ctx.arc(cx, cy, radius + 5, 0, Math.PI * 2)
+      this.ctx.strokeStyle = hexToCSS(Colors.borderOptimized, 0.5 * alpha)
+      this.ctx.lineWidth = 2
+      this.ctx.setLineDash([4, 4])
+      this.ctx.stroke()
+      this.ctx.setLineDash([])
+
+      // Cyan dive badge (down arrow)
+      this.drawDiveBadge(cx, cy, radius, alpha)
+    }
+  }
+
+  /**
+   * Draw cyan dive badge (arrow down) below a node
+   */
+  private drawDiveBadge(
+    x: number,
+    y: number,
+    nodeRadius: number,
+    alpha: number
+  ): void {
+    if (!this.ctx) return
+
+    const badgeRadius = 6
+    const badgeY = y + nodeRadius + 8
+
+    // Cyan circle
+    this.ctx.beginPath()
+    this.ctx.arc(x, badgeY, badgeRadius, 0, Math.PI * 2)
+    this.ctx.fillStyle = hexToCSS(0x22d3ee, 0.9 * alpha)
+    this.ctx.fill()
+
+    // Down arrow
+    this.ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`
+    this.ctx.lineWidth = 1.5
+    this.ctx.beginPath()
+    this.ctx.moveTo(x, badgeY - 3)
+    this.ctx.lineTo(x, badgeY + 2)
+    this.ctx.moveTo(x - 2.5, badgeY)
+    this.ctx.lineTo(x, badgeY + 3)
+    this.ctx.lineTo(x + 2.5, badgeY)
     this.ctx.stroke()
   }
 }

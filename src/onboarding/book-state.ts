@@ -1,7 +1,8 @@
 // Teaching Book State Management
 // Controls the teaching book UI state: open/closed, active tab, unlocked tabs
 
-import { reactive, computed } from 'vue'
+import { reactive, computed, ref } from 'vue'
+import { gameState } from '../game/state'
 
 // Tab identifiers
 export type TabId =
@@ -9,7 +10,8 @@ export type TabId =
   | 'duplicates'
   | 'conflicts'
   | 'diving'
-  | 'prestige'
+  | 'ship'
+  | 'surge'
 
 // Tab metadata (icons are Unicode symbols to comply with no-text rule)
 export interface TabMeta {
@@ -23,7 +25,8 @@ export const TABS: TabMeta[] = [
   { id: 'duplicates', icon: '⚭', order: 1 },
   { id: 'conflicts', icon: '✕', order: 2 },
   { id: 'diving', icon: '⤵', order: 3 },
-  { id: 'prestige', icon: '⟲', order: 4 },
+  { id: 'ship', icon: '⟲', order: 4 }, // Cycle = ship and repeat
+  { id: 'surge', icon: '◎', order: 5 }, // Concentric circles = power burst
 ]
 
 // Auto-close delay in ms
@@ -217,4 +220,39 @@ function clearAutoCloseTimer(): void {
     clearTimeout(autoCloseTimer)
     autoCloseTimer = null
   }
+}
+
+// ============================================
+// JOURNEY MODAL STATE
+// ============================================
+
+// Journey modal open state
+const journeyOpen = ref(false)
+
+/**
+ * Whether Journey is unlocked (after first ship)
+ */
+export const isJourneyUnlocked = computed(
+  () => gameState.meta.timesShipped >= 1
+)
+
+/**
+ * Whether Journey modal is currently open
+ */
+export const isJourneyOpen = computed(() => journeyOpen.value)
+
+/**
+ * Open the Journey modal
+ */
+export function openJourney(): void {
+  if (isJourneyUnlocked.value) {
+    journeyOpen.value = true
+  }
+}
+
+/**
+ * Close the Journey modal
+ */
+export function closeJourney(): void {
+  journeyOpen.value = false
 }

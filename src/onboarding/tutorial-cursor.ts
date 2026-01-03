@@ -27,8 +27,10 @@ export function drawTutorialCursor(
   const hint = getActiveGhostHint()
   if (!hint || !hint.show) return
 
-  // Convert world positions to screen positions
-  const screenTargets = hint.targets.map((t) => worldToScreen(t.x, t.y))
+  // Convert world positions to screen positions (unless already screen-space)
+  const screenTargets = hint.isScreenSpace
+    ? hint.targets
+    : hint.targets.map((t) => worldToScreen(t.x, t.y))
 
   // Calculate animation progress
   const cycleProgress = getCycleProgress(hint)
@@ -38,6 +40,7 @@ export function drawTutorialCursor(
     case 'click-root':
     case 'click-package':
     case 'click-prestige':
+    case 'click-ship':
       drawClickAnimation(
         graphics,
         screenWidth,

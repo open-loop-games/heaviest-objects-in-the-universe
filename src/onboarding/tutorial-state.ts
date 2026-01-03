@@ -15,12 +15,15 @@ import {
   dragMergeConditionMet,
   clickConflictInactiveTime,
   clickConflictConditionMet,
-  clickPrestigeInactiveTime,
-  clickPrestigeConditionMet,
+  clickShipInactiveTime,
+  clickShipConditionMet,
+  clickFragmentInactiveTime,
+  clickFragmentConditionMet,
   setClickPackageTimer,
   setDragMergeTimer,
   setClickConflictTimer,
-  setClickPrestigeTimer,
+  setClickShipTimer,
+  setClickFragmentTimer,
 } from './hint-timers'
 
 // Re-export types and reset functions from hint-timers for external use
@@ -44,6 +47,7 @@ export interface GhostHint {
   show: boolean
   elapsed: number
   targets: GhostHintTarget[] // 1 for click, 2 for drag (from, to)
+  isScreenSpace?: boolean // True if targets are already in screen coordinates
 }
 
 // Inactivity delay before showing hints (ms)
@@ -74,6 +78,9 @@ let selectedConflictActionPos: { x: number; y: number } | null = null
 
 // Back button position (reported by ScopeNavigation component)
 let backButtonPos: { x: number; y: number } | null = null
+
+// Ship button position (reported by PrestigeOrbit component)
+let shipButtonPos: { x: number; y: number } | null = null
 
 // First click tutorial timing
 let gameStartTime = Date.now()
@@ -166,6 +173,10 @@ export function getBackButtonPos(): { x: number; y: number } | null {
   return backButtonPos
 }
 
+export function getShipButtonPos(): { x: number; y: number } | null {
+  return shipButtonPos
+}
+
 // ============================================
 // SETTERS
 // ============================================
@@ -240,6 +251,10 @@ export function setFirstSpawnedTime(value: number): void {
 
 export function setBackButtonPos(value: { x: number; y: number } | null): void {
   backButtonPos = value
+}
+
+export function setShipButtonPos(value: { x: number; y: number } | null): void {
+  shipButtonPos = value
 }
 
 // ============================================
@@ -494,6 +509,35 @@ export function getActiveGhostHint(): GhostHint | null {
     setDragMergeTimer(0, false)
   }
 
+  // === CLICK-FRAGMENT: Golden package with fragment visible ===
+  // Conditions: In a scope, package has uncollected fragment
+  // This teaches fragment collection after surge unlocks (P2+)
+  if (isInPackageScope()) {
+    const scopePackages = getCurrentScopePackages()
+
+    // Find first package with uncollected fragment
+    for (const pkg of scopePackages.values()) {
+      if (pkg.hasCacheFragment && pkg.state !== 'conflict') {
+        // Fragment pip is at 9 o'clock (left side of node)
+        // Use approximate radius of 14 (similar to cascade spawn)
+        const fragmentX = pkg.position.x - 14 - 6 // node radius + pip offset
+        const fragmentY = pkg.position.y
+
+        if (!clickFragmentConditionMet) {
+          setClickFragmentTimer(now, true)
+        }
+        const elapsed = now - clickFragmentInactiveTime
+        return {
+          type: 'click-fragment',
+          show: elapsed >= HINT_DELAY,
+          elapsed,
+          targets: [{ x: fragmentX, y: fragmentY }],
+        }
+      }
+    }
+  }
+  setClickFragmentTimer(0, false)
+
   // === CLICK-CONFLICT: Conflict wire visible, not yet resolved ===
   // Conditions: In a scope, conflict exists
   if (isInPackageScope()) {
@@ -526,30 +570,28 @@ export function getActiveGhostHint(): GhostHint | null {
   }
   setClickConflictTimer(0, false)
 
-  // === CLICK-PRESTIGE: Prestige available, not yet done ===
-  // Conditions: At root scope, can prestige, haven't prestiged before
+  // === CLICK-SHIP: Ship ready, first time ===
+  // Conditions: At root scope, can ship, haven't shipped before, ship button position known
   if (
     !isInPackageScope() &&
     computed_canPrestige.value &&
-    !gameState.onboarding.firstPrestigeComplete
+    !gameState.onboarding.firstPrestigeComplete &&
+    shipButtonPos
   ) {
-    const rootPkg = gameState.rootId
-      ? gameState.packages.get(gameState.rootId)
-      : null
-    if (rootPkg) {
-      if (!clickPrestigeConditionMet) {
-        setClickPrestigeTimer(now, true)
-      }
-      const elapsed = now - clickPrestigeInactiveTime
-      return {
-        type: 'click-prestige',
-        show: elapsed >= HINT_DELAY,
-        elapsed,
-        targets: [{ x: rootPkg.position.x, y: rootPkg.position.y }],
-      }
+    if (!clickShipConditionMet) {
+      setClickShipTimer(now, true)
+    }
+    const elapsed = now - clickShipInactiveTime
+    return {
+      type: 'click-ship',
+      show: elapsed >= HINT_DELAY,
+      elapsed,
+      // Use screen coordinates for ship button (ghost hand renders in screen space)
+      targets: [{ x: shipButtonPos.x, y: shipButtonPos.y }],
+      isScreenSpace: true,
     }
   } else {
-    setClickPrestigeTimer(0, false)
+    setClickShipTimer(0, false)
   }
 
   return null

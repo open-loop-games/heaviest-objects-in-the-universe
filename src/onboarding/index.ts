@@ -19,4 +19,9 @@ export {
   isTabViewed,
   triggerAutoOpen,
   resetBookState,
+  // Journey modal
+  isJourneyUnlocked,
+  isJourneyOpen,
+  openJourney,
+  closeJourney,
 } from './book-state'
