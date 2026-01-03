@@ -22,7 +22,7 @@
  * └─────────────────────────────────────┘
  */
 
-import { computed, ref } from 'vue'
+import { computed, ref, watchEffect } from 'vue'
 import {
   gameState,
   computed_gravity,
@@ -39,7 +39,7 @@ import { getInternalStats } from '../../game/packages'
 import { canAffordConflictResolve } from '../../game/mutations'
 import { setSurgeCharge, getSurgeCost } from '../../game/surge'
 import { SURGE_SEGMENTS } from '../../game/config'
-import { hasUnviewedTabs } from '../../onboarding'
+import { hasUnviewedTabs, unlockTab } from '../../onboarding'
 
 // ============================================
 // PROPS & EMITS
@@ -60,6 +60,32 @@ const emit = defineEmits<{
   toggleAutomation: []
   prestige: []
 }>()
+
+// ============================================
+// TEACHING BOOK TAB UNLOCKS
+// ============================================
+
+// Unlock teaching book tabs based on game progress
+watchEffect(() => {
+  if (gameState.onboarding.firstSymlinkSeen) {
+    unlockTab('duplicates')
+  }
+  if (gameState.onboarding.firstConflictSeen) {
+    unlockTab('conflicts')
+  }
+  if (gameState.onboarding.firstDivablePackageSeen) {
+    unlockTab('diving')
+  }
+  if (
+    computed_canPrestige.value ||
+    gameState.onboarding.firstPrestigeComplete
+  ) {
+    unlockTab('ship')
+  }
+  if (gameState.meta.timesShipped >= 2) {
+    unlockTab('surge')
+  }
+})
 
 // ============================================
 // SCOPE STATE
