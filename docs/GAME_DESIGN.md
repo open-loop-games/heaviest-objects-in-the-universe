@@ -94,7 +94,7 @@ The game uses a "momentum loop" where actions generate bandwidth:
 - Dependencies spawn with staggered timing (satisfying popcorn effect)
 - Each spawn positioned radially from parent with physics velocity
 - Spawn interval accelerates (120ms → 40ms minimum)
-- Depth rewards: golden packages (4x weight) at depth 3+, cache fragments at depth 2+
+- Depth rewards: golden packages (8% at depth 3+) give 4x weight + guaranteed fragment
 - Sub-dependencies (40% chance) spawn after main queue
 
 ### Phase 4: Resolve Conflicts (Player Action)
@@ -286,8 +286,8 @@ As weight approaches threshold:
 | **Green** | 0x5aff5a | Ready, stable, healthy |
 | **Red** | 0xff5a5a | Conflict, danger, unstable |
 | **Cyan** | 0x5affff | Optimized, symlink, pristine scope |
-| **Purple** | 0x8b5cf6 | Hoistable, cache fragment |
-| **Gold** | 0xffd700 | Golden package, depth reward |
+| **Purple** | 0x8b5cf6 | Hoistable |
+| **Gold** | 0xffd700 | Golden package, cache fragment, depth reward |
 | **Orange** | 0xffaa5a | Warning, paused |
 | **Gray** | 0x6a6a7a | Unaffordable, inactive |
 
@@ -300,7 +300,7 @@ As weight approaches threshold:
 | **Progress ring** | Installation/resolution progress |
 | **Portal rings** | 3 concentric rings on compressed packages |
 | **Golden fill ring** | Depth 3+ reward package |
-| **Cache fragment pip** | Purple diamond badge (left side) |
+| **Cache fragment pip** | Gold diamond badge (left side) |
 | **Duplicate halo** | Colored pulsing ring |
 | **Ghost style** | Semi-transparent, dashed cyan border |
 
