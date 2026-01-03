@@ -125,6 +125,14 @@ export interface CascadeState {
   compressedIndices: Set<number> | null
   surgeGoldenBoost: number // Additive golden chance from surge
   surgeFragmentBoost: number // Additive fragment chance from surge
+  // Tutorial pacing (curated packages get slower cascade)
+  isStarterKit: boolean // Whether this cascade is for the starter-kit package
+  isSecondPackage: boolean // Whether this cascade is for the curated second package (express)
+  isThirdPackage: boolean // Whether this cascade is for the curated third package (react)
+  isReactDom: boolean // Whether this cascade is for react-dom (nested inside react)
+  deferConflicts: boolean // Defer conflict detection until after cascade ends
+  breathPhase: boolean // In breath phase - waiting before revealing conflicts
+  breathStartTime: number // When breath phase started
 }
 
 // Onboarding milestone tracking for staged HUD reveal
@@ -134,6 +142,8 @@ export interface OnboardingState {
   firstConflictSeen: boolean // Player has seen a conflict
   firstSymlinkSeen: boolean // Player has seen duplicates (symlink opportunity)
   firstInnerConflictSeen: boolean // Player has seen a conflict inside a package scope
+  firstDivablePackageSeen: boolean // A divable package (top-level) has become ready
+  firstDiveSeen: boolean // Player has entered a package scope (dived in)
   firstScopeExited: boolean // Player has exited a stable scope (exit teaching complete)
   firstPrestigeComplete: boolean // Player has prestiged at least once
   // Sticky UI visibility (persists across prestiges)
@@ -218,4 +228,10 @@ export interface GameConfig {
   nodeRepulsion: number
   wireAttraction: number
   damping: number
+}
+
+// User settings (separate from game state, persists independently)
+export interface UserSettings {
+  /** When true, clicking background exits scope (default: false) */
+  backgroundClickToExit: boolean
 }

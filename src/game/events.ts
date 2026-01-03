@@ -91,6 +91,9 @@ export interface GameEvents {
 
   // Scope stabilization event (decouples scope → mutations)
   'scope:stabilized': { packageCount: number }
+
+  // Player action event (decouples game → tutorial-state to avoid circular deps)
+  'player:action': void
 }
 
 type EventCallback<T> = T extends void ? () => void : (data: T) => void

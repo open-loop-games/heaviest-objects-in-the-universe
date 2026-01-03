@@ -134,3 +134,36 @@ export const cascadeStarved = ref(false)
 export function setCascadeStarved(starved: boolean): void {
   cascadeStarved.value = starved
 }
+
+// ============================================
+// WORK HIGHLIGHT STATE (guide player to next action)
+// ============================================
+
+/** Interval for periodic work highlight wiggles (ms) */
+const WORK_HIGHLIGHT_INTERVAL = 3000
+
+/** Last time we triggered work highlight wiggles */
+let lastWorkHighlightTime = 0
+
+/** Track if back button should be highlighted (scope is stable) */
+export const backButtonHighlight = ref(false)
+
+export function setBackButtonHighlight(highlight: boolean): void {
+  backButtonHighlight.value = highlight
+}
+
+/**
+ * Trigger work highlight wiggles on duplicate packages.
+ * Called periodically from renderer when duplicates exist.
+ * Rate-limited to avoid spamming.
+ */
+export function triggerDuplicateHighlights(duplicateIds: string[]): void {
+  const now = Date.now()
+  if (now - lastWorkHighlightTime < WORK_HIGHLIGHT_INTERVAL) return
+  lastWorkHighlightTime = now
+
+  // Wiggle all duplicate packages to draw attention
+  for (const id of duplicateIds) {
+    triggerWiggle(id)
+  }
+}

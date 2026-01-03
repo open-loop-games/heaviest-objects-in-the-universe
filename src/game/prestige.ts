@@ -51,6 +51,9 @@ export function updateEfficiencyTracking(newEfficiency: number): {
 // ============================================
 
 export function performPrestige(): void {
+  // Reset ghost hand hint timers on meaningful player action
+  emit('player:action')
+
   const threshold = getPrestigeThreshold(gameState.meta.totalPrestiges)
   const reward = calculatePrestigeReward(gameState, threshold)
 
@@ -165,6 +168,7 @@ export function softReset(): void {
 
   // Reset onboarding for this run (but intro already seen)
   gameState.onboarding.firstClickComplete = false
+  gameState.onboarding.firstDivablePackageSeen = false
   // Keep introAnimationComplete and firstPrestigeComplete
 
   // Save after soft reset

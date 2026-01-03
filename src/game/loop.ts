@@ -248,6 +248,13 @@ function updatePackages(deltaTime: number): void {
         packagesToSpawn.push(pkg.id)
         // Momentum: Generate BW when package resolves
         onPackageResolved()
+        // Track when first divable package becomes ready
+        if (
+          pkg.parentId === gameState.rootId &&
+          !gameState.onboarding.firstDivablePackageSeen
+        ) {
+          gameState.onboarding.firstDivablePackageSeen = true
+        }
       }
     }
 

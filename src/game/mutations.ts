@@ -344,6 +344,9 @@ export function resolveWireConflict(wireId: string): boolean {
   const wire = wires.get(wireId)
   if (!wire || !wire.conflicted) return false
 
+  // Reset ghost hand hint timers on meaningful player action
+  emit('player:action')
+
   // Momentum loop: Generate bandwidth for manual conflict resolution
   onConflictResolved()
 

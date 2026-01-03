@@ -99,6 +99,11 @@ export function updateDuplicateGroups(): void {
       colorIndex++
     }
   }
+
+  // Set firstSymlinkSeen when duplicates are first detected
+  if (duplicateGroups.size > 0 && !gameState.onboarding.firstSymlinkSeen) {
+    gameState.onboarding.firstSymlinkSeen = true
+  }
 }
 
 /**
@@ -247,6 +252,9 @@ export function performSymlinkMerge(
   targetId: string
 ): number {
   if (!canSymlink(sourceId, targetId)) return 0
+
+  // Reset ghost hand hint timers on meaningful player action
+  emit('player:action')
 
   const packages = getCurrentScopePackages()
   const wires = getCurrentScopeWires()

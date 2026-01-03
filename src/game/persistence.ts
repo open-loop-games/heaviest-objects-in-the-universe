@@ -2,9 +2,10 @@
 
 import type { Package, Wire, PackageState, InternalState } from './types'
 import { SAVE_VERSION } from './config'
-import { gameState, syncEcosystemTier } from './state'
+import { gameState, syncEcosystemTier, userSettings } from './state'
 
 const STORAGE_KEY = 'heaviest-objects-save'
+const SETTINGS_KEY = 'heaviest-objects-settings'
 const AUTO_SAVE_INTERVAL = 30000 // 30 seconds
 
 let autoSaveIntervalId: ReturnType<typeof setInterval> | null = null
@@ -244,6 +245,14 @@ function resetTransientState(): void {
     compressedIndices: null,
     surgeGoldenBoost: 0,
     surgeFragmentBoost: 0,
+    // Tutorial pacing fields
+    isStarterKit: false,
+    isSecondPackage: false,
+    isThirdPackage: false,
+    isReactDom: false,
+    deferConflicts: false,
+    breathPhase: false,
+    breathStartTime: 0,
   }
 
   // Reset active automation state (preserve toggle settings)
@@ -470,6 +479,7 @@ export function saveToLocalStorage(): boolean {
   try {
     const saveString = saveGame()
     localStorage.setItem(STORAGE_KEY, saveString)
+    saveSettings()
     return true
   } catch (e) {
     console.warn('Failed to save game:', e)
@@ -479,6 +489,7 @@ export function saveToLocalStorage(): boolean {
 
 export function loadFromLocalStorage(): boolean {
   try {
+    loadSettings()
     const saveString = localStorage.getItem(STORAGE_KEY)
     if (!saveString) return false
     return loadGame(saveString)
@@ -494,6 +505,30 @@ export function hasSavedGame(): boolean {
 
 export function clearSavedGame(): void {
   localStorage.removeItem(STORAGE_KEY)
+}
+
+// ============================================
+// USER SETTINGS PERSISTENCE
+// ============================================
+
+export function saveSettings(): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(userSettings.value))
+  } catch (e) {
+    console.warn('Failed to save settings:', e)
+  }
+}
+
+export function loadSettings(): void {
+  try {
+    const saved = localStorage.getItem(SETTINGS_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      userSettings.value = { ...userSettings.value, ...parsed }
+    }
+  } catch (e) {
+    // Ignore invalid settings
+  }
 }
 
 export function startAutoSave(): void {

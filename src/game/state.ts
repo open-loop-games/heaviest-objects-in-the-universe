@@ -4,8 +4,8 @@
 // - reactive() for large nested objects mutated in-place (gameState, gameConfig)
 // - ref() for primitives or objects replaced wholesale (collapseState, dragState)
 
-import { reactive, computed, type ComputedRef } from 'vue'
-import { type GameState, type GameConfig } from './types'
+import { reactive, ref, computed, type ComputedRef } from 'vue'
+import { type GameState, type GameConfig, type UserSettings } from './types'
 import { DEFAULT_CONFIG, createInitialState, TIER_THRESHOLDS } from './config'
 import {
   calculatePrestigeReward,
@@ -19,6 +19,11 @@ export const gameState = reactive<GameState>(createInitialState())
 
 // Global config (can be modified for balancing)
 export const gameConfig = reactive<GameConfig>({ ...DEFAULT_CONFIG })
+
+// User settings (separate from game state, persists independently)
+export const userSettings = ref<UserSettings>({
+  backgroundClickToExit: false,
+})
 
 // ============================================
 // COMPUTED VALUES

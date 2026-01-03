@@ -316,12 +316,20 @@ export function _injectCascade(
  * If the package is pristine, starts the cascade (staggered spawning)
  */
 export function enterPackageScope(packageId: string): boolean {
+  // Reset ghost hand hint timers on meaningful player action
+  emit('player:action')
+
   // For layer 1 (entering from root), use the original enterScope
   if (gameState.scopeStack.length === 0) {
     const pkg = gameState.packages.get(packageId)
     if (!pkg) return false
 
     if (!enterScope(packageId)) return false
+
+    // Mark first dive for teaching book
+    if (!gameState.onboarding.firstDiveSeen) {
+      gameState.onboarding.firstDiveSeen = true
+    }
 
     // If pristine, start the staggered cascade
     if (pkg.internalState === 'pristine') {
@@ -334,6 +342,11 @@ export function enterPackageScope(packageId: string): boolean {
 
   // For deeper layers, use generic path-based entry
   if (!enterScopeAtPath(packageId)) return false
+
+  // Mark first dive for teaching book
+  if (!gameState.onboarding.firstDiveSeen) {
+    gameState.onboarding.firstDiveSeen = true
+  }
 
   // Get the package we just entered using the new scope path
   const pkg = getPackageAtPath(gameState.scopeStack)
@@ -352,6 +365,9 @@ export function enterPackageScope(packageId: string): boolean {
  * Exit the current scope (go up one level)
  */
 export function exitPackageScope(): void {
+  // Reset ghost hand hint timers on meaningful player action
+  emit('player:action')
+
   // Recalculate state before exiting (at current depth)
   if (gameState.scopeStack.length > 0) {
     recalculateStateAtPath([...gameState.scopeStack])
