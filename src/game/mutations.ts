@@ -199,16 +199,16 @@ export function applySafetyRegen(deltaTime: number): void {
 /**
  * Add weight with compression multiplier applied
  * @param baseWeight The base weight to add
- * @returns The actual weight added (after compression)
+ * @returns The actual weight added (after multiplier)
  */
 export function addWeight(baseWeight: number): number {
-  const compressedWeight = baseWeight * getCompressionMultiplier()
-  gameState.resources.weight += compressedWeight
+  const finalWeight = baseWeight * getCompressionMultiplier()
+  gameState.resources.weight += finalWeight
   gameState.stats.maxWeightReached = Math.max(
     gameState.stats.maxWeightReached,
     gameState.resources.weight
   )
-  return compressedWeight
+  return finalWeight
 }
 
 // ============================================

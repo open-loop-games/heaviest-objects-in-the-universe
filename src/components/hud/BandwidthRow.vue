@@ -11,6 +11,7 @@ import {
   setPreviewedUpgrade,
   previewedUpgradeId,
   isUpgradeUnlocked,
+  getPreviewBandwidth,
   UPGRADES,
 } from '../../game/upgrades'
 import { CONFLICT_RESOLVE_COST, SYMLINK_MERGE_COST } from '../../game/config'
@@ -23,6 +24,14 @@ const SEGMENTS = 10
 
 const bandwidthPercent = computed(() => {
   return gameState.resources.bandwidth / gameState.resources.maxBandwidth
+})
+
+// Preview: what fill would look like with upgraded capacity
+const previewBandwidthPercent = computed(() => {
+  if (previewedUpgradeId.value !== 'bandwidth') return null
+  const preview = getPreviewBandwidth()
+  // Same current bandwidth, divided by the NEW (larger) max
+  return gameState.resources.bandwidth / preview.previewValue
 })
 
 // Install cost as percentage of max bandwidth
@@ -82,12 +91,25 @@ const actionAffordable = computed(
 // Pre-compute segment states to simplify template and avoid duplicated condition checks
 // Each segment has a state object that determines its appearance
 const segmentStates = computed(() => {
-  const filled = filledSegments.value
-  const partial = partialFill.value
+  const previewingBw = previewedUpgradeId.value === 'bandwidth'
+  const previewPercent = previewBandwidthPercent.value
+
+  // Original fill values (always based on current capacity)
+  const originalFilled = filledSegments.value
+  const originalPartial = partialFill.value
+  const originalFilledEnd = originalFilled + (originalPartial > 0 ? 1 : 0)
+
+  // Effective fill: use preview values when previewing bandwidth upgrade
+  const effectivePercent =
+    previewingBw && previewPercent !== null
+      ? previewPercent
+      : bandwidthPercent.value
+  const filled = Math.floor(effectivePercent * SEGMENTS)
+  const partial = Math.round(((effectivePercent * SEGMENTS) % 1) * 100) / 100
+
   const costStart = costStartSegment.value
   const previewStart = previewStartSegment.value
   const previewingAction = isPreviewingAction.value
-  const previewingEfficiency = isPreviewingEfficiency.value
   const affordable = actionAffordable.value
   const canAfford = canAffordInstall.value
   const filledEnd = filled + (partial > 0 ? 1 : 0)
@@ -100,16 +122,23 @@ const segmentStates = computed(() => {
     const inPreviewRange =
       previewingAction && i >= previewStart && inFilledRange
 
+    // Headroom gained: segments that are currently filled but would be empty after upgrade
+    // These show the "gained capacity" zone with green pulse
+    const isHeadroomGained =
+      previewingBw && i >= filledEnd && i < originalFilledEnd
+
     return {
       index: i,
       filled: isFilled,
       partial: isPartial,
       partialValue: isPartial ? partial : 0,
-      isCost: inCostRange && !previewingEfficiency && !inPreviewRange,
-      unaffordable: inCostRange && !canAfford,
+      // Hide cost markers during bandwidth preview
+      isCost: inCostRange && !previewingBw && !inPreviewRange,
+      unaffordable: inCostRange && !canAfford && !previewingBw,
       actionPreview: inPreviewRange,
       actionAffordable: inPreviewRange && affordable,
       actionUnaffordable: inPreviewRange && !affordable,
+      headroomGained: isHeadroomGained,
     }
   })
 })
@@ -160,9 +189,6 @@ function handlePipsLeave() {
 const isPreviewingBandwidth = computed(
   () => previewedUpgradeId.value === 'bandwidth'
 )
-const isPreviewingEfficiency = computed(
-  () => previewedUpgradeId.value === 'efficiency'
-)
 const isPreviewingAny = computed(() => previewedUpgradeId.value !== null)
 
 // Only show starved state when viewing the scope that's actually cascading
@@ -210,6 +236,7 @@ void showStarved.value // Suppress TS6133 - used in template
           'action-preview': seg.actionPreview,
           'action-affordable': seg.actionAffordable,
           'action-unaffordable': seg.actionUnaffordable,
+          'headroom-gained': seg.headroomGained,
         }"
       >
         <div
@@ -423,6 +450,39 @@ void showStarved.value // Suppress TS6133 - used in template
   }
   50% {
     opacity: 0.8;
+  }
+}
+
+/* Headroom gained - green pulse showing capacity increase from bandwidth upgrade */
+.segment.headroom-gained {
+  background: linear-gradient(to top, #2a4a2a, #3a6a3a);
+  box-shadow: 0 0 8px rgba(90, 255, 90, 0.4);
+  animation: headroom-pulse 0.8s ease-in-out infinite;
+}
+
+.segment.headroom-gained::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 2px,
+    rgba(90, 255, 90, 0.15) 2px,
+    rgba(90, 255, 90, 0.15) 4px
+  );
+  border-radius: 2px;
+}
+
+@keyframes headroom-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+    box-shadow: 0 0 4px rgba(90, 255, 90, 0.3);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 12px rgba(90, 255, 90, 0.6);
   }
 }
 

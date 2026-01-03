@@ -6,6 +6,7 @@ import {
   canPurchaseUpgrade,
   purchaseUpgrade,
   setPreviewedUpgrade,
+  previewedUpgradeId,
   UPGRADES,
 } from '../../game/upgrades'
 
@@ -34,6 +35,61 @@ const partialFill = computed(() => {
 // Static segment indices for v-for
 const segmentIndices = Array.from({ length: SEGMENTS }, (_, i) => i)
 const LAST_SEGMENT = SEGMENTS - 1
+
+// ============================================
+// COMPRESSION PREVIEW
+// ============================================
+
+const isPreviewingCompression = computed(
+  () => previewedUpgradeId.value === 'compression'
+)
+
+// Preview: what fill would look like with upgraded compression
+// Compression multiplies weight gain, so same weight = more progress
+const previewProgress = computed(() => {
+  if (!isPreviewingCompression.value) return null
+  const currentLevel = getUpgradeLevel('compression')
+  const nextLevel = currentLevel + 1
+  // Ratio of next multiplier to current: 1.1^(next) / 1.1^(current) = 1.1
+  const boostRatio = Math.pow(1.1, nextLevel) / Math.pow(1.1, currentLevel)
+  return Math.min(1, prestigeProgress.value * boostRatio)
+})
+
+// Pre-compute segment states
+const segmentStates = computed(() => {
+  const currentFilled = filledSegments.value
+  const currentPartial = partialFill.value
+  const currentFilledEnd = currentFilled + (currentPartial > 0 ? 1 : 0)
+
+  // Preview values (when hovering compression upgrade)
+  const previewing = isPreviewingCompression.value
+  const previewProg = previewProgress.value
+  const previewFilled =
+    previewProg !== null ? Math.floor(previewProg * SEGMENTS) : currentFilled
+  const previewPartial =
+    previewProg !== null
+      ? Math.round(((previewProg * SEGMENTS) % 1) * 100) / 100
+      : currentPartial
+  const previewFilledEnd = previewFilled + (previewPartial > 0 ? 1 : 0)
+
+  return segmentIndices.map((i) => {
+    const isFilled = i < currentFilled
+    const isPartial = i === currentFilled && currentPartial > 0
+
+    // Bonus fill: segments between current fill and preview fill
+    const isBonusFill =
+      previewing && i >= currentFilledEnd && i < previewFilledEnd
+
+    return {
+      index: i,
+      filled: isFilled,
+      partial: isPartial,
+      partialValue: isPartial ? currentPartial : 0,
+      bonusFill: isBonusFill,
+      isMilestone: i === LAST_SEGMENT,
+    }
+  })
+})
 
 // ============================================
 // COMPRESSION UPGRADE (P3+ only)
@@ -78,20 +134,20 @@ function handleCompressionLeave() {
     <!-- Segmented weight bar -->
     <div class="resource-bar">
       <div
-        v-for="i in segmentIndices"
-        :key="i"
-        v-memo="[i < filledSegments, i === filledSegments ? partialFill : 0]"
+        v-for="seg in segmentStates"
+        :key="seg.index"
         class="segment"
         :class="{
-          filled: i < filledSegments,
-          partial: i === filledSegments && partialFill > 0,
-          'milestone-segment': i === LAST_SEGMENT,
+          filled: seg.filled,
+          partial: seg.partial,
+          'milestone-segment': seg.isMilestone,
+          'bonus-fill': seg.bonusFill,
         }"
       >
         <div
-          v-if="i === filledSegments && partialFill > 0"
+          v-if="seg.partial"
           class="segment-fill"
-          :style="{ height: partialFill * 100 + '%' }"
+          :style="{ height: seg.partialValue * 100 + '%' }"
         ></div>
       </div>
     </div>
@@ -199,6 +255,39 @@ function handleCompressionLeave() {
   );
   box-shadow: 0 0 8px rgba(122, 90, 255, 0.6);
   animation: hud-pulse 1s ease-in-out infinite alternate;
+}
+
+/* Bonus fill - orange pulse showing weight gain increase from compression upgrade */
+.segment.bonus-fill {
+  background: linear-gradient(to top, #4a3a2a, #6a4a2a);
+  box-shadow: 0 0 8px rgba(255, 170, 90, 0.4);
+  animation: bonus-fill-pulse 0.8s ease-in-out infinite;
+}
+
+.segment.bonus-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 170, 90, 0.2) 2px,
+    rgba(255, 170, 90, 0.2) 4px
+  );
+  border-radius: 2px;
+}
+
+@keyframes bonus-fill-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+    box-shadow: 0 0 4px rgba(255, 170, 90, 0.3);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 12px rgba(255, 170, 90, 0.6);
+  }
 }
 
 /* Upgrade pips container */

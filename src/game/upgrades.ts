@@ -30,12 +30,8 @@ const effects = {
   // Stabilization burst: +10% per bandwidth level
   stabilizationBonus: (level: number) => 1 + level * 0.1,
 
-  // Efficiency: faster installs and lower costs
-  installSpeed: (level: number) => 1 + level * 0.25, // +25% speed per level
-  costReduction: (level: number) => Math.pow(0.94, level), // -6% cost per level
-
-  // Compression: reduces weight gain (P3+)
-  weightReduction: (level: number) => Math.pow(0.95, level), // -5% per level
+  // Compression: increases weight gain (P3+) - ship faster
+  weightGain: (level: number) => Math.pow(1.1, level), // +10% per level
 
   // Automation speed upgrades
   drainReduction: (level: number) => Math.pow(0.9, level), // -10% drain per level
@@ -53,14 +49,6 @@ export const UPGRADES: Record<string, UpgradeDefinition> = {
     costMultiplier: 1.35,
     unlockAt: 3,
     prestigeRequirement: 1, // Gate behind first prestige to prevent poor early states
-  },
-  efficiency: {
-    id: 'efficiency',
-    icon: '⚡',
-    maxLevel: 12,
-    baseCost: 120,
-    costMultiplier: 1.4,
-    unlockAt: 15,
   },
   compression: {
     id: 'compression',
@@ -175,8 +163,7 @@ export function getEffectiveBandwidthRegen(): number {
 }
 
 export function getEffectiveInstallSpeed(): number {
-  const effLevel = getUpgradeLevel('efficiency')
-  return effects.installSpeed(effLevel)
+  return 1 // Base install speed (no upgrade)
 }
 
 // Get stabilization burst bonus from bandwidth upgrade
@@ -187,18 +174,17 @@ export function getStabilizationBonus(): number {
 }
 
 export function getEffectiveCostMultiplier(): number {
-  const effLevel = getUpgradeLevel('efficiency')
-  return effects.costReduction(effLevel)
+  return 1 // Base cost multiplier (no upgrade)
 }
 
 // ============================================
 // COMPRESSION UPGRADE (P3+)
 // ============================================
 
-// Get weight reduction multiplier from compression upgrade
+// Get weight gain multiplier from compression upgrade (>1 = faster shipping)
 export function getCompressionMultiplier(): number {
   const level = getUpgradeLevel('compression')
-  return effects.weightReduction(level)
+  return effects.weightGain(level)
 }
 
 // ============================================
@@ -342,23 +328,5 @@ export function getPreviewBandwidth(): UpgradePreview {
     currentValue,
     previewValue,
     percentChange: ((previewValue - currentValue) / currentValue) * 100,
-  }
-}
-
-// Preview for efficiency upgrade (shows cost reduction)
-export function getPreviewEfficiency(): { current: number; preview: number } {
-  const upgrade = UPGRADES.efficiency
-  const packageCount = gameState.packages.size
-  const baseCost = 10
-  const scaledCost = baseCost * Math.pow(1.12, packageCount)
-
-  const currentMultiplier = getEffectiveCostMultiplier()
-  const currentLevel = getUpgradeLevel('efficiency')
-  const nextLevel = Math.min(currentLevel + 1, upgrade?.maxLevel ?? 12)
-  const previewMultiplier = effects.costReduction(nextLevel)
-
-  return {
-    current: Math.floor(scaledCost * currentMultiplier),
-    preview: Math.floor(scaledCost * previewMultiplier),
   }
 }
