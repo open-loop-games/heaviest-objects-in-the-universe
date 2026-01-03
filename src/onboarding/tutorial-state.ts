@@ -1,6 +1,53 @@
 // Tutorial state tracking - timers and "first seen" flags
 
-import { gameState } from '../game/state'
+import { gameState, computed_canPrestige } from '../game/state'
+import {
+  isInPackageScope,
+  getCurrentScopePackages,
+  getCurrentScopeWires,
+} from '../game/scope'
+import { getAllDuplicateGroups } from '../game/symlinks'
+import {
+  type GhostHintType,
+  clickPackageInactiveTime,
+  clickPackageConditionMet,
+  dragMergeInactiveTime,
+  dragMergeConditionMet,
+  clickConflictInactiveTime,
+  clickConflictConditionMet,
+  clickPrestigeInactiveTime,
+  clickPrestigeConditionMet,
+  setClickPackageTimer,
+  setDragMergeTimer,
+  setClickConflictTimer,
+  setClickPrestigeTimer,
+} from './hint-timers'
+
+// Re-export types and reset functions from hint-timers for external use
+export {
+  type GhostHintType,
+  resetHintTimers,
+  resetHintTimer,
+} from './hint-timers'
+
+// ============================================
+// GHOST HAND HINT TYPES
+// ============================================
+
+export interface GhostHintTarget {
+  x: number
+  y: number
+}
+
+export interface GhostHint {
+  type: GhostHintType
+  show: boolean
+  elapsed: number
+  targets: GhostHintTarget[] // 1 for click, 2 for drag (from, to)
+}
+
+// Inactivity delay before showing hints (ms)
+const HINT_DELAY = 10000
 
 // ============================================
 // STATE
@@ -331,6 +378,178 @@ export function getCursorHintState(): {
   } else {
     waitingForSecondPackage = false
     waitingForSecondPackageTime = 0
+  }
+
+  return null
+}
+
+// ============================================
+// GHOST HAND HINT SYSTEM
+// ============================================
+
+/**
+ * Get the currently active ghost hand hint
+ * Returns the highest-priority hint that should show, or null
+ * Priority order: click-root > click-package > drag-merge > click-conflict > click-prestige
+ */
+export function getActiveGhostHint(): GhostHint | null {
+  // Skip all hints for prestiged players
+  if (gameState.meta.cacheTokens > 0) return null
+
+  const now = Date.now()
+
+  // === CLICK-ROOT: First click not done ===
+  if (!gameState.onboarding.firstClickComplete) {
+    if (!gameState.onboarding.introAnimationComplete) return null
+
+    const rootPkg = gameState.rootId
+      ? gameState.packages.get(gameState.rootId)
+      : null
+    if (!rootPkg) return null
+
+    const elapsed = now - gameStartTime
+    return {
+      type: 'click-root',
+      show: elapsed >= HINT_DELAY,
+      elapsed,
+      targets: [{ x: rootPkg.position.x, y: rootPkg.position.y }],
+    }
+  }
+
+  // === CLICK-PACKAGE: First package spawned, not dived yet ===
+  // Conditions: At root scope, first click done, not yet dived, has a top-level package
+  if (
+    !isInPackageScope() &&
+    gameState.onboarding.firstClickComplete &&
+    !gameState.onboarding.firstDiveSeen
+  ) {
+    // Find the first top-level package (not root)
+    let targetPkg: { x: number; y: number } | null = null
+    for (const pkg of gameState.packages.values()) {
+      if (pkg.parentId === gameState.rootId && pkg.state === 'ready') {
+        targetPkg = { x: pkg.position.x, y: pkg.position.y }
+        break
+      }
+    }
+
+    if (targetPkg) {
+      if (!clickPackageConditionMet) {
+        setClickPackageTimer(now, true)
+      }
+      const elapsed = now - clickPackageInactiveTime
+      return {
+        type: 'click-package',
+        show: elapsed >= HINT_DELAY,
+        elapsed,
+        targets: [targetPkg],
+      }
+    }
+  } else if (!clickPackageConditionMet) {
+    // Condition not met, don't change timer
+  } else {
+    setClickPackageTimer(0, false)
+  }
+
+  // === DRAG-MERGE: Duplicates visible, not yet merged one ===
+  // Conditions: In a scope, duplicates exist, haven't done first symlink
+  if (isInPackageScope() && !gameState.onboarding.firstSymlinkSeen) {
+    const duplicateGroups = getAllDuplicateGroups()
+    const scopePackages = getCurrentScopePackages()
+
+    // Find first pair of on-scope duplicates
+    let dragFrom: { x: number; y: number } | null = null
+    let dragTo: { x: number; y: number } | null = null
+
+    for (const group of duplicateGroups) {
+      if (group.packageIds.length >= 2) {
+        const positions: { x: number; y: number }[] = []
+        for (const pkgId of group.packageIds) {
+          const pkg = scopePackages.get(pkgId)
+          if (pkg && pkg.state !== 'conflict') {
+            positions.push({ x: pkg.position.x, y: pkg.position.y })
+            if (positions.length >= 2) break
+          }
+        }
+        if (positions.length >= 2) {
+          dragFrom = positions[0]!
+          dragTo = positions[1]!
+          break
+        }
+      }
+    }
+
+    if (dragFrom && dragTo) {
+      if (!dragMergeConditionMet) {
+        setDragMergeTimer(now, true)
+      }
+      const elapsed = now - dragMergeInactiveTime
+      return {
+        type: 'drag-merge',
+        show: elapsed >= HINT_DELAY,
+        elapsed,
+        targets: [dragFrom, dragTo],
+      }
+    }
+  } else if (!isInPackageScope()) {
+    setDragMergeTimer(0, false)
+  }
+
+  // === CLICK-CONFLICT: Conflict wire visible, not yet resolved ===
+  // Conditions: In a scope, conflict exists
+  if (isInPackageScope()) {
+    const scopeWires = getCurrentScopeWires()
+    const scopePackages = getCurrentScopePackages()
+
+    // Find first conflicted wire
+    for (const wire of scopeWires.values()) {
+      if (wire.conflicted) {
+        const fromPkg = scopePackages.get(wire.fromId)
+        const toPkg = scopePackages.get(wire.toId)
+        if (fromPkg && toPkg) {
+          // Target is midpoint of wire
+          const midX = (fromPkg.position.x + toPkg.position.x) / 2
+          const midY = (fromPkg.position.y + toPkg.position.y) / 2
+
+          if (!clickConflictConditionMet) {
+            setClickConflictTimer(now, true)
+          }
+          const elapsed = now - clickConflictInactiveTime
+          return {
+            type: 'click-conflict',
+            show: elapsed >= HINT_DELAY,
+            elapsed,
+            targets: [{ x: midX, y: midY }],
+          }
+        }
+      }
+    }
+  }
+  setClickConflictTimer(0, false)
+
+  // === CLICK-PRESTIGE: Prestige available, not yet done ===
+  // Conditions: At root scope, can prestige, haven't prestiged before
+  if (
+    !isInPackageScope() &&
+    computed_canPrestige.value &&
+    !gameState.onboarding.firstPrestigeComplete
+  ) {
+    const rootPkg = gameState.rootId
+      ? gameState.packages.get(gameState.rootId)
+      : null
+    if (rootPkg) {
+      if (!clickPrestigeConditionMet) {
+        setClickPrestigeTimer(now, true)
+      }
+      const elapsed = now - clickPrestigeInactiveTime
+      return {
+        type: 'click-prestige',
+        show: elapsed >= HINT_DELAY,
+        elapsed,
+        targets: [{ x: rootPkg.position.x, y: rootPkg.position.y }],
+      }
+    }
+  } else {
+    setClickPrestigeTimer(0, false)
   }
 
   return null
