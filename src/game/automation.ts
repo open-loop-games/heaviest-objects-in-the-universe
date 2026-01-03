@@ -13,7 +13,6 @@ import {
   getResolveSpeedMultiplier,
 } from './upgrades'
 import { AUTO_RESOLVE_DRAIN } from './config'
-import type { Package } from './types'
 import { emit } from './events'
 
 // ============================================
@@ -67,53 +66,23 @@ function isScopePopulating(scopePath: string[]): boolean {
 }
 
 /**
- * Find the first conflicted wire across all scopes.
- * Searches root scope first, then internal scopes of each package.
- * Skips scopes that are currently being populated by the cascade system.
+ * Find the first conflicted wire in the CURRENT scope only.
+ * Automation should not reach into other scopes - only resolve conflicts
+ * where the player is currently viewing.
  */
 export function findFirstConflictedWire(): ConflictLocation | null {
-  // Check root scope first (root is never cascading)
-  for (const [wireId, wire] of toRaw(gameState.wires)) {
-    if (wire.conflicted) {
-      return { wireId, scopePath: [] }
-    }
-  }
+  const scopePath = [...gameState.scopeStack]
 
-  // Check internal scopes (recursively), skipping cascading scopes
-  for (const [pkgId, pkg] of toRaw(gameState.packages)) {
-    const result = findConflictInPackage(pkg, [pkgId])
-    if (result) return result
-  }
-
-  return null
-}
-
-/**
- * Recursively search for conflicts in a package's internal scope
- * Skips scopes that are currently being populated by the cascade system.
- */
-function findConflictInPackage(
-  pkg: Package,
-  scopePath: string[]
-): ConflictLocation | null {
-  if (!pkg.internalWires) return null
-
-  // Skip this scope if it's currently being populated by the cascade
-  // This prevents race conditions between automation and cascade spawning
+  // Skip if current scope is being populated by cascade
   if (isScopePopulating(scopePath)) return null
 
-  // Check this package's internal wires
-  for (const [wireId, wire] of toRaw(pkg.internalWires)) {
+  // Get wires for current scope only
+  const wires = getWiresAtPath(scopePath)
+  if (!wires) return null
+
+  for (const [wireId, wire] of toRaw(wires)) {
     if (wire.conflicted) {
       return { wireId, scopePath }
-    }
-  }
-
-  // Recurse into internal packages that have their own scopes
-  if (pkg.internalPackages) {
-    for (const [innerPkgId, innerPkg] of toRaw(pkg.internalPackages)) {
-      const result = findConflictInPackage(innerPkg, [...scopePath, innerPkgId])
-      if (result) return result
     }
   }
 
