@@ -31,41 +31,23 @@ export const userSettings = ref<UserSettings>({
 
 // Current prestige threshold (dynamic based on progress)
 export const computed_prestigeThreshold: ComputedRef<number> = computed(() => {
-  return getPrestigeThreshold(gameState.meta.totalPrestiges)
+  return getPrestigeThreshold(gameState.meta.timesShipped)
 })
 
 // Gravity: progress toward prestige (0 to 1+)
-// Compound formula: raw progress boosted by efficiency
-// At 0% efficiency: 0.7x speed (bloat penalty)
-// At 50% efficiency: 1.0x speed (neutral)
-// At 100% efficiency: 1.3x speed (optimization reward)
+// Simple formula: weight / threshold
+// Efficiency affects rewards, not when you can ship
 export const computed_gravity: ComputedRef<number> = computed(() => {
   const threshold = computed_prestigeThreshold.value
   if (threshold <= 0) return 0
-
-  const rawProgress = gameState.resources.weight / threshold
-  const efficiency = gameState.stats.currentEfficiency
-
-  // Efficiency boost: 0.7 + (efficiency × 0.6)
-  // Range: 0.7x (0% eff) → 1.0x (50% eff) → 1.3x (100% eff)
-  const efficiencyBoost = 0.7 + efficiency * 0.6
-
-  return rawProgress * efficiencyBoost
+  return gameState.resources.weight / threshold
 })
 
 export const computed_prestigeReward: ComputedRef<number> = computed(() => {
   return calculatePrestigeReward(gameState, computed_prestigeThreshold.value)
 })
 
-// Raw gravity (without efficiency boost) - for UI comparison
-export const computed_rawGravity: ComputedRef<number> = computed(() => {
-  const threshold = computed_prestigeThreshold.value
-  if (threshold <= 0) return 0
-  return gameState.resources.weight / threshold
-})
-
-// Prestige unlocks when compound gravity >= 1
-// Optimized players can prestige with less raw weight
+// Prestige unlocks when gravity >= 1 (weight >= threshold)
 export const computed_canPrestige: ComputedRef<boolean> = computed(() => {
   return computed_gravity.value >= 1
 })
@@ -116,6 +98,16 @@ export const computed_tierProgress: ComputedRef<number> = computed(() => {
   const progress = tokens - currentThreshold
 
   return Math.min(1, progress / range)
+})
+
+// Collapse availability (Tier 5 only)
+export const computed_canCollapse: ComputedRef<boolean> = computed(() => {
+  return computed_ecosystemTier.value >= 5
+})
+
+// Endless mode state
+export const computed_isEndlessMode: ComputedRef<boolean> = computed(() => {
+  return gameState.meta.endlessMode
 })
 
 // ============================================

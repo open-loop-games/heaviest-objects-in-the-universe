@@ -11,8 +11,6 @@ import {
   GOLDEN_SPAWN_CHANCE,
   GOLDEN_WEIGHT_MULTIPLIER,
   GOLDEN_MIN_DEPTH,
-  CACHE_FRAGMENT_CHANCE,
-  CACHE_FRAGMENT_MIN_DEPTH,
   DEPTH_WEIGHT_MULTIPLIERS,
   MAX_SAME_IDENTITY_PER_SCOPE,
   MIN_DUPLICATE_PAIRS_PER_SCOPE,
@@ -116,10 +114,13 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
   const isThirdPackage = pkg.identity?.name === 'react'
   const isReactDom = pkg.identity?.name === 'react-dom'
 
-  // Consume surge boost if available (unlocked after P2)
-  // Strategic choice: use early for size, or save for deeper cascades with better reward chances
+  // Consume surge boost only if this cascade can spawn golden packages
+  // Golden packages require effectiveDepth >= GOLDEN_MIN_DEPTH (3)
+  // effectiveDepth = scopePath.length + spawn.depth (which starts at 1)
+  // So we need scopePath.length >= 2 for golden packages to be possible
   let surgeBoost = { sizeMultiplier: 1, goldenBoost: 0, fragmentBoost: 0 }
-  if (isSurgeUnlocked()) {
+  const canSpawnGolden = depth >= GOLDEN_MIN_DEPTH - 1 // depth 2+ means effective depth 3+
+  if (isSurgeUnlocked() && canSpawnGolden) {
     surgeBoost = consumeSurge()
   }
 
@@ -530,25 +531,23 @@ function spawnNextFromQueue(): void {
   // Calculate effective depth for rewards (scope depth + internal depth)
   const effectiveDepth = depth + spawn.depth
 
-  // Get surge boosts for this cascade
-  const surgeGoldenBoost = cascade.surgeGoldenBoost
-  const surgeFragmentBoost = cascade.surgeFragmentBoost
+  // Get surge boosts for this cascade (fragment boost now merged into golden)
+  const surgeGoldenBoost = cascade.surgeGoldenBoost + cascade.surgeFragmentBoost
 
-  // Roll for golden package (depth 3+ only, boosted by surge)
+  // Roll for golden package (depth 3+ only, requires surge unlock)
+  // Golden packages give 4x weight AND guaranteed fragment
+  // Only spawn after surge is unlocked (P2+) so fragments are introduced with their mechanic
   const goldenChance = GOLDEN_SPAWN_CHANCE + surgeGoldenBoost
   const isGolden =
-    effectiveDepth >= GOLDEN_MIN_DEPTH && Math.random() < goldenChance
+    isSurgeUnlocked() &&
+    effectiveDepth >= GOLDEN_MIN_DEPTH &&
+    Math.random() < goldenChance
 
-  // Roll for cache fragment (depth 2+ only, boosted by surge)
+  // Cache fragments come only from golden packages (merged mechanic)
   // Easter egg: break_infinity and break_eternity ALWAYS have fragments
-  // (they're the tools of the incremental game trade!)
   const isIncrementalEasterEgg =
     identity?.name === 'break_infinity' || identity?.name === 'break_eternity'
-  const fragmentChance = CACHE_FRAGMENT_CHANCE + surgeFragmentBoost
-  const hasCacheFragment =
-    isIncrementalEasterEgg ||
-    (effectiveDepth >= CACHE_FRAGMENT_MIN_DEPTH &&
-      Math.random() < fragmentChance)
+  const hasCacheFragment = isGolden || isIncrementalEasterEgg
 
   // Apply golden weight multiplier and depth weight bonus
   const depthIndex = Math.min(

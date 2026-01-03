@@ -12,6 +12,13 @@ import { setSurgeCharge, getSurgeCost } from '../../game/surge'
 import { SURGE_SEGMENTS } from '../../game/config'
 
 // ============================================
+// ONBOARDING STATE
+// ============================================
+
+// Show unlock glow until player has charged surge at least once
+const showUnlockGlow = computed(() => !gameState.onboarding.firstSurgeCharged)
+
+// ============================================
 // SURGE BAR STATE
 // ============================================
 
@@ -111,7 +118,11 @@ function handlePipsLeave() {
 </script>
 
 <template>
-  <div class="resource-row surge-row" @mouseup="handleMouseUp">
+  <div
+    class="resource-row surge-row"
+    :class="{ 'unlock-glow': showUnlockGlow }"
+    @mouseup="handleMouseUp"
+  >
     <!-- Surge icon (ripple/burst SVG) -->
     <div
       class="resource-icon surge-icon"
@@ -393,6 +404,53 @@ function handlePipsLeave() {
   50% {
     box-shadow: 0 0 12px rgba(240, 160, 64, 0.8);
     transform: scale(1.15);
+  }
+}
+
+/* ============================================
+   UNLOCK GLOW (First appearance after P2)
+   ============================================ */
+.surge-row.unlock-glow {
+  animation: surge-unlock-pulse 2s ease-in-out infinite;
+  position: relative;
+}
+
+.surge-row.unlock-glow::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    rgba(240, 160, 64, 0.3),
+    rgba(255, 200, 100, 0.5),
+    rgba(240, 160, 64, 0.3)
+  );
+  opacity: 0;
+  animation: surge-unlock-shimmer 2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@keyframes surge-unlock-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(240, 160, 64, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(240, 160, 64, 0.7);
+  }
+}
+
+@keyframes surge-unlock-shimmer {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: translateX(-10%);
+  }
+  50% {
+    opacity: 0.6;
+    transform: translateX(10%);
   }
 }
 </style>

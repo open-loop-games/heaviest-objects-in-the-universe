@@ -28,6 +28,7 @@ pnpm dev          # Start dev server (Vite + HMR)
 pnpm build        # Production build
 pnpm typecheck    # Vue + TypeScript checking
 pnpm lint         # ESLint
+pnpm circular     # dpdm circular
 ```
 
 ## Architecture
@@ -40,6 +41,8 @@ src/
 ├── game/
 │   ├── state.ts          # Reactive game state (Vue refs)
 │   ├── types.ts          # Core interfaces (Package, Wire, GameState)
+│   ├── events.ts         # Typed event bus (emit/on/once)
+│   ├── ui-state.ts       # UI-specific state (drag, collapse, wiggle)
 │   ├── loop.ts           # Game tick, physics updates
 │   ├── packages.ts       # Package creation, dependency spawning
 │   ├── cascade.ts        # Staggered spawn system with depth rewards
@@ -50,11 +53,17 @@ src/
 │   ├── upgrades.ts       # Cache token upgrades + tier system
 │   ├── config.ts         # Game constants, initial state factory
 │   └── persistence.ts    # Save/load (localStorage)
-└── rendering/
-    ├── renderer.ts       # Pixi.js setup, camera, world container
-    ├── nodes.ts          # Package node visuals (shapes, states, effects)
-    ├── wires.ts          # Dependency line rendering
-    └── colors.ts         # Color palette, state mappings
+├── rendering/
+│   ├── renderer.ts       # Pixi.js setup, camera, world container
+│   ├── nodes.ts          # Package node visuals (shapes, states, effects)
+│   ├── wires.ts          # Dependency line rendering
+│   └── colors.ts         # Color palette, state mappings
+└── onboarding/
+    ├── book-state.ts     # Teaching book UI state (tabs, unlocks)
+    ├── tutorial-state.ts # Ghost hand hint prioritization
+    ├── tutorial-cursor.ts# Click/drag animation rendering
+    ├── hint-timers.ts    # Per-hint inactivity tracking
+    └── animations/       # Pixi.js mechanic demos (install, conflicts, etc.)
 ```
 
 ### Key Patterns
@@ -64,6 +73,8 @@ src/
 **Rendering:** Layered Pixi containers (wires behind nodes)
 **Physics:** Force-directed layout with repulsion/attraction
 **Game Loop:** `requestAnimationFrame` → physics → cascade spawning → automation → rendering
+**Events:** Typed pub/sub via `emit()`/`on()` for decoupled cross-module communication
+**Onboarding:** Ghost Hand = primary teacher (shows HOW after inactivity), Teaching Book = passive reference (shows WHAT)
 
 ## Design Documents
 
@@ -99,9 +110,9 @@ This means **NO numbers, NO letters** anywhere in the game UI. Only:
 
 **Resources:**
 - Bandwidth (↓) - spent to install, regenerates over time
-- Weight (◆) - total node_modules size, triggers prestige
-- Cache Fragments - depth rewards, convert to tokens on prestige
-- Cache Tokens - meta-currency, persistent across prestiges
+- Weight (◆) - total node_modules size, triggers ship
+- Cache Fragments - depth rewards, convert to tokens on ship
+- Cache Tokens - meta-currency, persistent across runs
 
 **Core Loop:**
 1. Click root → spawn top-level package (has internal scope)
@@ -110,7 +121,11 @@ This means **NO numbers, NO letters** anywhere in the game UI. Only:
 4. Conflicts appear on wires → click wire to Prune
 5. Duplicates detected → drag to merge (symlink)
 6. Stabilize scope → exit with satisfaction
-7. Weight accumulates → prestige at threshold (5k first, then scaling) → gain cache tokens
+7. Weight accumulates → **Ship to npm** at threshold → gain cache tokens
+
+**Ship & Collapse:**
+- **Ship to npm** (soft reset): When weight fills the bar, ship your packages to the registry. Resets run, grants cache tokens based on weight + efficiency. Repeatable.
+- **Collapse** (hard ending): At Tier 5, hold the collapse button (5 seconds) to trigger the finale. Black hole consumes everything. Shows end screen with lifetime stats. Option to continue in Endless Mode.
 
 **Scope System:**
 - Top-level packages are "compressed" - they contain internal node_modules
@@ -123,6 +138,7 @@ This means **NO numbers, NO letters** anywhere in the game UI. Only:
 - Tier 2: Depth 2 unlocked, auto-resolve available
 - Tier 3: Depth 3+, golden packages spawn
 - Tier 4-5: Deeper nesting, faster automation
+- Tier 5: Collapse available (finale)
 
 **Automation (Tier 2+):**
 - Auto-resolve: Automatically resolves conflicts when enabled
@@ -138,12 +154,17 @@ This means **NO numbers, NO letters** anywhere in the game UI. Only:
 - Duplicate detection + symlink merge UI
 - Automation system (auto-resolve)
 - Tier/progression system
-- Prestige (black hole animation, cache tokens)
+- Ship to npm (soft prestige, cache tokens)
+- Collapse finale (Tier 5 black hole ending, end screen)
 - Depth rewards (golden packages, cache fragments)
 - Save/load (localStorage)
 - Package icons (Devicon integration)
 - HUD with integrated upgrades
 - Resource bars, scope navigation, automation toggles
+- Event system (typed event bus)
+- Teaching book (tabbed drawer with Pixi animations)
+- Ghost hand hints (inactivity-triggered tutorials)
+- Curated starter-kit (slower cascade, deferred conflicts)
 
 **Not Started:**
 - Particle effects (beyond basic ripples)

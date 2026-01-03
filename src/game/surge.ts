@@ -40,7 +40,7 @@ export function getAvailableBandwidth(): number {
  * Check if surge is unlocked (P2+)
  */
 export function isSurgeUnlocked(): boolean {
-  return gameState.meta.totalPrestiges >= 2
+  return gameState.meta.timesShipped >= 2
 }
 
 // ============================================
@@ -64,11 +64,22 @@ export function setSurgeCharge(segments: number): boolean {
         (gameState.resources.maxBandwidth * SURGE_COST_PER_SEGMENT)
     )
     gameState.surge.chargedSegments = Math.min(maxAffordable, maxSegments)
+    // Track first surge charge for onboarding
+    if (
+      gameState.surge.chargedSegments > 0 &&
+      !gameState.onboarding.firstSurgeCharged
+    ) {
+      gameState.onboarding.firstSurgeCharged = true
+    }
     return gameState.surge.chargedSegments !== newCharge
   }
 
   if (gameState.surge.chargedSegments !== newCharge) {
     gameState.surge.chargedSegments = newCharge
+    // Track first surge charge for onboarding
+    if (newCharge > 0 && !gameState.onboarding.firstSurgeCharged) {
+      gameState.onboarding.firstSurgeCharged = true
+    }
     return true
   }
   return false

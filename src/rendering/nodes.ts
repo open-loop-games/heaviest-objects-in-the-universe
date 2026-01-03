@@ -43,6 +43,8 @@ export interface NodeEffects {
   hasCacheFragment?: boolean // Cache fragment indicator
   // Celebration scale (for stable pop effect)
   celebrationScale?: number
+  // Ship scale (for ship-to-npm compress animation)
+  shipScale?: number
   // Scope root stable indicator (checkmark badge when inside stable scope)
   isScopeRootStable?: boolean
 }
@@ -213,7 +215,10 @@ export class NodeRenderer {
       // Reset transforms when not collapsing
       nodeData.container.rotation = 0
       // Apply celebration scale (pop effect when scope becomes stable)
-      const scale = effects?.celebrationScale ?? 1
+      // and ship scale (compress animation when shipping to npm)
+      const celebrationScale = effects?.celebrationScale ?? 1
+      const shipScale = effects?.shipScale ?? 1
+      const scale = celebrationScale * shipScale
       nodeData.container.scale.set(scale, scale)
     }
 
@@ -756,8 +761,8 @@ export class NodeRenderer {
   }
 
   /**
-   * Draw cache fragment indicator - purple diamond pip at 9 o'clock (left side)
-   * Click to collect bonus cache tokens on prestige
+   * Draw cache fragment indicator - gold diamond pip at 9 o'clock (left side)
+   * Click to collect, 5 fragments = 1 cache token on ship
    */
   private drawCacheFragmentIndicator(graphics: Graphics, radius: number): void {
     const reducedMotion = prefersReducedMotion()

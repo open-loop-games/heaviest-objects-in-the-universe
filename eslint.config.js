@@ -30,6 +30,7 @@ export default tseslint.config(
         cancelAnimationFrame: 'readonly',
         HTMLCanvasElement: 'readonly',
         HTMLElement: 'readonly',
+        HTMLButtonElement: 'readonly',
         MouseEvent: 'readonly',
         KeyboardEvent: 'readonly',
         WheelEvent: 'readonly',

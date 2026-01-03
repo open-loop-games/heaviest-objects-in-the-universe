@@ -140,18 +140,32 @@ export const SURGE_FRAGMENT_BOOST = 0.004 // +0.4% absolute fragment chance per 
 // DEPTH REWARDS
 // ============================================
 
-// Golden packages (only spawn at depth 3+, 4x weight)
-export const GOLDEN_SPAWN_CHANCE = 0.05
+// Golden packages (only spawn at depth 3+, 4x weight + guaranteed fragment)
+export const GOLDEN_SPAWN_CHANCE = 0.08
 export const GOLDEN_WEIGHT_MULTIPLIER = 4
 export const GOLDEN_MIN_DEPTH = 3
-
-// Cache fragments (collectible bonus tokens)
-export const CACHE_FRAGMENT_CHANCE = 0.04
-export const CACHE_FRAGMENT_MIN_DEPTH = 2
 export const FRAGMENT_TO_TOKEN_RATIO = 5 // 5 fragments = 1 cache token on prestige
 
 // Depth weight multipliers: [depth 0, depth 1, depth 2, depth 3, depth 4+]
 export const DEPTH_WEIGHT_MULTIPLIERS = [1.0, 1.0, 1.15, 1.25, 1.35] as const
+
+// ============================================
+// COLLAPSE SYSTEM (Tier 5 finale)
+// ============================================
+
+// Hold gesture timing
+export const COLLAPSE_HOLD_DURATION = 5000 // 5 seconds in ms
+export const COLLAPSE_LOCK_THRESHOLD = 0.8 // 80% = point of no return
+export const COLLAPSE_MIN_TIER = 5 // Must be at Tier 5
+
+/**
+ * Calculate collapse drain progress with quadratic curve
+ * Slow start lets player reconsider, dramatic acceleration commits them
+ */
+export function calculateCollapseDrainProgress(elapsedMs: number): number {
+  const t = Math.min(1, elapsedMs / COLLAPSE_HOLD_DURATION)
+  return t * t // Quadratic: progress = (elapsed / 5)²
+}
 
 // ============================================
 // DEFAULT CONFIG
@@ -200,7 +214,9 @@ export function createInitialState(): GameState {
     meta: {
       cacheTokens: 0,
       ecosystemTier: 1,
-      totalPrestiges: 0,
+      timesShipped: 0,
+      hasCollapsed: false,
+      endlessMode: false,
     },
     upgrades: {
       bandwidthLevel: 0,
@@ -219,6 +235,7 @@ export function createInitialState(): GameState {
       firstDiveSeen: false,
       firstScopeExited: false,
       firstPrestigeComplete: false,
+      firstSurgeCharged: false,
       weightSeen: false,
       efficiencySeen: false,
     },
@@ -269,6 +286,14 @@ export function createInitialState(): GameState {
       chargedSegments: 0,
       unlockedSegments: 1, // Start with 1 unlocked, upgrade for more
     },
+    // Collapse hold state (Tier 5 finale)
+    collapseHold: {
+      isHolding: false,
+      startTime: 0,
+      progress: 0,
+      locked: false,
+      drainedTiers: 0,
+    },
     stats: {
       totalPackagesInstalled: 0,
       totalConflictsResolved: 0,
@@ -278,6 +303,8 @@ export function createInitialState(): GameState {
       currentStability: 1,
       goldenPackagesFound: 0,
       cacheFragmentsCollected: 0,
+      peakEfficiency: 1,
+      totalWeight: 0,
     },
     camera: {
       x: 0,

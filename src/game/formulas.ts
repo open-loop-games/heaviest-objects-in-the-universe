@@ -25,11 +25,11 @@ import {
  * - Second prestige: 20,000
  * - Third+: 20,000 * 1.8^(n-2) scaling
  */
-export function getPrestigeThreshold(totalPrestiges: number): number {
-  if (totalPrestiges === 0) return 5000 // First prestige - intro
-  if (totalPrestiges === 1) return 20000 // Second prestige
+export function getPrestigeThreshold(timesShipped: number): number {
+  if (timesShipped === 0) return 5000 // First ship - intro
+  if (timesShipped === 1) return 20000 // Second ship
   // Scaling: 20k, 36k, 65k, 117k, 210k, ...
-  return Math.floor(20000 * Math.pow(1.8, totalPrestiges - 1))
+  return Math.floor(20000 * Math.pow(1.8, timesShipped - 1))
 }
 
 // ============================================
@@ -294,6 +294,42 @@ export function getEfficiencyTier(efficiency: number): EfficiencyTier {
   if (efficiency < 0.7) return 'decent'
   if (efficiency < 0.85) return 'clean'
   return 'pristine'
+}
+
+// ============================================
+// EFFICIENCY TRACKING (runtime state)
+// ============================================
+
+let lastEfficiency = 1
+let lastEfficiencyTier: EfficiencyTier = 'pristine'
+
+/** Reset efficiency tracking (call on prestige/ship) */
+export function resetEfficiencyTracking(): void {
+  lastEfficiency = 1
+  lastEfficiencyTier = 'pristine'
+}
+
+/** Get last tracked efficiency tier */
+export function getLastEfficiencyTier(): EfficiencyTier {
+  return lastEfficiencyTier
+}
+
+/** Update efficiency tracking state */
+export function updateEfficiencyTracking(newEfficiency: number): {
+  tierChanged: boolean
+  oldTier: EfficiencyTier
+  newTier: EfficiencyTier
+  delta: number
+} {
+  const newTier = getEfficiencyTier(newEfficiency)
+  const delta = newEfficiency - lastEfficiency
+  const oldTier = lastEfficiencyTier
+  const tierChanged = newTier !== oldTier
+
+  lastEfficiency = newEfficiency
+  lastEfficiencyTier = newTier
+
+  return { tierChanged, oldTier, newTier, delta }
 }
 
 /** Get numeric rank for tier comparison (higher = better) */

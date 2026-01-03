@@ -102,6 +102,18 @@ function updateHudPositions() {
     fragmentPositionFound = true
   }
 
+  // Ship button (target for gravity pull tokens)
+  // Falls back to orbital-decay panel if button not visible
+  const shipButtonEl = document.querySelector('.ship-button.visible')
+  const prestigeEl = shipButtonEl ?? document.querySelector('.orbital-decay')
+  if (prestigeEl) {
+    const rect = prestigeEl.getBoundingClientRect()
+    hudPositions.prestige = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    }
+  }
+
   positionsCacheValid = true
 }
 
@@ -180,6 +192,30 @@ function spawnParticle(type: ParticleType, fromX: number, fromY: number) {
       }
       target = hudPositions.fragment
       duration = 550
+      break
+    case 'token-collect':
+      // Cache token earned - flies to ship button or prestige panel
+      // Always recalculate since ship button visibility changes
+      {
+        const shipBtn = document.querySelector('.ship-button.visible')
+        const prestigePanel = document.querySelector('.orbital-decay')
+        const targetEl = shipBtn ?? prestigePanel
+        if (targetEl) {
+          const rect = targetEl.getBoundingClientRect()
+          target = {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+          }
+        } else {
+          target = { x: window.innerWidth - 100, y: 60 }
+        }
+      }
+      duration = 500
+      break
+    case 'tier-up':
+      // Tier up celebration - expands outward from source then fades
+      target = { x: fromX + (Math.random() - 0.5) * 100, y: fromY - 80 }
+      duration = 900
       break
     default:
       return
@@ -292,6 +328,10 @@ function getParticleClass(type: ParticleType): string {
       return 'particle-stability-down'
     case 'fragment-collect':
       return 'particle-fragment'
+    case 'token-collect':
+      return 'particle-token'
+    case 'tier-up':
+      return 'particle-tier-up'
     default:
       return ''
   }
@@ -320,6 +360,10 @@ function getParticleIcon(type: ParticleType): string {
       return '!'
     case 'fragment-collect':
       return '✦'
+    case 'token-collect':
+      return '⟲'
+    case 'tier-up':
+      return '★'
     default:
       return '•'
   }
@@ -377,7 +421,7 @@ onUnmounted(() => {
   right: 0;
   bottom: 0;
   pointer-events: none;
-  z-index: 1000;
+  z-index: 2000;
   overflow: hidden;
 }
 
@@ -513,6 +557,41 @@ onUnmounted(() => {
   animation: particle-fragment-sparkle 0.12s ease-in-out infinite alternate;
 }
 
+/* Token collect - subtle cyan glow for cache tokens */
+.particle-token {
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+  color: #5affff;
+  background: radial-gradient(
+    circle,
+    rgba(90, 255, 255, 0.35) 0%,
+    rgba(122, 90, 255, 0.2) 50%,
+    transparent 70%
+  );
+  box-shadow:
+    0 0 12px rgba(90, 255, 255, 0.4),
+    0 0 24px rgba(122, 90, 255, 0.25);
+  animation: particle-token-sparkle 0.2s ease-in-out infinite alternate;
+}
+
+/* Tier up - bright star burst effect */
+.particle-tier-up {
+  color: #ffff5a;
+  font-size: 20px;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 90, 0.8) 0%,
+    rgba(255, 200, 90, 0.5) 40%,
+    transparent 70%
+  );
+  box-shadow:
+    0 0 24px rgba(255, 255, 90, 1),
+    0 0 48px rgba(255, 200, 90, 0.7),
+    0 0 72px rgba(255, 170, 60, 0.4);
+  animation: particle-tier-up-burst 0.2s ease-out infinite alternate;
+}
+
 @keyframes particle-fragment-sparkle {
   from {
     transform: scale(1) rotate(0deg);
@@ -521,6 +600,26 @@ onUnmounted(() => {
   to {
     transform: scale(1.2) rotate(15deg);
     filter: brightness(1.3);
+  }
+}
+
+@keyframes particle-token-sparkle {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.1);
+  }
+}
+
+@keyframes particle-tier-up-burst {
+  from {
+    transform: scale(1) rotate(0deg);
+    filter: brightness(1) drop-shadow(0 0 8px rgba(255, 255, 90, 0.8));
+  }
+  to {
+    transform: scale(1.5) rotate(20deg);
+    filter: brightness(1.5) drop-shadow(0 0 16px rgba(255, 255, 90, 1));
   }
 }
 

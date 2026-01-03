@@ -26,7 +26,6 @@ import { computed, ref } from 'vue'
 import {
   gameState,
   computed_gravity,
-  computed_rawGravity,
   computed_canPrestige,
   computed_ecosystemTier,
 } from '../../game/state'
@@ -97,7 +96,7 @@ const bandwidthState = computed(() => {
 
 // Weight / Prestige progress
 const WEIGHT_SEGMENTS = 12
-const prestigeProgress = computed(() => Math.min(1, computed_rawGravity.value))
+const prestigeProgress = computed(() => Math.min(1, computed_gravity.value))
 const filledWeightSegments = computed(() =>
   Math.floor(prestigeProgress.value * WEIGHT_SEGMENTS)
 )

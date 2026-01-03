@@ -52,7 +52,7 @@ export const Colors = {
   // Depth rewards
   goldenGlow: 0xffd700, // Pure gold for golden packages
   goldenFill: 0x4a3a1a, // Warm gold-brown fill
-  cacheFragment: 0x7a5aff, // Purple for cache fragments
+  cacheFragment: 0xffc85a, // Gold for cache fragments (matches prestige panel)
 
   // Text (for HUD overlay)
   textPrimary: 0xeeeeff,

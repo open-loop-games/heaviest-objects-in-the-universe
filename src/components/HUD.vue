@@ -14,6 +14,8 @@ import SettingsPanel from './hud/SettingsPanel.vue'
 import QualityHero from './hud/QualityHero.vue'
 import PrestigeOrbit from './hud/PrestigeOrbit.vue'
 import TeachingBook from './hud/TeachingBook.vue'
+import JourneyModal from './hud/JourneyModal.vue'
+import EndScreen from './hud/EndScreen.vue'
 
 // Resource row components
 import BandwidthRow from './hud/BandwidthRow.vue'
@@ -55,7 +57,11 @@ watchEffect(() => {
     computed_canPrestige.value ||
     gameState.onboarding.firstPrestigeComplete
   ) {
-    unlockTab('prestige')
+    unlockTab('ship')
+  }
+  // Surge unlocks after P2 (second prestige)
+  if (gameState.meta.timesShipped >= 2) {
+    unlockTab('surge')
   }
 })
 
@@ -71,7 +77,7 @@ const showEfficiency = computed(
 const showAutomation = computed(() => computed_ecosystemTier.value >= 2)
 
 // Surge unlocks after P2 (second prestige)
-const showSurge = computed(() => gameState.meta.totalPrestiges >= 2)
+const showSurge = computed(() => gameState.meta.timesShipped >= 2)
 
 // Check if we're inside a package scope
 const inPackageScope = computed(() => isInPackageScope())
@@ -153,6 +159,12 @@ const showPrestigeArea = computed(() => {
 
     <!-- Teaching Book (bottom-right) -->
     <TeachingBook />
+
+    <!-- Journey Modal (full loop tutorial) -->
+    <JourneyModal />
+
+    <!-- End Screen Modal (collapse finale) -->
+    <EndScreen />
   </div>
 </template>
 

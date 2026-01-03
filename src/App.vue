@@ -68,7 +68,7 @@ provide('setMobileSelection', {
 
 import { exitScope } from './game/scope'
 import { gameState } from './game/state'
-import { triggerPrestigeWithAnimation } from './game/prestige'
+import { triggerShipWithAnimation } from './game/ship'
 
 function handleMobileBack() {
   exitScope()
@@ -99,7 +99,7 @@ function handleMobileToggleAutomation() {
 }
 
 function handleMobilePrestige() {
-  triggerPrestigeWithAnimation()
+  triggerShipWithAnimation()
 }
 
 // ============================================

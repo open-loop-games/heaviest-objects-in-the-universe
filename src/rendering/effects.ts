@@ -54,6 +54,13 @@ interface StableCelebration {
   duration: number
 }
 
+interface ShipAnimation {
+  startTime: number
+  duration: number // Total animation duration
+  packageDelays: Map<string, number> // Per-package stagger delay (0-1)
+  onComplete: () => void
+}
+
 export class EffectsRenderer {
   private container: Container
   private ripples: RippleEffect[] = []
@@ -62,6 +69,7 @@ export class EffectsRenderer {
   private autoCompletes: AutoCompleteEffect[] = []
   private crits: CritEffect[] = []
   private stableCelebration: StableCelebration | null = null
+  private shipAnimation: ShipAnimation | null = null
   private rippleGraphics: Graphics
   private particleGraphics: Graphics
   private flashGraphics: Graphics
@@ -559,6 +567,92 @@ export class EffectsRenderer {
   }
 
   /**
+   * Start ship animation - compresses all packages with staggered timing
+   * Packages pop in reverse-cascade order (furthest from center first)
+   */
+  startShipAnimation(
+    packages: Map<
+      string,
+      { position: { x: number; y: number }; depth: number }
+    >,
+    onComplete: () => void
+  ): void {
+    if (this.shipAnimation) return // Already animating
+
+    // Sort packages by distance from center (furthest first for reverse cascade)
+    const packagesArray = Array.from(packages.entries())
+    packagesArray.sort((a, b) => {
+      const distA = Math.sqrt(a[1].position.x ** 2 + a[1].position.y ** 2)
+      const distB = Math.sqrt(b[1].position.x ** 2 + b[1].position.y ** 2)
+      return distB - distA // Furthest first
+    })
+
+    // Assign staggered delays (0 to 0.5, leaving 0.5 for the compress animation)
+    const delays = new Map<string, number>()
+    const staggerRange = 0.5 // Total stagger time as fraction of duration
+    packagesArray.forEach(([id], index) => {
+      const delay =
+        (index / Math.max(1, packagesArray.length - 1)) * staggerRange
+      delays.set(id, delay)
+    })
+
+    this.shipAnimation = {
+      startTime: Date.now(),
+      duration: 1400, // 1.4 seconds total
+      packageDelays: delays,
+      onComplete,
+    }
+  }
+
+  /**
+   * Check if ship animation is active
+   */
+  isShipAnimating(): boolean {
+    return this.shipAnimation !== null
+  }
+
+  /**
+   * Get ship animation scale for a specific package
+   * Returns 1.0 normally, shrinks to 0 during ship, then pops before removal
+   */
+  getShipScale(pkgId: string): number {
+    if (!this.shipAnimation) return 1.0
+
+    const elapsed = Date.now() - this.shipAnimation.startTime
+    const overallProgress = elapsed / this.shipAnimation.duration
+
+    // Animation complete - trigger callback and clean up
+    if (overallProgress >= 1) {
+      const callback = this.shipAnimation.onComplete
+      this.shipAnimation = null
+      // Defer callback to avoid state issues during render
+      setTimeout(callback, 0)
+      return 0
+    }
+
+    const delay = this.shipAnimation.packageDelays.get(pkgId) ?? 0
+    const compressDuration = 0.5 // Compress takes 50% of remaining time after delay
+
+    // Package hasn't started yet
+    if (overallProgress < delay) return 1.0
+
+    // Calculate package-specific progress
+    const pkgProgress = (overallProgress - delay) / compressDuration
+
+    if (pkgProgress >= 1) {
+      // Fully compressed - spawn pop effect on first frame at 0
+      return 0
+    }
+
+    // Compress with ease-in (accelerating)
+    const eased = pkgProgress * pkgProgress
+    return 1.0 - eased
+  }
+
+  // Ship animation pop effects are handled by the sudden scale=0 transition
+  // Future enhancement: track positions and spawn burst particles here
+
+  /**
    * Get shake offset for a conflicting node
    */
   getConflictShake(conflictProgress: number): { x: number; y: number } {
@@ -587,6 +681,7 @@ export class EffectsRenderer {
     this.autoCompletes = []
     this.crits = []
     this.stableCelebration = null
+    this.shipAnimation = null
     this.rippleGraphics.clear()
     this.particleGraphics.clear()
     this.flashGraphics.clear()

@@ -6,6 +6,7 @@ import {
   computed,
   toRaw,
   inject,
+  watch,
   type Ref,
 } from 'vue'
 import { getRenderer, destroyRenderer } from '../rendering/renderer'
@@ -109,6 +110,16 @@ let isDraggingSymlink = false
 // Event bus unsubscribe functions (for cleanup on unmount)
 const eventUnsubscribers: Array<() => void> = []
 
+// Clear wire selection when scope changes (exiting inner scope)
+watch(
+  () => gameState.currentScope,
+  () => {
+    if (selectedWireId.value) {
+      clearWireSelection()
+    }
+  }
+)
+
 // Computed: selected wire data (scope-aware, including sibling wires)
 const selectedWire = computed(() => {
   if (!selectedWireId.value) return null
@@ -203,17 +214,35 @@ onMounted(async () => {
     startGameLoop()
     startAutoSave()
 
-    // Subscribe to prestige complete event
-    const unsubPrestigeComplete = on('prestige:complete', () => {
+    // Subscribe to ship complete event (soft prestige)
+    const unsubShipComplete = on('ship:complete', () => {
       createRootPackage()
       previousPackageStates.clear()
     })
 
-    // Subscribe to prestige start event
-    const unsubPrestigeStart = on('prestige:start', ({ onComplete }) => {
+    // Subscribe to collapse trigger event (Tier 5 finale)
+    const unsubCollapseTrigger = on('collapse:trigger', ({ onComplete }) => {
       // Exit to root scope first so all packages are visible during collapse
       exitToRoot()
       renderer.getBlackHoleRenderer().startCollapse(onComplete)
+    })
+
+    // Subscribe to ship start event (soft prestige with compress-pop animation)
+    const unsubShipStart = on('ship:start', ({ onComplete }) => {
+      // Exit to root scope first so all packages are visible
+      exitToRoot()
+      // Build package map for ship animation (position + depth for staggering)
+      const packageMap = new Map<
+        string,
+        { position: { x: number; y: number }; depth: number }
+      >()
+      for (const pkg of gameState.packages.values()) {
+        packageMap.set(pkg.id, {
+          position: { x: pkg.position.x, y: pkg.position.y },
+          depth: pkg.depth,
+        })
+      }
+      renderer.getEffectsRenderer().startShipAnimation(packageMap, onComplete)
     })
 
     // Subscribe to cascade spawn effects
@@ -245,13 +274,74 @@ onMounted(async () => {
       }
     )
 
+    // Subscribe to gravity pull particle requests (from PrestigeOrbit when ship ready)
+    const unsubGravityPull = on('gravity:pull-particle', () => {
+      // Pick a random visible package and spawn particle from its screen position
+      const packages = Array.from(gameState.packages.values())
+      if (packages.length === 0) return
+
+      const pkg = packages[Math.floor(Math.random() * packages.length)]
+      if (!pkg) return
+
+      const screenPos = renderer.worldToScreen(pkg.position.x, pkg.position.y)
+      emit('particles:spawn', {
+        type: 'token-collect',
+        x: screenPos.x,
+        y: screenPos.y,
+      })
+    })
+
+    // Subscribe to ship reward for token particles
+    const unsubShipReward = on(
+      'ship:reward',
+      ({ tokensEarned, fragmentBonus, tierBefore, tierAfter }) => {
+        const screenWidth = window.innerWidth
+        const screenHeight = window.innerHeight
+        const centerX = screenWidth / 2
+        const centerY = screenHeight / 2
+
+        // Spawn token particles from center - staggered for visual effect
+        const totalTokens = Math.min(tokensEarned + fragmentBonus, 8) // Cap at 8 particles
+        for (let i = 0; i < totalTokens; i++) {
+          setTimeout(() => {
+            // Slight position variance for each token
+            const offsetX = (Math.random() - 0.5) * 60
+            const offsetY = (Math.random() - 0.5) * 60
+            emit('particles:spawn', {
+              type: 'token-collect',
+              x: centerX + offsetX,
+              y: centerY + offsetY,
+            })
+          }, i * 80) // Stagger by 80ms
+        }
+
+        // If tier up occurred, spawn celebration particles
+        if (tierAfter > tierBefore) {
+          setTimeout(
+            () => {
+              emit('particles:burst', {
+                type: 'tier-up',
+                x: centerX,
+                y: centerY,
+                count: 6,
+              })
+            },
+            totalTokens * 80 + 200
+          ) // After tokens finish
+        }
+      }
+    )
+
     // Store unsubscribe functions for cleanup
     eventUnsubscribers.push(
-      unsubPrestigeComplete,
-      unsubPrestigeStart,
+      unsubShipComplete,
+      unsubCollapseTrigger,
+      unsubShipStart,
       unsubSpawnEffect,
       unsubCrit,
-      unsubAutoResolve
+      unsubAutoResolve,
+      unsubGravityPull,
+      unsubShipReward
     )
 
     // Save on page unload

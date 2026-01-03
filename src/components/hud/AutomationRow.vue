@@ -80,10 +80,13 @@ function handleResolveSpeedLeave() {
 
 <template>
   <div v-if="showRow" class="resource-row automation-row">
+    <!-- Row prefix: gear indicates automation section -->
+    <span class="row-prefix">⚙</span>
+
     <!-- Auto-resolve (Tier 2+) -->
     <div v-if="tier >= 2" class="auto-group">
       <button class="auto-toggle" :class="resolveState" @click="toggleResolve">
-        <span class="auto-icon">⚙</span>
+        <span class="auto-icon">✕</span>
         <span class="toggle-dot" :class="resolveState">●</span>
       </button>
       <div
@@ -113,8 +116,17 @@ function handleResolveSpeedLeave() {
 .resource-row {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
   pointer-events: auto;
+}
+
+/* Row prefix (gear icon) - matches other row icons */
+.row-prefix {
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+  color: #6a6a8a;
+  opacity: 0.7;
 }
 
 /* Automation group (toggle + pips) */
@@ -159,7 +171,7 @@ function handleResolveSpeedLeave() {
 
 /* Automation icon */
 .auto-icon {
-  font-size: 16px;
+  font-size: 18px;
   color: #aaaacc;
   transition: all 0.15s ease;
 }

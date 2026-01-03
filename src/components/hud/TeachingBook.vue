@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted, nextTick } from 'vue'
+import { ref, watch, onUnmounted, nextTick, computed } from 'vue'
 import {
   isBookOpen,
   activeTab,
@@ -9,6 +9,9 @@ import {
   switchTab,
   closeBook,
   isTabViewed,
+  isJourneyUnlocked,
+  isJourneyOpen,
+  openJourney,
   type TabId,
 } from '../../onboarding'
 import { BaseAnimation } from '../../onboarding/animations/base-animation'
@@ -16,7 +19,8 @@ import { InstallAnimation } from '../../onboarding/animations/install-animation'
 import { DuplicatesAnimation } from '../../onboarding/animations/duplicates-animation'
 import { ConflictsAnimation } from '../../onboarding/animations/conflicts-animation'
 import { DivingAnimation } from '../../onboarding/animations/diving-animation'
-import { PrestigeAnimation } from '../../onboarding/animations/prestige-animation'
+import { ShipAnimation } from '../../onboarding/animations/ship-animation'
+import { SurgeAnimation } from '../../onboarding/animations/surge-animation'
 
 // Canvas ref for Pixi animations
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -38,8 +42,10 @@ function createAnimationForTab(tab: TabId): BaseAnimation | null {
       return new ConflictsAnimation()
     case 'diving':
       return new DivingAnimation()
-    case 'prestige':
-      return new PrestigeAnimation()
+    case 'ship':
+      return new ShipAnimation()
+    case 'surge':
+      return new SurgeAnimation()
     default:
       return null
   }
@@ -103,6 +109,10 @@ function handleBookClick() {
   toggleBook()
 }
 
+function handleJourneyClick() {
+  openJourney()
+}
+
 // Transition hooks
 function onDrawerLeave() {
   isDrawerTransitioning.value = true
@@ -111,6 +121,9 @@ function onDrawerLeave() {
 function onDrawerAfterLeave() {
   isDrawerTransitioning.value = false
 }
+
+// Show Journey button when unlocked
+const showJourneyButton = computed(() => isJourneyUnlocked.value)
 </script>
 
 <template>
@@ -133,32 +146,47 @@ function onDrawerAfterLeave() {
       @after-leave="onDrawerAfterLeave"
     >
       <div v-if="isBookOpen" class="drawer">
-        <!-- Tab bar -->
-        <div class="tab-bar">
+        <!-- Icon strip (horizontal) -->
+        <div class="icon-strip">
+          <!-- Tab icons -->
+          <div class="tab-icons">
+            <button
+              v-for="tab in unlockedTabsList"
+              :key="tab.id"
+              class="tab-icon-btn"
+              :class="{
+                active: activeTab === tab.id,
+                unviewed: !isTabViewed(tab.id),
+              }"
+              @click="handleTabClick(tab.id)"
+            >
+              <span class="tab-icon">{{ tab.icon }}</span>
+            </button>
+          </div>
+
+          <!-- Spacer -->
+          <div class="strip-spacer" />
+
+          <!-- Journey button -->
           <button
-            v-for="tab in unlockedTabsList"
-            :key="tab.id"
-            class="tab-button"
-            :class="{
-              active: activeTab === tab.id,
-              unviewed: !isTabViewed(tab.id),
-            }"
-            @click="handleTabClick(tab.id)"
+            v-if="showJourneyButton"
+            class="journey-btn"
+            :class="{ 'journey-open': isJourneyOpen }"
+            @click="handleJourneyClick"
           >
-            <span class="tab-icon">{{ tab.icon }}</span>
+            <span class="journey-icon">▶</span>
+          </button>
+
+          <!-- Close button -->
+          <button class="close-btn" @click="closeBook">
+            <span>×</span>
           </button>
         </div>
 
         <!-- Animation canvas area -->
         <div class="animation-area">
-          <!-- Pixi canvas for animations -->
           <canvas ref="canvasRef" class="animation-canvas"></canvas>
         </div>
-
-        <!-- Close button -->
-        <button class="close-button" @click="closeBook">
-          <span>×</span>
-        </button>
       </div>
     </Transition>
   </div>
@@ -245,6 +273,7 @@ function onDrawerAfterLeave() {
    ============================================ */
 .drawer {
   display: flex;
+  flex-direction: column;
   background: rgba(30, 20, 50, 0.95);
   border: 2px solid rgba(90, 200, 255, 0.4);
   border-radius: 12px;
@@ -265,23 +294,32 @@ function onDrawerAfterLeave() {
 }
 
 /* ============================================
-   TAB BAR
+   ICON STRIP (Horizontal)
    ============================================ */
-.tab-bar {
+.icon-strip {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
   background: rgba(20, 15, 40, 0.5);
-  border-right: 1px solid rgba(90, 200, 255, 0.2);
+  border-bottom: 1px solid rgba(90, 200, 255, 0.2);
 }
 
-.tab-button {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
+.tab-icons {
+  display: flex;
+  gap: 2px;
+}
+
+.strip-spacer {
+  flex: 1;
+}
+
+.tab-icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   background: transparent;
-  border: 2px solid transparent;
+  border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -290,86 +328,115 @@ function onDrawerAfterLeave() {
   position: relative;
 }
 
-.tab-button:hover {
-  background: rgba(90, 200, 255, 0.1);
+.tab-icon-btn:hover {
+  background: rgba(90, 200, 255, 0.15);
 }
 
-.tab-button.active {
-  background: rgba(90, 200, 255, 0.2);
-  border-color: rgba(90, 200, 255, 0.6);
+.tab-icon-btn.active {
+  background: rgba(90, 200, 255, 0.25);
 }
 
-.tab-button.unviewed::after {
+.tab-icon-btn.active .tab-icon {
+  color: #5affff;
+  text-shadow: 0 0 8px rgba(90, 255, 255, 0.8);
+  transform: scale(1.1);
+}
+
+.tab-icon-btn.unviewed::after {
   content: '';
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 6px;
-  height: 6px;
+  top: 2px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: #ff5a8a;
-  box-shadow: 0 0 6px rgba(255, 90, 138, 0.8);
+  box-shadow: 0 0 4px rgba(255, 90, 138, 0.8);
 }
 
 .tab-icon {
-  font-size: 20px;
+  font-size: 16px;
   color: #8a8aaa;
-  transition: color 0.2s ease;
+  transition: all 0.2s ease;
 }
 
-.tab-button.active .tab-icon {
-  color: #5affff;
-  text-shadow: 0 0 8px rgba(90, 255, 255, 0.6);
-}
-
-.tab-button:hover .tab-icon {
+.tab-icon-btn:hover .tab-icon {
   color: #aaffff;
+}
+
+/* ============================================
+   JOURNEY BUTTON
+   ============================================ */
+.journey-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(255, 200, 90, 0.15);
+  border: 1px solid rgba(255, 200, 90, 0.3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  margin-right: 4px;
+}
+
+.journey-btn:hover {
+  background: rgba(255, 200, 90, 0.3);
+  border-color: rgba(255, 200, 90, 0.6);
+  box-shadow: 0 0 8px rgba(255, 200, 90, 0.3);
+}
+
+.journey-btn.journey-open {
+  background: rgba(255, 200, 90, 0.4);
+  border-color: rgba(255, 200, 90, 0.8);
+}
+
+.journey-icon {
+  font-size: 12px;
+  color: #ffc85a;
+  text-shadow: 0 0 4px rgba(255, 200, 90, 0.6);
+}
+
+/* ============================================
+   CLOSE BUTTON
+   ============================================ */
+.close-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #6a6a8a;
+  transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+  background: rgba(255, 90, 90, 0.2);
+  color: #ff8a8a;
 }
 
 /* ============================================
    ANIMATION AREA
    ============================================ */
 .animation-area {
-  width: 200px;
+  min-width: 200px;
   height: 150px;
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: #1a1428; /* Match TeachingColors.background */
 }
 
 .animation-canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-}
-
-/* ============================================
-   CLOSE BUTTON
-   ============================================ */
-.close-button {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: rgba(60, 50, 80, 0.8);
-  border: 1px solid rgba(90, 200, 255, 0.2);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  color: #8a8aaa;
-  transition: all 0.2s ease;
-}
-
-.close-button:hover {
-  background: rgba(255, 90, 90, 0.3);
-  border-color: rgba(255, 90, 90, 0.5);
-  color: #ff8a8a;
+  /* Static positioning for flexbox centering */
+  width: 200px;
+  height: 150px;
+  flex-shrink: 0;
 }
 </style>

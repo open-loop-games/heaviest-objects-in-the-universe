@@ -13,10 +13,12 @@ import {
   pickDirectInstallIdentity,
   checkIncompatibilityWithPackages,
   STARTER_KIT_IDENTITY,
+  SECOND_PACKAGE_IDENTITY,
+  THIRD_PACKAGE_IDENTITY,
   type PackageIdentity,
 } from './registry'
 import { markDuplicateGroupsDirty } from './symlinks'
-import { on } from './events'
+import { emit, on } from './events'
 import { startCascade } from './cascade'
 
 // Inject cascade dependency to avoid circular imports
@@ -86,7 +88,7 @@ export function installPackage(parentId: string): Package | null {
   if (!parent) return null
 
   // Tutorial gating: before first prestige, must stabilize previous package before installing next
-  if (gameState.meta.totalPrestiges === 0 && parentId === gameState.rootId) {
+  if (gameState.meta.timesShipped === 0 && parentId === gameState.rootId) {
     // Find existing top-level packages
     const topLevelPackages = Array.from(gameState.packages.values()).filter(
       (p) => p.parentId === gameState.rootId
@@ -107,6 +109,9 @@ export function installPackage(parentId: string): Package | null {
     return null // Not enough bandwidth
   }
 
+  // Reset ghost hand hint timers on meaningful player action
+  emit('player:action')
+
   // Mark first click complete for onboarding
   if (!gameState.onboarding.firstClickComplete) {
     gameState.onboarding.firstClickComplete = true
@@ -116,11 +121,24 @@ export function installPackage(parentId: string): Package | null {
   const angle = Math.random() * Math.PI * 2
   const distance = 80 + Math.random() * 40
 
-  // First install before prestige: always use starter-kit
+  // First three installs before prestige: use curated packages for teaching
+  // - First: starter-kit (basic mechanics)
+  // - Second: express (3-way duplicates)
+  // - Third: react (nested scopes)
   const isFirstInstall =
-    gameState.meta.totalPrestiges === 0 &&
+    gameState.meta.timesShipped === 0 &&
     parentId === gameState.rootId &&
     parent.children.length === 0
+
+  const isSecondInstall =
+    gameState.meta.timesShipped === 0 &&
+    parentId === gameState.rootId &&
+    parent.children.length === 1
+
+  const isThirdInstall =
+    gameState.meta.timesShipped === 0 &&
+    parentId === gameState.rootId &&
+    parent.children.length === 2
 
   // Gather existing top-level package names to ensure variety
   const existingTopLevel = new Set<string>()
@@ -136,7 +154,14 @@ export function installPackage(parentId: string): Package | null {
   // Pick a package identity based on ecosystem tier (excluding already-installed at root)
   const identity = isFirstInstall
     ? STARTER_KIT_IDENTITY
-    : pickDirectInstallIdentity(gameState.meta.ecosystemTier, existingTopLevel)
+    : isSecondInstall
+      ? SECOND_PACKAGE_IDENTITY
+      : isThirdInstall
+        ? THIRD_PACKAGE_IDENTITY
+        : pickDirectInstallIdentity(
+            gameState.meta.ecosystemTier,
+            existingTopLevel
+          )
 
   // Use deterministic size based on identity (no variance for duplicate consistency)
   const size = getIdentitySize(identity)
@@ -221,7 +246,7 @@ export function spawnDependencies(packageId: string): Package[] {
   }
 
   // Early game clamp: before first prestige, limit cascade size
-  if (gameState.meta.totalPrestiges === 0) {
+  if (gameState.meta.timesShipped === 0) {
     const packageCount = gameState.packages.size
     if (packageCount < 10) {
       count = Math.min(count, 2)

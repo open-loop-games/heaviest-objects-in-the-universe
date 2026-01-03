@@ -267,11 +267,13 @@ export class GameRenderer {
     // Update black hole effects
     this.blackHoleRenderer.update(deltaTime, screenWidth, screenHeight)
 
-    // Hide wires, ghost lines, badges, and background layers during collapse animation
+    // Hide wires, ghost lines, badges during collapse or ship animation
     const collapseAnimating = this.blackHoleRenderer.isCollapseAnimating()
-    this.wireRenderer.getContainer().visible = !collapseAnimating
-    this.ghostLinesGraphics.visible = !collapseAnimating
-    this.nodeRenderer.getBadgesContainer().visible = !collapseAnimating
+    const shipAnimating = this.effectsRenderer.isShipAnimating()
+    const hideOverlays = collapseAnimating || shipAnimating
+    this.wireRenderer.getContainer().visible = !hideOverlays
+    this.ghostLinesGraphics.visible = !hideOverlays
+    this.nodeRenderer.getBadgesContainer().visible = !hideOverlays
     // Force hide inception background layers during collapse - they would be distracting
     // (updateBackgroundLayers will restore proper visibility when not collapsing)
     if (collapseAnimating) {
@@ -490,6 +492,9 @@ export class GameRenderer {
         ? this.effectsRenderer.getCelebrationScale()
         : 1
 
+      // Ship scale (compress animation when shipping to npm)
+      const shipScale = this.effectsRenderer.getShipScale(pkg.id)
+
       // Get wiggle phase for non-draggable feedback
       const wigglePhase = getWigglePhase(pkg.id)
 
@@ -518,6 +523,8 @@ export class GameRenderer {
         hasCacheFragment: pkg.hasCacheFragment,
         // Celebration
         celebrationScale,
+        // Ship animation
+        shipScale,
         // Scope root stable indicator
         isScopeRootStable,
       })
@@ -1395,6 +1402,19 @@ export class GameRenderer {
   }
 
   /**
+   * Convert world coordinates to screen coordinates
+   */
+  worldToScreen(worldX: number, worldY: number): { x: number; y: number } {
+    const centerX = this.app.screen.width / 2
+    const centerY = this.app.screen.height / 2
+
+    return {
+      x: centerX + (worldX + gameState.camera.x) * gameState.camera.zoom,
+      y: centerY + (worldY + gameState.camera.y) * gameState.camera.zoom,
+    }
+  }
+
+  /**
    * Get the Pixi application
    */
   getApp(): Application {
@@ -1435,19 +1455,6 @@ export class GameRenderer {
    */
   getWireRenderer(): WireRenderer {
     return this.wireRenderer
-  }
-
-  /**
-   * Convert world coordinates to screen coordinates
-   */
-  worldToScreen(worldX: number, worldY: number): { x: number; y: number } {
-    const centerX = this.app.screen.width / 2
-    const centerY = this.app.screen.height / 2
-
-    return {
-      x: centerX + (worldX + gameState.camera.x) * gameState.camera.zoom,
-      y: centerY + (worldY + gameState.camera.y) * gameState.camera.zoom,
-    }
   }
 
   /**

@@ -68,7 +68,9 @@ export interface GameResources {
 export interface MetaResources {
   cacheTokens: number
   ecosystemTier: number
-  totalPrestiges: number
+  timesShipped: number // Renamed from totalPrestiges
+  hasCollapsed: boolean // Player has triggered the finale
+  endlessMode: boolean // Player chose endless after collapse
 }
 
 export interface Upgrades {
@@ -85,6 +87,15 @@ export interface SurgeState {
   unlockedSegments: number // How many segments can be charged (1 + surgeLevel)
 }
 
+// Collapse hold gesture state (Tier 5 finale)
+export interface CollapseHoldState {
+  isHolding: boolean // Currently holding
+  startTime: number // When hold began (ms)
+  progress: number // 0-1, quadratic curve
+  locked: boolean // >80% = point of no return
+  drainedTiers: number // 5→0 visual countdown
+}
+
 export interface GameStats {
   totalPackagesInstalled: number
   totalConflictsResolved: number
@@ -95,6 +106,9 @@ export interface GameStats {
   // Depth rewards
   goldenPackagesFound: number
   cacheFragmentsCollected: number
+  // Lifetime stats
+  peakEfficiency: number // Highest efficiency reached across all runs
+  totalWeight: number // Cumulative weight across all runs
 }
 
 // Cascade system for staggered spawning
@@ -146,6 +160,7 @@ export interface OnboardingState {
   firstDiveSeen: boolean // Player has entered a package scope (dived in)
   firstScopeExited: boolean // Player has exited a stable scope (exit teaching complete)
   firstPrestigeComplete: boolean // Player has prestiged at least once
+  firstSurgeCharged: boolean // Player has charged surge at least once (P2+)
   // Sticky UI visibility (persists across prestiges)
   weightSeen: boolean // Weight indicator has been shown
   efficiencySeen: boolean // Efficiency indicator has been shown
@@ -198,6 +213,9 @@ export interface GameState {
 
   // Surge system (P2+ - boost cascades by reserving bandwidth)
   surge: SurgeState
+
+  // Collapse hold state (Tier 5 finale)
+  collapseHold: CollapseHoldState
 
   // Stats
   stats: GameStats

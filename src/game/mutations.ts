@@ -25,8 +25,7 @@ import {
 } from './scope'
 import { emit, on } from './events'
 import { getCompressionMultiplier, getStabilizationBonus } from './upgrades'
-import { getEfficiencyTierRank } from './formulas'
-import { updateEfficiencyTracking } from './prestige'
+import { getEfficiencyTierRank, updateEfficiencyTracking } from './formulas'
 
 // Quality event types are now in the main event bus (src/game/events.ts)
 // Use emit('quality:efficiency-improved', ...) etc.

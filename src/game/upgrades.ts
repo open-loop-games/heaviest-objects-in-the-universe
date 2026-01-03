@@ -227,7 +227,7 @@ export function isUpgradeUnlocked(upgradeId: string): boolean {
   // Check prestige requirement (e.g., compression requires P3+)
   const prestigeMet =
     !upgrade.prestigeRequirement ||
-    gameState.meta.totalPrestiges >= upgrade.prestigeRequirement
+    gameState.meta.timesShipped >= upgrade.prestigeRequirement
 
   if (!prestigeMet) {
     return false

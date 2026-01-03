@@ -362,6 +362,55 @@ function migrateGameState(): void {
   if (gameState.surge.unlockedSegments === undefined) {
     gameState.surge.unlockedSegments = 1 + gameState.upgrades.surgeLevel
   }
+
+  // ============================================
+  // PRESTIGE REWORK MIGRATIONS
+  // ============================================
+
+  // Rename totalPrestiges → timesShipped
+  const meta = gameState.meta as Record<string, unknown>
+  if (meta.totalPrestiges !== undefined) {
+    meta.timesShipped = meta.totalPrestiges
+    delete meta.totalPrestiges
+  }
+
+  // Ensure timesShipped exists
+  if (gameState.meta.timesShipped === undefined) {
+    ;(gameState.meta as Record<string, unknown>).timesShipped = 0
+  }
+
+  // Ensure new meta fields exist
+  if (gameState.meta.hasCollapsed === undefined) {
+    ;(gameState.meta as Record<string, unknown>).hasCollapsed = false
+  }
+  if (gameState.meta.endlessMode === undefined) {
+    ;(gameState.meta as Record<string, unknown>).endlessMode = false
+  }
+
+  // Ensure new stats exist
+  if (gameState.stats.peakEfficiency === undefined) {
+    ;(gameState.stats as Record<string, unknown>).peakEfficiency =
+      gameState.stats.currentEfficiency || 1
+  }
+  if (gameState.stats.totalWeight === undefined) {
+    ;(gameState.stats as Record<string, unknown>).totalWeight = 0
+  }
+
+  // Ensure collapse hold state exists
+  if (!gameState.collapseHold) {
+    ;(gameState as Record<string, unknown>).collapseHold = {
+      isHolding: false,
+      startTime: 0,
+      progress: 0,
+      locked: false,
+      drainedTiers: 0,
+    }
+  }
+
+  // Ensure new onboarding flags exist
+  if (gameState.onboarding.firstSurgeCharged === undefined) {
+    ;(gameState.onboarding as Record<string, unknown>).firstSurgeCharged = false
+  }
 }
 
 export function saveGame(): string {
@@ -526,7 +575,7 @@ export function loadSettings(): void {
       const parsed = JSON.parse(saved)
       userSettings.value = { ...userSettings.value, ...parsed }
     }
-  } catch (e) {
+  } catch {
     // Ignore invalid settings
   }
 }

@@ -16,6 +16,18 @@ export type ParticleType =
   | 'stability-up'
   | 'stability-down'
   | 'fragment-collect'
+  | 'token-collect' // Cache tokens flying to prestige panel on ship
+  | 'tier-up' // Special tier-up celebration particle
+
+// End screen stats payload (for collapse finale)
+export interface EndScreenStats {
+  totalPackagesInstalled: number
+  totalConflictsResolved: number
+  totalSymlinksCreated: number
+  peakEfficiency: number
+  totalWeight: number
+  timesShipped: number
+}
 
 /**
  * Game event definitions
@@ -30,9 +42,31 @@ export interface GameEvents {
   // Scope events
   'scope:recalculate': { scopePath: string[] }
 
-  // Prestige events
-  'prestige:start': { onComplete: () => void }
-  'prestige:complete': void
+  // Ship events (soft prestige - repeatable)
+  'ship:start': { onComplete: () => void }
+  'ship:complete': void
+  'ship:reward': {
+    tokensEarned: number
+    fragmentBonus: number
+    tierBefore: number
+    tierAfter: number
+    efficiency: number
+  }
+
+  // Collapse input events (from UI)
+  'collapse:begin-hold': void // UI requests hold start
+  'collapse:end-hold': void // UI releases hold
+
+  // Collapse state events (from state machine)
+  'collapse:hold-start': void
+  'collapse:hold-progress': { progress: number; drainedTiers: number }
+  'collapse:hold-cancel': void
+  'collapse:locked': void // Passed 80%, point of no return
+  'collapse:trigger': { onComplete: () => void }
+  'collapse:complete': void
+
+  // End screen event
+  'end:show': { stats: EndScreenStats }
 
   // Automation events
   'automation:resolve-complete': { scopePath: string[]; position: Position }
@@ -43,6 +77,9 @@ export interface GameEvents {
   // Particle events
   'particles:spawn': { type: ParticleType; x: number; y: number }
   'particles:burst': { type: ParticleType; x: number; y: number; count: number }
+
+  // Gravity pull (request particle from visible package)
+  'gravity:pull-particle': void
 
   // Input events (from touch/mouse handlers)
   'input:select': { worldX: number; worldY: number }
