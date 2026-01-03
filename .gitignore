@@ -11,6 +11,7 @@ node_modules
 dist
 public/icons
 dist-ssr
+itch_assets
 *.local
 
 # Editor directories and files
