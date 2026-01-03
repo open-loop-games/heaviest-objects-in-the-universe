@@ -537,6 +537,8 @@ function handleMouseDown(event: MouseEvent) {
         symlinkDragStartPos = { x: worldPos.x, y: worldPos.y }
         isDraggingSymlink = false // Will become true after threshold
         renderer.setSymlinkDragState(clickedPkg.id, null)
+        // Show enhanced duplicate connections during drag
+        renderer.setHoveredDuplicate(clickedPkg.id)
         // Signal to physics that we're about to drag (in internal scope only)
         if (isInPackageScope()) {
           startDrag(clickedPkg.id, true)
@@ -1164,6 +1166,7 @@ function handleMouseUp(_event?: MouseEvent) {
 
     // Clear drag state
     renderer.setSymlinkDragState(null, null)
+    renderer.setHoveredDuplicate(null) // Clear enhanced duplicate connections
     symlinkDragSource = null
     symlinkDragStartPos = null
     symlinkDropTarget = null
@@ -1588,6 +1591,11 @@ function handleTouchDragStartById(
     touchDragTarget = null
     renderer.setSymlinkDragState(clickedPkg.id, null)
 
+    // Show enhanced duplicate connections during drag (mobile hover equivalent)
+    if (hasDuplicates(clickedPkg.id)) {
+      renderer.setHoveredDuplicate(clickedPkg.id)
+    }
+
     // Signal physics if in internal scope
     if (isInPackageScope()) {
       startDrag(clickedPkg.id, true)
@@ -1738,6 +1746,7 @@ function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
 
   // Clean up
   renderer.setSymlinkDragState(null, null)
+  renderer.setHoveredDuplicate(null) // Clear enhanced duplicate connections
   touchDragSource = null
   touchDragTarget = null
   endDrag()
@@ -1745,6 +1754,7 @@ function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
 
 function handleTouchDragCancel() {
   renderer.setSymlinkDragState(null, null)
+  renderer.setHoveredDuplicate(null) // Clear enhanced duplicate connections
   touchDragSource = null
   touchDragTarget = null
   endDrag()
