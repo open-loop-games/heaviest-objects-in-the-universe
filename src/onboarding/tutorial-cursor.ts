@@ -1,8 +1,10 @@
 // Tutorial cursor animation - animated ghost hand hints
 // Shows after inactivity to guide players through game mechanics
+// Supports both desktop (mouse cursor) and mobile (finger icon)
 
 import { Graphics } from 'pixi.js'
 import { getActiveGhostHint, type GhostHint } from './tutorial-state'
+import { isMobileDevice } from '../input/touch-input'
 
 // Animation timing constants
 const HINT_DELAY = 10000 // Must match tutorial-state.ts
@@ -35,12 +37,35 @@ export function drawTutorialCursor(
   // Calculate animation progress
   const cycleProgress = getCycleProgress(hint)
 
+  const isMobile = isMobileDevice()
+
   // Draw based on hint type
   switch (hint.type) {
     case 'click-root':
     case 'click-package':
+      // These require double-tap on mobile
+      if (isMobile) {
+        drawDoubleTapAnimation(
+          graphics,
+          screenWidth,
+          screenHeight,
+          screenTargets[0]!,
+          cycleProgress
+        )
+      } else {
+        drawClickAnimation(
+          graphics,
+          screenWidth,
+          screenHeight,
+          screenTargets[0]!,
+          cycleProgress
+        )
+      }
+      break
     case 'click-prestige':
     case 'click-ship':
+    case 'click-conflict':
+      // Single tap on both platforms
       drawClickAnimation(
         graphics,
         screenWidth,
@@ -59,23 +84,20 @@ export function drawTutorialCursor(
         cycleProgress
       )
       break
-    case 'click-conflict':
-      drawClickAnimation(
-        graphics,
-        screenWidth,
-        screenHeight,
-        screenTargets[0]!,
-        cycleProgress
-      )
-      break
   }
 }
 
 /**
  * Get cycle progress (0-1) for animation looping
+ * Uses longer cycle for double-tap hints on mobile
  */
 function getCycleProgress(hint: GhostHint): number {
-  const cycleMs = 3000
+  const isDoubleTapHint =
+    isMobileDevice() &&
+    (hint.type === 'click-root' || hint.type === 'click-package')
+
+  // Longer cycle for double-tap to show both taps clearly
+  const cycleMs = isDoubleTapHint ? 4000 : 3000
   return ((hint.elapsed - HINT_DELAY) % cycleMs) / cycleMs
 }
 
@@ -127,6 +149,79 @@ function drawClickAnimation(
   // Draw click ripple
   if (clickAlpha > 0) {
     drawClickRipple(graphics, target.x, target.y, clickAlpha)
+  }
+}
+
+/**
+ * Draw a double-tap animation (mobile) - finger taps twice on target
+ * Used for actions that require double-tap on mobile (install, enter scope)
+ */
+function drawDoubleTapAnimation(
+  graphics: Graphics,
+  screenWidth: number,
+  screenHeight: number,
+  target: { x: number; y: number },
+  cycleProgress: number
+): void {
+  // Animation phases (4 second cycle):
+  // 0-0.3: Move to target
+  // 0.3-0.4: First tap
+  // 0.4-0.5: Lift (brief pause)
+  // 0.5-0.6: Second tap
+  // 0.6-1.0: Pause before reset
+
+  // Start position: offset from target
+  const startX = target.x + screenWidth * 0.15
+  const startY = target.y - screenHeight * 0.15
+
+  let cursorX: number, cursorY: number
+  let clickScale = 1
+  let tap1Alpha = 0
+  let tap2Alpha = 0
+
+  if (cycleProgress < 0.3) {
+    // Moving phase
+    const moveProgress = cycleProgress / 0.3
+    const eased = easeOutCubic(moveProgress)
+    cursorX = startX + (target.x - startX) * eased
+    cursorY = startY + (target.y - startY) * eased
+  } else if (cycleProgress < 0.4) {
+    // First tap
+    const tapProgress = (cycleProgress - 0.3) / 0.1
+    cursorX = target.x
+    cursorY = target.y
+    clickScale = 1 - 0.15 * Math.sin(tapProgress * Math.PI)
+    tap1Alpha = Math.sin(tapProgress * Math.PI)
+  } else if (cycleProgress < 0.5) {
+    // Brief pause between taps (finger slightly lifted)
+    const liftProgress = (cycleProgress - 0.4) / 0.1
+    cursorX = target.x
+    // Slight upward movement to show lift
+    cursorY = target.y - 4 * Math.sin(liftProgress * Math.PI)
+  } else if (cycleProgress < 0.6) {
+    // Second tap
+    const tapProgress = (cycleProgress - 0.5) / 0.1
+    cursorX = target.x
+    cursorY = target.y
+    clickScale = 1 - 0.15 * Math.sin(tapProgress * Math.PI)
+    tap2Alpha = Math.sin(tapProgress * Math.PI)
+  } else {
+    // Pause phase
+    cursorX = target.x
+    cursorY = target.y
+  }
+
+  // Draw cursor (will use finger on mobile automatically)
+  drawCursor(graphics, cursorX, cursorY, clickScale)
+
+  // Draw first tap ripple
+  if (tap1Alpha > 0) {
+    drawClickRipple(graphics, target.x, target.y, tap1Alpha)
+  }
+
+  // Draw second tap ripple (slightly larger to emphasize sequence)
+  if (tap2Alpha > 0) {
+    drawClickRipple(graphics, target.x, target.y, tap2Alpha * 1.15)
   }
 }
 
@@ -206,9 +301,26 @@ function drawDragAnimation(
 }
 
 /**
- * Draw the cursor pointer
+ * Draw the appropriate cursor based on platform
  */
 function drawCursor(
+  graphics: Graphics,
+  x: number,
+  y: number,
+  scale: number = 1,
+  pressed: boolean = false
+): void {
+  if (isMobileDevice()) {
+    drawFingerCursor(graphics, x, y, scale, pressed)
+  } else {
+    drawMouseCursor(graphics, x, y, scale, pressed)
+  }
+}
+
+/**
+ * Draw mouse pointer (desktop)
+ */
+function drawMouseCursor(
   graphics: Graphics,
   x: number,
   y: number,
@@ -228,6 +340,59 @@ function drawCursor(
   // Dark outline for visibility
   graphics.stroke({ color: CURSOR_OUTLINE, width: 3, alpha: 0.6 })
   graphics.fill({ color: CURSOR_COLOR, alpha })
+}
+
+/**
+ * Draw finger/touch cursor (mobile)
+ * Simple finger icon pointing down at the touch target
+ */
+function drawFingerCursor(
+  graphics: Graphics,
+  x: number,
+  y: number,
+  scale: number = 1,
+  pressed: boolean = false
+): void {
+  const size = 28 * scale
+  const alpha = pressed ? 0.85 : 0.95
+
+  // Finger pointing down - tip at touch position
+  const fingerWidth = size * 0.45
+  const fingerHeight = size * 0.95
+  const tipRadius = fingerWidth / 2
+
+  // Finger body - rounded top, tip pointing down
+  // Draw from tip upward
+  const tipY = y
+  const topY = y - fingerHeight
+
+  // Left side of finger
+  graphics.moveTo(x - fingerWidth / 2, tipY - tipRadius)
+  graphics.lineTo(x - fingerWidth / 2, topY + tipRadius)
+  // Rounded top
+  graphics.arc(x, topY + tipRadius, fingerWidth / 2, Math.PI, 0, false)
+  // Right side of finger
+  graphics.lineTo(x + fingerWidth / 2, tipY - tipRadius)
+  // Rounded tip
+  graphics.arc(x, tipY - tipRadius, fingerWidth / 2, 0, Math.PI, false)
+  graphics.closePath()
+
+  // Dark outline for visibility
+  graphics.stroke({ color: CURSOR_OUTLINE, width: 3, alpha: 0.6 })
+  graphics.fill({ color: CURSOR_COLOR, alpha })
+
+  // Fingernail detail at top
+  const nailY = topY + tipRadius * 1.2
+  const nailWidth = fingerWidth * 0.5
+  const nailHeight = fingerWidth * 0.35
+  graphics.roundRect(
+    x - nailWidth / 2,
+    nailY,
+    nailWidth,
+    nailHeight,
+    nailHeight / 3
+  )
+  graphics.fill({ color: CURSOR_OUTLINE, alpha: 0.15 })
 }
 
 /**

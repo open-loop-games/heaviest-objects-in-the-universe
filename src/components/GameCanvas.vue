@@ -1371,6 +1371,31 @@ function handleTouchSelect(worldPos: { x: number; y: number }) {
       }
     }
 
+    // If conflicted node on mobile, select its wire to show canvas prune overlay
+    // Don't set mobileSelection so the action bar doesn't show - canvas overlay handles it
+    if (clickedPkg.state === 'conflict' && platform?.value === 'mobile') {
+      const wires = getCurrentScopeWires()
+      for (const wire of wires.values()) {
+        if (wire.conflicted && wire.toId === clickedPkg.id) {
+          // Select wire for prune handler, but don't notify action bar
+          selectedWireId.value = wire.id
+          mobileSelectedNodeId.value = null
+          mobileSelection?.clear() // Clear action bar selection
+          // Set position for overlay
+          const wireRenderer = renderer.getWireRenderer()
+          const endpoints = wireRenderer.getWireEndpoints(wire.id)
+          if (endpoints) {
+            const screenPos = renderer.worldToScreen(
+              endpoints.midX,
+              endpoints.midY
+            )
+            wireActionPosition.value = screenPos
+          }
+          return
+        }
+      }
+    }
+
     // Select this node
     mobileSelectedNodeId.value = clickedPkg.id
     mobileSelection?.setNode(clickedPkg.id)
@@ -1740,11 +1765,12 @@ defineExpose({
   <div class="canvas-container">
     <canvas ref="canvasRef" class="game-canvas"></canvas>
 
-    <!-- Wire Action Buttons Overlay (Desktop only) -->
+    <!-- Wire Action Buttons Overlay -->
     <Transition name="fade">
       <div
-        v-if="platform !== 'mobile' && selectedWireId && wireActionPosition"
+        v-if="selectedWireId && wireActionPosition"
         class="wire-actions"
+        :class="{ mobile: platform === 'mobile' }"
         :style="{
           left: wireActionPosition.x + 'px',
           top: wireActionPosition.y + 'px',
@@ -1878,5 +1904,21 @@ defineExpose({
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+/* Mobile: larger touch targets */
+.wire-actions.mobile .action-btn {
+  width: 48px;
+  height: 48px;
+  font-size: 22px;
+}
+
+.wire-actions.mobile .action-btn.prune {
+  box-shadow: 0 0 12px rgba(255, 90, 90, 0.4);
+}
+
+.wire-actions.mobile .action-btn.prune:active {
+  background: rgba(120, 40, 40, 0.95);
+  transform: scale(0.95);
 }
 </style>

@@ -17,9 +17,10 @@
  */
 
 import { ref } from 'vue'
-import { saveToLocalStorage } from '../../game/persistence'
+import { saveToLocalStorage, saveSettings } from '../../game/persistence'
 import { hardReset } from '../../game/prestige'
 import { createRootPackage } from '../../game/packages'
+import { userSettings } from '../../game/state'
 
 defineProps<{
   open: boolean
@@ -69,6 +70,12 @@ function handleResetClick() {
   }
 }
 
+function toggleTapToExit() {
+  userSettings.value.backgroundClickToExit =
+    !userSettings.value.backgroundClickToExit
+  saveSettings()
+}
+
 function handleClose() {
   confirmingReset.value = false
   emit('close')
@@ -111,6 +118,54 @@ function handleBackdropClick(e: Event) {
               </div>
               <div class="setting-action" :class="{ success: saveSuccess }">
                 {{ saveSuccess ? '✓' : '→' }}
+              </div>
+            </button>
+
+            <!-- Tap to exit scope toggle -->
+            <button
+              class="setting-row"
+              :class="{ active: userSettings.backgroundClickToExit }"
+              @click="toggleTapToExit"
+            >
+              <div class="setting-icon">
+                <svg viewBox="0 0 32 32" fill="none" class="tap-exit-icon">
+                  <!-- Finger tap -->
+                  <path
+                    d="M14 6 L14 18 L18 14 L22 22 L24 21 L20 13 L26 13 Z"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    fill="none"
+                    stroke-linejoin="round"
+                  />
+                  <!-- Back arrow -->
+                  <path
+                    d="M8 18 L4 14 L8 10"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M4 14 L12 14"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                  />
+                </svg>
+              </div>
+              <div class="setting-indicator">
+                <div class="indicator-track">
+                  <div
+                    class="indicator-fill toggle-fill"
+                    :class="{ filled: userSettings.backgroundClickToExit }"
+                  />
+                </div>
+              </div>
+              <div
+                class="setting-action"
+                :class="{ active: userSettings.backgroundClickToExit }"
+              >
+                {{ userSettings.backgroundClickToExit ? '✓' : '○' }}
               </div>
             </button>
 
@@ -287,6 +342,22 @@ function handleBackdropClick(e: Event) {
   background: rgba(255, 90, 90, 0.25);
 }
 
+.setting-row.active {
+  border-color: rgba(122, 122, 255, 0.5);
+  background: rgba(50, 50, 80, 0.7);
+}
+
+.setting-row.active .setting-icon {
+  background: rgba(122, 122, 255, 0.15);
+  color: #aaaaff;
+}
+
+.tap-exit-icon {
+  width: 28px;
+  height: 28px;
+  color: currentColor;
+}
+
 /* ============================================
    INDICATOR TRACK
    ============================================ */
@@ -318,6 +389,10 @@ function handleBackdropClick(e: Event) {
   background: rgba(255, 90, 90, 0.6);
 }
 
+.indicator-fill.toggle-fill {
+  background: rgba(122, 122, 255, 0.6);
+}
+
 /* ============================================
    ACTION BUTTON
    ============================================ */
@@ -342,6 +417,12 @@ function handleBackdropClick(e: Event) {
   background: rgba(40, 80, 50, 0.8);
   border-color: #5aff8a;
   color: #5aff8a;
+}
+
+.setting-action.active {
+  background: rgba(50, 50, 90, 0.8);
+  border-color: #7a7aff;
+  color: #aaaaff;
 }
 
 .setting-action.confirming {
