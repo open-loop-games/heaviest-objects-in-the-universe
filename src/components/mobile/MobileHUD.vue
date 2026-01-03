@@ -39,6 +39,7 @@ import { getInternalStats } from '../../game/packages'
 import { canAffordConflictResolve } from '../../game/mutations'
 import { setSurgeCharge, getSurgeCost } from '../../game/surge'
 import { SURGE_SEGMENTS } from '../../game/config'
+import { hasUnviewedTabs } from '../../onboarding'
 
 // ============================================
 // PROPS & EMITS
@@ -53,6 +54,7 @@ const emit = defineEmits<{
   back: []
   settings: []
   upgrades: []
+  openBook: []
   prune: []
   resolveInside: []
   toggleAutomation: []
@@ -279,6 +281,14 @@ const canEnterScope = computed(() => {
 
       <!-- Right buttons -->
       <div class="top-right-buttons">
+        <button
+          class="top-btn help-btn"
+          :class="{ 'has-unviewed': hasUnviewedTabs }"
+          @click="emit('openBook')"
+        >
+          <span class="btn-icon">?</span>
+          <span v-if="hasUnviewedTabs" class="unviewed-dot" />
+        </button>
         <button class="top-btn" @click="emit('settings')">
           <span class="btn-icon">⚙</span>
         </button>
@@ -525,6 +535,43 @@ const canEnterScope = computed(() => {
 
 .upgrade-btn:active {
   background: rgba(90, 255, 255, 0.2);
+}
+
+/* Help button */
+.help-btn {
+  position: relative;
+  background: rgba(30, 30, 60, 0.9);
+  border-color: rgba(90, 200, 255, 0.4);
+  color: #5affff;
+}
+
+.help-btn:active {
+  background: rgba(90, 200, 255, 0.2);
+}
+
+.help-btn.has-unviewed {
+  animation: help-pulse 2s ease-in-out infinite;
+}
+
+@keyframes help-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 4px rgba(90, 200, 255, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(90, 200, 255, 0.5);
+  }
+}
+
+.unviewed-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff5a8a;
+  box-shadow: 0 0 6px rgba(255, 90, 138, 0.8);
 }
 
 /* Back button states */

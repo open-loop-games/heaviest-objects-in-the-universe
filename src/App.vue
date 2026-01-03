@@ -13,6 +13,7 @@ import HUD from './components/HUD.vue'
 import MobileHUD from './components/mobile/MobileHUD.vue'
 import MobileUpgradeSheet from './components/mobile/MobileUpgradeSheet.vue'
 import MobileSettingsSheet from './components/mobile/MobileSettingsSheet.vue'
+import MobileTeachingBook from './components/mobile/MobileTeachingBook.vue'
 
 // ============================================
 // PLATFORM DETECTION
@@ -45,6 +46,7 @@ const mobileSelectedWireId = ref<string | null>(null)
 // Sheet states
 const showUpgradeSheet = ref(false)
 const showSettingsSheet = ref(false)
+const showTeachingBookSheet = ref(false)
 
 // Provide selection setters for GameCanvas to call
 provide('setMobileSelection', {
@@ -80,6 +82,10 @@ function handleMobileSettings() {
 
 function handleMobileUpgrades() {
   showUpgradeSheet.value = true
+}
+
+function handleMobileOpenBook() {
+  showTeachingBookSheet.value = true
 }
 
 function handleMobilePrune() {
@@ -124,6 +130,7 @@ const gameCanvas = ref<InstanceType<typeof GameCanvas> | null>(null)
         @back="handleMobileBack"
         @settings="handleMobileSettings"
         @upgrades="handleMobileUpgrades"
+        @open-book="handleMobileOpenBook"
         @prune="handleMobilePrune"
         @resolve-inside="handleMobileResolveInside"
         @toggle-automation="handleMobileToggleAutomation"
@@ -136,6 +143,10 @@ const gameCanvas = ref<InstanceType<typeof GameCanvas> | null>(null)
       <MobileSettingsSheet
         :open="showSettingsSheet"
         @close="showSettingsSheet = false"
+      />
+      <MobileTeachingBook
+        :open="showTeachingBookSheet"
+        @close="showTeachingBookSheet = false"
       />
     </template>
 
