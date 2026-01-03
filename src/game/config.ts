@@ -88,6 +88,12 @@ export const AUTO_RESOLVE_DRAIN = 8
 // Maximum pending deps in queue
 export const MAX_PENDING_DEPS = 40
 
+// Maximum instances of the same package identity per scope
+export const MAX_SAME_IDENTITY_PER_SCOPE = 4
+
+// Minimum duplicate pairs guaranteed per scope
+export const MIN_DUPLICATE_PAIRS_PER_SCOPE = 2
+
 // ============================================
 // MOMENTUM SYSTEM (Activity-driven BW)
 // ============================================
@@ -209,6 +215,8 @@ export function createInitialState(): GameState {
       firstConflictSeen: false,
       firstSymlinkSeen: false,
       firstInnerConflictSeen: false,
+      firstDivablePackageSeen: false,
+      firstDiveSeen: false,
       firstScopeExited: false,
       firstPrestigeComplete: false,
       weightSeen: false,
@@ -235,6 +243,14 @@ export function createInitialState(): GameState {
       compressedIndices: null,
       surgeGoldenBoost: 0,
       surgeFragmentBoost: 0,
+      // Tutorial pacing
+      isStarterKit: false,
+      isSecondPackage: false,
+      isThirdPackage: false,
+      isReactDom: false,
+      deferConflicts: false,
+      breathPhase: false,
+      breathStartTime: 0,
     },
     // Automation system
     automation: {

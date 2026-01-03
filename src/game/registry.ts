@@ -107,6 +107,322 @@ export const STARTER_KIT_INTERNAL_DEPS: PackageIdentity[] = [
   },
 ]
 
+// ============================================
+// SECOND PACKAGE - Curated second top-level install
+// ============================================
+// Teaches 3-way duplicates (debug x3) and reinforces mechanics.
+// Intermediate pacing between starter-kit (350ms) and normal (120ms).
+
+export const SECOND_PACKAGE_IDENTITY: PackageIdentity = {
+  name: 'express',
+  iconKey: 'express',
+  archetype: 'framework',
+  baseDeps: 12,
+  weight: 60,
+  isHub: false,
+}
+
+// Internal dependencies for second package (spawned when entering)
+// Curated to teach that 3+ duplicates can exist:
+// - 3 duplicates to merge (debug appears 3x)
+// - 2 duplicates to merge (ms appears 2x)
+// - 1 conflict to resolve (jest/mocha)
+// - 4 leaf fillers
+//
+// IMPORTANT: Order matters for spawn positions!
+// With 12 packages, each gets 30° of the circle.
+// Triple duplicate (debug) at indices 0, 3, 6 = 0°, 90°, 180°
+// Double duplicate (ms) at indices 4, 8 = 120°, 240°
+export const SECOND_PACKAGE_INTERNAL_DEPS: PackageIdentity[] = [
+  // Index 0: debug (triple dup 1/3) - 0°
+  {
+    name: 'debug',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 15,
+    isHub: true,
+  },
+  // Index 1: cors (filler)
+  {
+    name: 'cors',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 8,
+    isHub: false,
+  },
+  // Index 2: jest (conflict 1)
+  {
+    name: 'jest',
+    iconKey: 'jest',
+    archetype: 'tooling',
+    baseDeps: 0,
+    weight: 200,
+    isHub: false,
+  },
+  // Index 3: debug (triple dup 2/3) - 90°
+  {
+    name: 'debug',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 15,
+    isHub: true,
+  },
+  // Index 4: ms (double dup 1/2) - 120°
+  {
+    name: 'ms',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 5,
+    isHub: true,
+  },
+  // Index 5: body-parser (filler)
+  {
+    name: 'body-parser',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 20,
+    isHub: false,
+  },
+  // Index 6: debug (triple dup 3/3) - 180°
+  {
+    name: 'debug',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 15,
+    isHub: true,
+  },
+  // Index 7: mocha (conflict 2 - conflicts with jest)
+  {
+    name: 'mocha',
+    iconKey: 'mocha',
+    archetype: 'tooling',
+    baseDeps: 0,
+    weight: 80,
+    isHub: false,
+  },
+  // Index 8: ms (double dup 2/2) - 240°
+  {
+    name: 'ms',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 5,
+    isHub: true,
+  },
+  // Index 9: cookie-parser (leaf)
+  {
+    name: 'cookie-parser',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 10,
+    isHub: false,
+  },
+  // Index 10: morgan (leaf)
+  {
+    name: 'morgan',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 12,
+    isHub: false,
+  },
+  // Index 11: serve-static (leaf)
+  {
+    name: 'serve-static',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 8,
+    isHub: false,
+  },
+]
+
+// ============================================
+// THIRD PACKAGE - Teaches nested scopes (diving deeper)
+// ============================================
+// Contains a compressed package (react-dom) that has its own internal deps.
+// Teaches: portal indicator, depth navigation, inner scope mechanics.
+
+export const THIRD_PACKAGE_IDENTITY: PackageIdentity = {
+  name: 'react',
+  iconKey: 'react',
+  archetype: 'framework',
+  baseDeps: 10,
+  weight: 130,
+  isHub: false,
+}
+
+// Internal dependencies for third package (react)
+// Curated to teach nested scopes:
+// - 1 compressed package (react-dom) with portal ring
+// - 2 duplicate pairs (scheduler x2, react-is x2)
+// - No conflicts at this level (focus on dive mechanic)
+//
+// With 10 packages, each gets 36° of the circle.
+// Compressed (react-dom) at index 0 - prominent position
+// Duplicates spread for visibility
+export const THIRD_PACKAGE_INTERNAL_DEPS: PackageIdentity[] = [
+  // Index 0: react-dom (COMPRESSED - has internal scope)
+  {
+    name: 'react-dom',
+    iconKey: 'react',
+    archetype: 'framework',
+    baseDeps: 6,
+    weight: 140,
+    isHub: false,
+  },
+  // Index 1: scheduler (duplicate 1/2)
+  {
+    name: 'scheduler',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 20,
+    isHub: true,
+  },
+  // Index 2: prop-types (filler)
+  {
+    name: 'prop-types',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 15,
+    isHub: false,
+  },
+  // Index 3: react-is (duplicate 1/2)
+  {
+    name: 'react-is',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 8,
+    isHub: true,
+  },
+  // Index 4: object-assign (filler)
+  {
+    name: 'object-assign',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 5,
+    isHub: false,
+  },
+  // Index 5: scheduler (duplicate 2/2)
+  {
+    name: 'scheduler',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 20,
+    isHub: true,
+  },
+  // Index 6: loose-envify (filler)
+  {
+    name: 'loose-envify',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 5,
+    isHub: false,
+  },
+  // Index 7: react-is (duplicate 2/2)
+  {
+    name: 'react-is',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 8,
+    isHub: true,
+  },
+  // Index 8: js-tokens (filler)
+  {
+    name: 'js-tokens',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 3,
+    isHub: false,
+  },
+  // Index 9: hoist-non-react-statics (filler)
+  {
+    name: 'hoist-non-react-statics',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 6,
+    isHub: false,
+  },
+]
+
+// Internal dependencies for react-dom (nested scope inside third package)
+// Curated to show inner scope mechanics:
+// - 1 duplicate pair (lodash x2 - cross-package opportunity with starter-kit!)
+// - 1 conflict (setimmediate vs process - timing utilities)
+// - 2 leaf fillers
+export const REACT_DOM_INTERNAL_DEPS: PackageIdentity[] = [
+  // Index 0: lodash (duplicate 1/2 - also in starter-kit!)
+  {
+    name: 'lodash',
+    iconKey: 'lodash',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 70,
+    isHub: true,
+  },
+  // Index 1: setimmediate (conflict 1)
+  {
+    name: 'setimmediate',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 5,
+    isHub: false,
+  },
+  // Index 2: fbjs (filler)
+  {
+    name: 'fbjs',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 30,
+    isHub: false,
+  },
+  // Index 3: lodash (duplicate 2/2)
+  {
+    name: 'lodash',
+    iconKey: 'lodash',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 70,
+    isHub: true,
+  },
+  // Index 4: process (conflict 2 - conflicts with setimmediate)
+  {
+    name: 'process',
+    iconKey: 'npm',
+    archetype: 'runtime',
+    baseDeps: 0,
+    weight: 10,
+    isHub: false,
+  },
+  // Index 5: hyphenate-style-name (filler)
+  {
+    name: 'hyphenate-style-name',
+    iconKey: 'npm',
+    archetype: 'utility',
+    baseDeps: 0,
+    weight: 3,
+    isHub: false,
+  },
+]
+
 export interface PackageIdentity {
   name: string
   iconKey: string // Devicon icon name
@@ -1575,6 +1891,9 @@ const INCOMPATIBLE_PAIRS: [string, string][] = [
 
   // ORM conflicts
   ['prisma', 'sequelize'],
+
+  // Timing/scheduling conflicts (polyfills)
+  ['setimmediate', 'process'],
 ]
 
 /**
@@ -1587,6 +1906,77 @@ export function areIncompatible(name1: string, name2: string): boolean {
     }
   }
   return false
+}
+
+/**
+ * Get all package names that would conflict with the given name
+ */
+export function getConflictingNames(name: string): string[] {
+  const conflicts: string[] = []
+  for (const [a, b] of INCOMPATIBLE_PAIRS) {
+    if (a === name) conflicts.push(b)
+    if (b === name) conflicts.push(a)
+  }
+  return conflicts
+}
+
+/**
+ * Check if an identity would conflict with any in a set
+ */
+export function wouldConflictWithAny(
+  identity: PackageIdentity,
+  existingNames: Set<string>
+): boolean {
+  for (const existing of existingNames) {
+    if (areIncompatible(identity.name, existing)) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Pick N visually distinct identities for guaranteed duplicates.
+ * Prioritizes different archetypes and real devicons over npm fallbacks.
+ */
+export function pickDistinctDuplicateIdentities(
+  count: number
+): PackageIdentity[] {
+  const result: PackageIdentity[] = []
+  const usedArchetypes = new Set<string>()
+  const usedIconKeys = new Set<string>()
+
+  // Pools ordered by visual distinctness (real icons first)
+  const pools = [
+    HUB_PACKAGES.filter((p) => p.iconKey !== 'npm'),
+    FRAMEWORK_PACKAGES,
+    TOOLING_PACKAGES.filter((p) => p.iconKey !== 'npm'),
+    HUB_PACKAGES.filter((p) => p.iconKey === 'npm'),
+  ]
+
+  for (let i = 0; i < count && result.length < count; i++) {
+    for (const pool of pools) {
+      // Find candidate with different archetype/icon
+      const candidates = pool.filter(
+        (p) => !usedArchetypes.has(p.archetype) || !usedIconKeys.has(p.iconKey)
+      )
+
+      if (candidates.length > 0) {
+        const pick = candidates[Math.floor(Math.random() * candidates.length)]!
+        result.push(pick)
+        usedArchetypes.add(pick.archetype)
+        usedIconKeys.add(pick.iconKey)
+        break
+      }
+    }
+  }
+
+  // Fallback if not enough distinct found
+  while (result.length < count) {
+    result.push(pickRandomIdentity())
+  }
+
+  return result
 }
 
 /**
