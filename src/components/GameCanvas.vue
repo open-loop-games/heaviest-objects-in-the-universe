@@ -15,7 +15,7 @@ import {
   onTick,
   setCameraTarget,
 } from '../game/loop'
-import { gameState } from '../game/state'
+import { gameState, userSettings } from '../game/state'
 import {
   setActionPreview,
   startDrag,
@@ -529,8 +529,8 @@ function handleMouseDown(event: MouseEvent) {
       }
     }
   } else {
-    // Clicked on blank space - go up a layer if in a scope
-    if (isInPackageScope()) {
+    // Clicked on blank space - go up a layer if in a scope (if setting enabled)
+    if (isInPackageScope() && userSettings.value.backgroundClickToExit) {
       exitScope()
     }
   }
@@ -934,6 +934,15 @@ function handleMouseMove(event: MouseEvent) {
       canvasRef.value.style.cursor = 'pointer'
       renderer.setHoveredDuplicate(null)
       setActionPreview(null)
+    } else if (
+      hoveredPkg &&
+      hoveredPkg.state === 'ready' &&
+      hoveredPkg.parentId === gameState.rootId
+    ) {
+      // Divable package - show pointer
+      canvasRef.value.style.cursor = 'pointer'
+      renderer.setHoveredDuplicate(null)
+      setActionPreview(null)
     } else {
       canvasRef.value.style.cursor = 'default'
       renderer.setHoveredDuplicate(null)
@@ -1303,8 +1312,8 @@ function handleTouchSelect(worldPos: { x: number; y: number }) {
     // Tapped on empty space
     handleTouchDeselect()
 
-    // Exit scope if in one
-    if (isInPackageScope()) {
+    // Exit scope if in one (if setting enabled)
+    if (isInPackageScope() && userSettings.value.backgroundClickToExit) {
       exitScope()
     }
   }

@@ -9,7 +9,11 @@ import { BlackHoleRenderer } from './blackhole'
 import { EdgeIndicatorRenderer } from './edge-indicators'
 import { Colors } from './colors'
 import { gameState } from '../game/state'
-import { getWigglePhase } from '../game/ui-state'
+import {
+  getWigglePhase,
+  setBackButtonHighlight,
+  triggerDuplicateHighlights,
+} from '../game/ui-state'
 import { getFirstConflictDimming } from '../onboarding/tutorial-state'
 import {
   getCurrentScopePackages,
@@ -306,6 +310,31 @@ export class GameRenderer {
 
     // Update duplicate groups for symlink detection (scope-aware)
     updateDuplicateGroups()
+
+    // ============================================
+    // WORK HIGHLIGHTS (guide player to next action)
+    // ============================================
+    const inScopeForHighlight = isInPackageScope()
+    const duplicateGroups = getAllDuplicateGroups()
+
+    // Back button highlight: when in stable scope, guide player to exit
+    if (inScopeForHighlight) {
+      const scopeRoot = getCurrentScopeRoot()
+      const isStable = scopeRoot?.internalState === 'stable'
+      setBackButtonHighlight(isStable)
+    } else {
+      setBackButtonHighlight(false)
+    }
+
+    // Duplicate highlights: periodically wiggle duplicates to draw attention
+    if (duplicateGroups.length > 0 && !gameState.onboarding.firstSymlinkSeen) {
+      // Collect all duplicate package IDs
+      const allDuplicateIds: string[] = []
+      for (const group of duplicateGroups) {
+        allDuplicateIds.push(...group.packageIds)
+      }
+      triggerDuplicateHighlights(allDuplicateIds)
+    }
 
     // Update cross-package systems (sibling conflicts)
     updateCrossPackageConflicts()

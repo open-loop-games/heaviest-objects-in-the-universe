@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onUnmounted } from 'vue'
 import { softReset, hardReset } from '../../game/prestige'
-import { saveToLocalStorage } from '../../game/persistence'
+import { saveToLocalStorage, saveSettings } from '../../game/persistence'
 import { createRootPackage } from '../../game/packages'
+import { userSettings } from '../../game/state'
 
 // Settings panel state
 const showSettings = ref(false)
@@ -34,6 +35,12 @@ function handleSoftReset() {
   softReset()
   createRootPackage()
   showSettings.value = false
+}
+
+function toggleBackgroundClick() {
+  userSettings.value.backgroundClickToExit =
+    !userSettings.value.backgroundClickToExit
+  saveSettings()
 }
 
 function startHardReset() {
@@ -195,6 +202,40 @@ onUnmounted(() => {
               stroke="#5aff5a"
               stroke-width="3"
               fill="none"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+
+        <!-- Background click to exit toggle -->
+        <button
+          class="panel-btn toggle-btn"
+          :class="{ active: userSettings.backgroundClickToExit }"
+          @click="toggleBackgroundClick"
+        >
+          <svg viewBox="0 0 32 32" fill="none">
+            <!-- Mouse with click indicator -->
+            <path
+              d="M10 6 L10 20 L14 16 L18 24 L20 23 L16 15 L22 15 Z"
+              stroke="currentColor"
+              stroke-width="2"
+              fill="none"
+              stroke-linejoin="round"
+            />
+            <!-- Click lines -->
+            <path
+              d="M8 4 L6 2 M14 4 L16 2 M4 8 L2 6"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              opacity="0.6"
+            />
+            <!-- Back arrow -->
+            <path
+              d="M24 20 L28 16 L24 12 M28 16 L20 16"
+              stroke="currentColor"
+              stroke-width="2"
               stroke-linecap="round"
               stroke-linejoin="round"
             />
@@ -549,5 +590,22 @@ onUnmounted(() => {
   fill: none;
   stroke: #ff5a5a;
   stroke-width: 3;
+}
+
+/* Toggle button (background click exit) */
+.toggle-btn {
+  border-color: #5a5a8a;
+  color: #8a8aaa;
+}
+
+.toggle-btn:hover {
+  background: rgba(90, 90, 140, 0.2);
+  border-color: #7a7aaa;
+}
+
+.toggle-btn.active {
+  border-color: #7a7aff;
+  color: #aaaaff;
+  background: rgba(122, 122, 255, 0.15);
 }
 </style>

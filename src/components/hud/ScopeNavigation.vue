@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { gameState } from '../../game/state'
-import { getScopeDepth, exitPackageScope } from '../../game/scope'
+import {
+  getScopeDepth,
+  exitPackageScope,
+  getCurrentScopeRoot,
+} from '../../game/scope'
 import { getInternalStats } from '../../game/packages'
 import { setCameraTarget } from '../../game/loop'
 import { setBackButtonPos } from '../../onboarding/tutorial-state'
+import { backButtonHighlight } from '../../game/ui-state'
 
 // Template ref for the back button
 const backBtnRef = ref<HTMLElement | null>(null)
@@ -14,8 +19,9 @@ const backBtnRef = ref<HTMLElement | null>(null)
 // ============================================
 
 // Get the current scope package's internal state
+// Uses getCurrentScopeRoot() to handle nested scopes (e.g., react-dom inside react)
 const scopePackageState = computed(() => {
-  const pkg = gameState.packages.get(gameState.currentScope)
+  const pkg = getCurrentScopeRoot()
   return pkg?.internalState || null
 })
 
@@ -118,6 +124,7 @@ onUnmounted(() => {
         unstable: scopePackageState === 'unstable',
         pulse: depthJustChanged,
         'first-exit-teaching': isFirstStableExit,
+        'work-highlight': backButtonHighlight && !isFirstStableExit,
       }"
       @click="handleBackClick"
     >
@@ -354,6 +361,21 @@ onUnmounted(() => {
   }
   50% {
     box-shadow: 0 0 10px rgba(122, 122, 255, 0.8);
+  }
+}
+
+/* Work highlight - gentle pulsing glow to guide player */
+.back-btn.work-highlight {
+  animation: work-highlight-pulse 2s ease-in-out infinite;
+}
+
+@keyframes work-highlight-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(74, 222, 128, 0.5);
   }
 }
 </style>

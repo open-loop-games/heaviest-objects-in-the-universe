@@ -418,7 +418,7 @@ export class EdgeIndicatorRenderer {
         drawTargetY - drawEdgeY,
         drawTargetX - drawEdgeX
       )
-      const arrowSize = 8 + activity * 4 // Slightly larger when active
+      const arrowSize = 24 + activity * 12 // 3x larger for visibility
       const arrowAngle = Math.PI / 6
 
       const tipX = drawTargetX

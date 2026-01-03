@@ -4,6 +4,7 @@ import {
   gameState,
   computed_gravity,
   computed_ecosystemTier,
+  computed_canPrestige,
 } from '../game/state'
 import { isInPackageScope } from '../game/scope'
 
@@ -12,12 +13,16 @@ import ScopeNavigation from './hud/ScopeNavigation.vue'
 import SettingsPanel from './hud/SettingsPanel.vue'
 import QualityHero from './hud/QualityHero.vue'
 import PrestigeOrbit from './hud/PrestigeOrbit.vue'
+import TeachingBook from './hud/TeachingBook.vue'
 
 // Resource row components
 import BandwidthRow from './hud/BandwidthRow.vue'
 import WeightRow from './hud/WeightRow.vue'
 import AutomationRow from './hud/AutomationRow.vue'
 import SurgeRow from './hud/SurgeRow.vue'
+
+// Teaching book state
+import { unlockTab } from '../onboarding'
 
 // ============================================
 // STAGED HUD VISIBILITY
@@ -32,6 +37,25 @@ watchEffect(() => {
   }
   if (!gameState.onboarding.efficiencySeen && gameState.packages.size >= 2) {
     gameState.onboarding.efficiencySeen = true
+  }
+})
+
+// Teaching book tab unlock triggers (pulse only, no auto-open)
+watchEffect(() => {
+  if (gameState.onboarding.firstSymlinkSeen) {
+    unlockTab('duplicates')
+  }
+  if (gameState.onboarding.firstConflictSeen) {
+    unlockTab('conflicts')
+  }
+  if (gameState.onboarding.firstDivablePackageSeen) {
+    unlockTab('diving')
+  }
+  if (
+    computed_canPrestige.value ||
+    gameState.onboarding.firstPrestigeComplete
+  ) {
+    unlockTab('prestige')
   }
 })
 
@@ -126,6 +150,9 @@ const showPrestigeArea = computed(() => {
         <PrestigeOrbit v-if="showPrestigeArea" />
       </Transition>
     </div>
+
+    <!-- Teaching Book (bottom-right) -->
+    <TeachingBook />
   </div>
 </template>
 
