@@ -167,3 +167,52 @@ export function triggerDuplicateHighlights(duplicateIds: string[]): void {
     triggerWiggle(id)
   }
 }
+
+// ============================================
+// UPGRADE TOOLTIP STATE
+// ============================================
+
+export type TooltipType =
+  | 'bandwidth'
+  | 'compression'
+  | 'resolveSpeed'
+  | 'surge'
+  | 'autoResolve'
+  | 'efficiency'
+  | 'stability'
+  | 'tier2'
+  | 'tier3'
+  | 'tier4'
+  | 'tier5'
+  | 'reward'
+  | 'fragment'
+  | 'bandwidthIcon'
+  | 'weightIcon'
+  | 'surgeIcon'
+  | null
+
+export interface TooltipAnchor {
+  right: number // Right edge of the anchor element (for positioning tooltip to the right)
+  top: number // Top of the anchor element
+}
+
+export const activeTooltip = ref<TooltipType>(null)
+export const tooltipAnchor = ref<TooltipAnchor>({ right: 0, top: 0 })
+
+export function setActiveTooltip(
+  type: TooltipType,
+  anchorEl?: HTMLElement
+): void {
+  activeTooltip.value = type
+  if (anchorEl && type) {
+    const rect = anchorEl.getBoundingClientRect()
+    tooltipAnchor.value = {
+      right: rect.right,
+      top: rect.top,
+    }
+  }
+}
+
+export function clearTooltip(): void {
+  activeTooltip.value = null
+}
