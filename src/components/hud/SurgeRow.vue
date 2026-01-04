@@ -8,6 +8,7 @@ import {
   setPreviewedUpgrade,
   UPGRADES,
 } from '../../game/upgrades'
+import { setActiveTooltip } from '../../game/ui-state'
 import { setSurgeCharge, getSurgeCost } from '../../game/surge'
 import { SURGE_SEGMENTS } from '../../game/config'
 
@@ -99,6 +100,8 @@ const surgeMaxLevel = computed(() => UPGRADES.surge?.maxLevel ?? 9)
 const canAffordSurge = computed(() => canPurchaseUpgrade('surge'))
 
 const isHoveringPips = ref(false)
+const pipsContainerRef = ref<HTMLElement | null>(null)
+const iconRef = ref<HTMLElement | null>(null)
 
 function handlePipsClick() {
   if (canAffordSurge.value) {
@@ -109,11 +112,22 @@ function handlePipsClick() {
 function handlePipsEnter() {
   isHoveringPips.value = true
   setPreviewedUpgrade('surge')
+  setActiveTooltip('surge', pipsContainerRef.value ?? undefined)
 }
 
 function handlePipsLeave() {
   isHoveringPips.value = false
   setPreviewedUpgrade(null)
+  setActiveTooltip(null)
+}
+
+// Icon tooltip handlers
+function handleIconEnter() {
+  setActiveTooltip('surgeIcon', iconRef.value ?? undefined)
+}
+
+function handleIconLeave() {
+  setActiveTooltip(null)
 }
 </script>
 
@@ -125,8 +139,11 @@ function handlePipsLeave() {
   >
     <!-- Surge icon (ripple/burst SVG) -->
     <div
+      ref="iconRef"
       class="resource-icon surge-icon"
       :class="{ charged: chargedSegments > 0 }"
+      @mouseenter="handleIconEnter"
+      @mouseleave="handleIconLeave"
     >
       <svg viewBox="0 0 24 24" width="18" height="18">
         <!-- Center dot -->
@@ -177,6 +194,7 @@ function handlePipsLeave() {
 
     <!-- Upgrade pips (unlock more segments) -->
     <div
+      ref="pipsContainerRef"
       class="upgrade-pips-container"
       @mouseenter="handlePipsEnter"
       @mouseleave="handlePipsLeave"

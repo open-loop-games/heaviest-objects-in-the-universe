@@ -14,6 +14,7 @@ import {
   getPreviewBandwidth,
   UPGRADES,
 } from '../../game/upgrades'
+import { setActiveTooltip } from '../../game/ui-state'
 import { CONFLICT_RESOLVE_COST, SYMLINK_MERGE_COST } from '../../game/config'
 
 // ============================================
@@ -164,6 +165,8 @@ const canAfford = computed(() => canPurchaseUpgrade('bandwidth'))
 
 // Local hover state for upgrade preview
 const isHoveringPips = ref(false)
+const pipsContainerRef = ref<HTMLElement | null>(null)
+const iconRef = ref<HTMLElement | null>(null)
 
 function handlePipsClick() {
   // Clicking anywhere on the pips container purchases the upgrade if affordable
@@ -175,11 +178,22 @@ function handlePipsClick() {
 function handlePipsEnter() {
   isHoveringPips.value = true
   setPreviewedUpgrade('bandwidth')
+  setActiveTooltip('bandwidth', pipsContainerRef.value ?? undefined)
 }
 
 function handlePipsLeave() {
   isHoveringPips.value = false
   setPreviewedUpgrade(null)
+  setActiveTooltip(null)
+}
+
+// Icon tooltip handlers
+function handleIconEnter() {
+  setActiveTooltip('bandwidthIcon', iconRef.value ?? undefined)
+}
+
+function handleIconLeave() {
+  setActiveTooltip(null)
 }
 
 // ============================================
@@ -211,6 +225,7 @@ void showStarved.value // Suppress TS6133 - used in template
   >
     <!-- Bandwidth icon -->
     <div
+      ref="iconRef"
       class="resource-icon"
       :class="{
         'bw-preview': isPreviewingBandwidth,
@@ -218,6 +233,8 @@ void showStarved.value // Suppress TS6133 - used in template
         'warning-critical': warning === 'critical',
         'cascade-starved': showStarved,
       }"
+      @mouseenter="handleIconEnter"
+      @mouseleave="handleIconLeave"
     >
       ↓
     </div>
@@ -250,6 +267,7 @@ void showStarved.value // Suppress TS6133 - used in template
     <!-- Upgrade pips with hover preview (split into two rows) - only after first prestige -->
     <div
       v-if="isUnlocked"
+      ref="pipsContainerRef"
       class="upgrade-pips-container"
       @mouseenter="handlePipsEnter"
       @mouseleave="handlePipsLeave"

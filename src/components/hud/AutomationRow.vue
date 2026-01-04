@@ -7,6 +7,7 @@ import {
   purchaseUpgrade,
   setPreviewedUpgrade,
 } from '../../game/upgrades'
+import { setActiveTooltip } from '../../game/ui-state'
 import { AUTO_RESOLVE_DRAIN } from '../../game/config'
 
 // ============================================
@@ -63,6 +64,9 @@ const MAX_SPEED_LEVEL = 5
 
 // Container handlers for resolve speed
 const isHoveringResolve = ref(false)
+const resolveSpeedContainerRef = ref<HTMLElement | null>(null)
+const autoResolveToggleRef = ref<HTMLElement | null>(null)
+
 function handleResolveSpeedClick() {
   if (canAffordResolveSpeed.value) {
     purchaseUpgrade('resolveSpeed')
@@ -71,10 +75,20 @@ function handleResolveSpeedClick() {
 function handleResolveSpeedEnter() {
   isHoveringResolve.value = true
   setPreviewedUpgrade('resolveSpeed')
+  setActiveTooltip('resolveSpeed', resolveSpeedContainerRef.value ?? undefined)
 }
 function handleResolveSpeedLeave() {
   isHoveringResolve.value = false
   setPreviewedUpgrade(null)
+  setActiveTooltip(null)
+}
+
+// Auto-resolve toggle hover handlers
+function handleToggleEnter() {
+  setActiveTooltip('autoResolve', autoResolveToggleRef.value ?? undefined)
+}
+function handleToggleLeave() {
+  setActiveTooltip(null)
 }
 </script>
 
@@ -85,11 +99,19 @@ function handleResolveSpeedLeave() {
 
     <!-- Auto-resolve (Tier 2+) -->
     <div v-if="tier >= 2" class="auto-group">
-      <button class="auto-toggle" :class="resolveState" @click="toggleResolve">
+      <button
+        ref="autoResolveToggleRef"
+        class="auto-toggle"
+        :class="resolveState"
+        @click="toggleResolve"
+        @mouseenter="handleToggleEnter"
+        @mouseleave="handleToggleLeave"
+      >
         <span class="auto-icon">✕</span>
         <span class="toggle-dot" :class="resolveState">●</span>
       </button>
       <div
+        ref="resolveSpeedContainerRef"
         class="upgrade-pips-container"
         @mouseenter="handleResolveSpeedEnter"
         @mouseleave="handleResolveSpeedLeave"

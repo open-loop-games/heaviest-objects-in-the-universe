@@ -22,6 +22,7 @@ import BandwidthRow from './hud/BandwidthRow.vue'
 import WeightRow from './hud/WeightRow.vue'
 import AutomationRow from './hud/AutomationRow.vue'
 import SurgeRow from './hud/SurgeRow.vue'
+import UpgradeTooltip from './hud/UpgradeTooltip.vue'
 
 // Teaching book state
 import { unlockTab } from '../onboarding'
@@ -128,14 +129,14 @@ const showPrestigeArea = computed(() => {
         <!-- Bandwidth Row -->
         <BandwidthRow />
 
-        <!-- Surge Row (P2+) -->
-        <Transition name="fade">
-          <SurgeRow v-if="showSurge" />
-        </Transition>
-
         <!-- Weight Row (DEMOTED - secondary indicator) -->
         <Transition name="fade">
           <WeightRow v-if="showWeight" />
+        </Transition>
+
+        <!-- Surge Row (P2+) -->
+        <Transition name="fade">
+          <SurgeRow v-if="showSurge" />
         </Transition>
 
         <!-- Automation Row -->
@@ -165,6 +166,9 @@ const showPrestigeArea = computed(() => {
 
     <!-- End Screen Modal (collapse finale) -->
     <EndScreen />
+
+    <!-- Upgrade Tooltips (animated mini-demos) -->
+    <UpgradeTooltip />
   </div>
 </template>
 

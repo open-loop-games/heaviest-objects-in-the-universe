@@ -5,6 +5,7 @@ import { getEfficiencyTier, getEfficiencyTierRank } from '../../game/formulas'
 import { on } from '../../game/events'
 import { toRaw } from 'vue'
 import type { Package } from '../../game/types'
+import { setActiveTooltip } from '../../game/ui-state'
 
 // ============================================
 // JUICE ANIMATION STATE
@@ -124,6 +125,29 @@ const stabilityState = computed(() => {
 
 // Tier pip indices (0-4 for 5 tiers)
 const tierPips = [0, 1, 2, 3, 4]
+
+// ============================================
+// TOOLTIP HANDLERS
+// ============================================
+
+const efficiencyIconRef = ref<HTMLElement | null>(null)
+const stabilityIconRef = ref<HTMLElement | null>(null)
+
+function handleEfficiencyEnter() {
+  setActiveTooltip('efficiency', efficiencyIconRef.value ?? undefined)
+}
+
+function handleEfficiencyLeave() {
+  setActiveTooltip(null)
+}
+
+function handleStabilityEnter() {
+  setActiveTooltip('stability', stabilityIconRef.value ?? undefined)
+}
+
+function handleStabilityLeave() {
+  setActiveTooltip(null)
+}
 </script>
 
 <template>
@@ -134,7 +158,13 @@ const tierPips = [0, 1, 2, 3, 4]
       :class="[efficiencyState, { 'tier-up-flash': tierUpFlash }]"
     >
       <div class="section-header">
-        <span class="section-icon">⚡</span>
+        <span
+          ref="efficiencyIconRef"
+          class="section-icon tooltip-trigger"
+          @mouseenter="handleEfficiencyEnter"
+          @mouseleave="handleEfficiencyLeave"
+          >⚡</span
+        >
         <div class="section-bar-container">
           <div class="section-bar" :class="{ pulse: efficiencyPulse }">
             <div
@@ -177,7 +207,13 @@ const tierPips = [0, 1, 2, 3, 4]
     <!-- Stability Section -->
     <div class="quality-section stability-section" :class="stabilityState">
       <div class="section-header">
-        <span class="section-icon">✓</span>
+        <span
+          ref="stabilityIconRef"
+          class="section-icon tooltip-trigger"
+          @mouseenter="handleStabilityEnter"
+          @mouseleave="handleStabilityLeave"
+          >✓</span
+        >
         <div class="section-bar-container">
           <div class="section-bar" :class="{ pulse: stabilityPulse }">
             <div
@@ -235,6 +271,15 @@ const tierPips = [0, 1, 2, 3, 4]
   width: 20px;
   text-align: center;
   transition: all 0.3s ease;
+}
+
+.section-icon.tooltip-trigger {
+  cursor: help;
+  pointer-events: auto;
+}
+
+.section-icon.tooltip-trigger:hover {
+  transform: scale(1.15);
 }
 
 /* ============================================

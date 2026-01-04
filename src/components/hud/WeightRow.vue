@@ -9,6 +9,7 @@ import {
   previewedUpgradeId,
   UPGRADES,
 } from '../../game/upgrades'
+import { setActiveTooltip } from '../../game/ui-state'
 
 // ============================================
 // WEIGHT BAR
@@ -105,6 +106,8 @@ const canAffordCompression = computed(() => canPurchaseUpgrade('compression'))
 
 // Local hover state for upgrade preview
 const isHoveringCompression = ref(false)
+const compressionContainerRef = ref<HTMLElement | null>(null)
+const iconRef = ref<HTMLElement | null>(null)
 
 function handleCompressionClick() {
   if (canAffordCompression.value) {
@@ -115,11 +118,22 @@ function handleCompressionClick() {
 function handleCompressionEnter() {
   isHoveringCompression.value = true
   setPreviewedUpgrade('compression')
+  setActiveTooltip('compression', compressionContainerRef.value ?? undefined)
 }
 
 function handleCompressionLeave() {
   isHoveringCompression.value = false
   setPreviewedUpgrade(null)
+  setActiveTooltip(null)
+}
+
+// Icon tooltip handlers
+function handleIconEnter() {
+  setActiveTooltip('weightIcon', iconRef.value ?? undefined)
+}
+
+function handleIconLeave() {
+  setActiveTooltip(null)
 }
 </script>
 
@@ -129,7 +143,14 @@ function handleCompressionLeave() {
     :class="{ 'prestige-ready': prestigeProgress >= 1 }"
   >
     <!-- Weight icon -->
-    <div class="resource-icon">◆</div>
+    <div
+      ref="iconRef"
+      class="resource-icon"
+      @mouseenter="handleIconEnter"
+      @mouseleave="handleIconLeave"
+    >
+      ◆
+    </div>
 
     <!-- Segmented weight bar -->
     <div class="resource-bar">
@@ -155,6 +176,7 @@ function handleCompressionLeave() {
     <!-- Compression pips (P3+ only) -->
     <div
       v-if="showCompression"
+      ref="compressionContainerRef"
       class="upgrade-pips-container compression-container"
       @mouseenter="handleCompressionEnter"
       @mouseleave="handleCompressionLeave"
