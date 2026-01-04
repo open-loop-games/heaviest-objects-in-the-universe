@@ -20,8 +20,11 @@ import {
   isAutomationProcessing,
   getAutomationProcessingType,
 } from '../../game/automation'
-import { TIER_THRESHOLDS, FRAGMENT_TO_TOKEN_RATIO } from '../../game/config'
+import { FRAGMENT_TO_TOKEN_RATIO } from '../../game/config'
 import { on, emit } from '../../game/events'
+import { setActiveTooltip } from '../../game/ui-state'
+import NpmMass from './NpmMass.vue'
+import TierArcs from './TierArcs.vue'
 
 // ============================================
 // PRESTIGE STATE
@@ -56,16 +59,6 @@ const showQualityIndicators = computed(() => {
 
 // Current ecosystem tier (1-5) for central mass visual
 const ecosystemTier = computed(() => gameState.meta.ecosystemTier)
-
-// Mass visual state based on tier
-const massState = computed(() => {
-  const tier = ecosystemTier.value
-  if (tier >= 5) return 'critical' // Unstable, ready for collapse
-  if (tier >= 4) return 'warping' // Gravity distortion
-  if (tier >= 3) return 'forming' // Dark core forming
-  if (tier >= 2) return 'breathing' // Gentle pulse
-  return 'dormant' // Static, inert
-})
 
 // ============================================
 // COLLAPSE HOLD STATE
@@ -242,115 +235,41 @@ const fragmentBonusTokens = computed(() => {
   )
 })
 
-// Fractional progress toward next token (0-1)
-const fragmentProgress = computed(() => {
-  const fragments = gameState.resources.cacheFragments
-  return (fragments % FRAGMENT_TO_TOKEN_RATIO) / FRAGMENT_TO_TOKEN_RATIO
+// Number of filled fragment stars (0-4, 5th triggers rollover)
+const filledFragmentStars = computed(() => {
+  return gameState.resources.cacheFragments % FRAGMENT_TO_TOKEN_RATIO
 })
 
 // Whether to show fragment indicator (has any fragments)
 const hasFragments = computed(() => gameState.resources.cacheFragments > 0)
 
 // ============================================
-// TIER PROGRESS ARCS
+// UNIFIED TOKEN DISPLAY
 // ============================================
 
-// Static tier metadata (never changes) - defined once at module level
-const TIER_ARC_META = [
-  { tier: 2, icon: '⚙', start: 0, end: TIER_THRESHOLDS[1] },
-  { tier: 3, icon: '⟲', start: TIER_THRESHOLDS[1], end: TIER_THRESHOLDS[2] },
-  { tier: 4, icon: '⚡', start: TIER_THRESHOLDS[2], end: TIER_THRESHOLDS[3] },
-  { tier: 5, icon: '★', start: TIER_THRESHOLDS[3], end: TIER_THRESHOLDS[4] },
-] as const
-
-// Calculate progress within each tier segment (0-1)
-// PERF: Reuses static metadata, only computes dynamic progress/complete
-const tierArcProgress = computed(() => {
-  const tokens = gameState.meta.cacheTokens
-
-  return TIER_ARC_META.map((meta) => {
-    const range = meta.end - meta.start
-    const progress =
-      tokens >= meta.start ? Math.min(1, (tokens - meta.start) / range) : 0
-    return {
-      ...meta,
-      progress,
-      complete: tokens >= meta.end,
-    }
-  })
+// Total pending tokens on ship = base reward + fragment bonus
+const totalPendingTokens = computed(() => {
+  return prestigeRewardDots.value + fragmentBonusTokens.value
 })
 
-// SVG arc calculations for tier rings
-// During collapse hold, tiers drain in reverse order (5→4→3→2→1)
-const tierArcPaths = computed(() => {
-  const radii = [70, 78, 86, 94] as const
-  const holdProgress = isHoldingCollapse.value ? collapseHoldProgress.value : 0
+// Max tokens per row before overflow
+const TOKENS_PER_ROW = 5
 
-  return tierArcProgress.value.map((tier, i) => {
-    const r = radii[i] ?? 70 // Fallback to first radius
-    const circumference = 2 * Math.PI * r
-    // Each arc is a quarter (90 degrees = 25% of circumference)
-    const arcLength = circumference * 0.25
-
-    // During hold, drain tiers in reverse order (tier 5 first, tier 2 last)
-    // Each tier drains over 20% of the hold progress
-    // Tier 5 (i=3): drains at 0-20%, Tier 4 (i=2): 20-40%, etc.
-    let effectiveProgress = tier.progress
-    if (holdProgress > 0 && tier.complete) {
-      const reversedIndex = 3 - i // 3,2,1,0 for tiers 5,4,3,2
-      const drainStart = reversedIndex * 0.2 // 0%, 20%, 40%, 60%
-      const drainEnd = drainStart + 0.25 // 25%, 45%, 65%, 85%
-
-      if (holdProgress >= drainEnd) {
-        effectiveProgress = 0 // Fully drained
-      } else if (holdProgress > drainStart) {
-        // Partially drained
-        const drainAmount =
-          (holdProgress - drainStart) / (drainEnd - drainStart)
-        effectiveProgress = tier.progress * (1 - drainAmount)
-      }
-    }
-
-    const filledLength = arcLength * effectiveProgress
-
-    // Starting rotation for each quadrant (in degrees from top)
-    const startAngle = i * 90 - 90 // Start from top
-
-    return {
-      ...tier,
-      r,
-      circumference,
-      arcLength,
-      dashArray: `${filledLength} ${circumference}`,
-      trackDashArray: `${arcLength} ${circumference}`,
-      rotation: startAngle,
-      draining: holdProgress > 0 && effectiveProgress < tier.progress,
-    }
-  })
+// First row tokens (up to 5)
+const firstRowTokens = computed(() => {
+  return Math.min(totalPendingTokens.value, TOKENS_PER_ROW)
 })
 
-// ============================================
-// TIER DRAIN HELPERS (for collapse hold)
-// ============================================
+// Second row tokens (overflow, up to 5 more)
+const secondRowTokens = computed(() => {
+  const overflow = totalPendingTokens.value - TOKENS_PER_ROW
+  return Math.max(0, Math.min(overflow, TOKENS_PER_ROW))
+})
 
-// Check if a tier (by index 0-3) is currently draining
-function isTierDraining(index: number): boolean {
-  if (!isHoldingCollapse.value) return false
-  const holdProgress = collapseHoldProgress.value
-  const reversedIndex = 3 - index // 3,2,1,0 for tiers 5,4,3,2
-  const drainStart = reversedIndex * 0.2
-  const drainEnd = drainStart + 0.25
-  return holdProgress > drainStart && holdProgress < drainEnd
-}
-
-// Check if a tier (by index 0-3) has been fully drained
-function isTierDrained(index: number): boolean {
-  if (!isHoldingCollapse.value) return false
-  const holdProgress = collapseHoldProgress.value
-  const reversedIndex = 3 - index
-  const drainEnd = reversedIndex * 0.2 + 0.25
-  return holdProgress >= drainEnd
-}
+// Show "..." indicator for very high counts (>10)
+const showTokenOverflow = computed(() => {
+  return totalPendingTokens.value > TOKENS_PER_ROW * 2
+})
 
 // ============================================
 // AUTOMATION INDICATOR
@@ -437,6 +356,57 @@ watch(
 )
 
 // ============================================
+// TOOLTIP REFS AND HANDLERS
+// ============================================
+
+const rewardPreviewRef = ref<HTMLElement | null>(null)
+const fragmentPreviewRef = ref<HTMLElement | null>(null)
+
+// Tier tooltip types indexed by tier number (2-5)
+const TIER_TOOLTIP_TYPES = {
+  2: 'tier2',
+  3: 'tier3',
+  4: 'tier4',
+  5: 'tier5',
+} as const
+
+function handleTierIconEnter(payload: {
+  index: number
+  tier: number
+  el: HTMLElement
+}) {
+  const tooltipType =
+    TIER_TOOLTIP_TYPES[payload.tier as keyof typeof TIER_TOOLTIP_TYPES]
+  if (tooltipType) {
+    setActiveTooltip(tooltipType, payload.el)
+  }
+}
+
+function handleTierIconLeave() {
+  setActiveTooltip(null)
+}
+
+function handleRewardEnter() {
+  if (rewardPreviewRef.value) {
+    setActiveTooltip('reward', rewardPreviewRef.value)
+  }
+}
+
+function handleRewardLeave() {
+  setActiveTooltip(null)
+}
+
+function handleFragmentEnter() {
+  if (fragmentPreviewRef.value) {
+    setActiveTooltip('fragment', fragmentPreviewRef.value)
+  }
+}
+
+function handleFragmentLeave() {
+  setActiveTooltip(null)
+}
+
+// ============================================
 // HANDLERS
 // ============================================
 
@@ -508,64 +478,17 @@ function handlePrestige() {
         </div>
 
         <!-- Tier progress arcs (outer rings) - reveals after first prestige -->
-        <svg v-if="showCacheTokens" class="tier-arcs" viewBox="0 0 200 200">
-          <!-- Tier arc tracks and fills (4 quarter-circle arcs) -->
-          <g
-            v-for="arc in tierArcPaths"
-            :key="arc.tier"
-            v-memo="[arc.progress, arc.complete, arc.dashArray, arc.draining]"
-            class="tier-arc-group"
-            :class="{
-              complete: arc.complete && !arc.draining,
-              active: arc.progress > 0 && !arc.complete,
-              draining: arc.draining,
-            }"
-            :style="{ '--arc-rotation': arc.rotation + 'deg' }"
-          >
-            <!-- Track (unfilled) -->
-            <circle
-              class="tier-arc-track"
-              cx="100"
-              cy="100"
-              :r="arc.r"
-              :stroke-dasharray="arc.trackDashArray"
-            />
-            <!-- Fill (progress) -->
-            <circle
-              class="tier-arc-fill"
-              :class="'tier-' + arc.tier"
-              cx="100"
-              cy="100"
-              :r="arc.r"
-              :stroke-dasharray="arc.dashArray"
-            />
-          </g>
-        </svg>
-
-        <!-- Tier unlock icons (positioned at arc endpoints) -->
-        <div v-if="showCacheTokens" class="tier-unlock-icons">
-          <span
-            v-for="(arc, i) in tierArcProgress"
-            :key="'icon-' + arc.tier"
-            class="tier-unlock-icon"
-            :class="{
-              complete: arc.complete && !isTierDraining(i),
-              active: arc.progress > 0 && !arc.complete,
-              draining: isTierDraining(i),
-              drained: isTierDrained(i),
-              ['tier-' + arc.tier]: true,
-              'auto-active':
-                arc.tier === 2 &&
-                automationActive &&
-                automationType === 'resolve',
-              'auto-flash':
-                arc.tier === 2 &&
-                showAutomationFlash &&
-                automationType === 'resolve',
-            }"
-            >{{ arc.icon }}</span
-          >
-        </div>
+        <TierArcs
+          v-if="showCacheTokens"
+          :cache-tokens="gameState.meta.cacheTokens"
+          :is-holding="isHoldingCollapse"
+          :hold-progress="collapseHoldProgress"
+          :automation-active="automationActive"
+          :automation-type="automationType"
+          :show-automation-flash="showAutomationFlash"
+          @icon-enter="handleTierIconEnter"
+          @icon-leave="handleTierIconLeave"
+        />
 
         <!-- Quality arcs around singularity -->
         <svg
@@ -596,105 +519,67 @@ function handlePrestige() {
         </svg>
 
         <!-- Central npm mass (holdable at Tier 5 for collapse) -->
-        <div
-          class="npm-mass"
-          :class="[
-            massState,
-            {
-              ready: gravityReady,
-              holdable: collapseReady,
-              holding: isHoldingCollapse,
-              locked: collapseHoldLocked,
-              cancelled: collapseCancelled,
-            },
-          ]"
-          :style="
-            isHoldingCollapse ? { '--hold-progress': collapseHoldProgress } : {}
-          "
-          @mousedown="onMassHoldStart"
-          @touchstart="onMassHoldStart"
-        >
-          <!-- Outer glow layers (tier 3+) -->
-          <div v-if="ecosystemTier >= 3" class="mass-glow outer"></div>
-          <div v-if="ecosystemTier >= 4" class="mass-glow inner"></div>
-
-          <!-- Gravity warp rings (tier 4+) -->
-          <svg v-if="ecosystemTier >= 4" class="warp-rings" viewBox="0 0 80 80">
-            <circle class="warp-ring" cx="40" cy="40" r="32" />
-            <circle class="warp-ring delayed" cx="40" cy="40" r="36" />
-          </svg>
-
-          <!-- npm hexagon shape -->
-          <svg class="mass-shape" viewBox="0 0 40 40">
-            <!-- Hexagon path -->
-            <polygon
-              class="mass-hex"
-              points="20,2 36,11 36,29 20,38 4,29 4,11"
-            />
-            <!-- Inner dark core (tier 3+) -->
-            <polygon
-              v-if="ecosystemTier >= 3"
-              class="mass-core"
-              points="20,8 30,14 30,26 20,32 10,26 10,14"
-            />
-            <!-- npm-style notch/chunk (the signature npm look) -->
-            <rect class="mass-notch" x="14" y="16" width="6" height="12" />
-          </svg>
-
-          <!-- Crackling effects (tier 5) -->
-          <div v-if="ecosystemTier >= 5" class="mass-crackle">
-            <span class="crack c1"></span>
-            <span class="crack c2"></span>
-            <span class="crack c3"></span>
-          </div>
-        </div>
+        <NpmMass
+          :tier="ecosystemTier"
+          :ready="gravityReady"
+          :holdable="collapseReady"
+          :holding="isHoldingCollapse"
+          :hold-progress="collapseHoldProgress"
+          :locked="collapseHoldLocked"
+          :cancelled="collapseCancelled"
+          @hold-start="onMassHoldStart"
+        />
       </div>
 
-      <!-- Cache token reward preview (quality styling) -->
+      <!-- Unified token reward preview (base + fragment bonus combined) -->
       <div
-        class="reward-preview"
+        ref="rewardPreviewRef"
+        class="reward-preview tooltip-trigger"
         :class="[
           rewardQuality,
-          { visible: gravityReady && computed_prestigeReward > 0 },
+          { visible: gravityReady && totalPendingTokens > 0 },
         ]"
+        @mouseenter="handleRewardEnter"
+        @mouseleave="handleRewardLeave"
       >
-        <!-- Base reward tokens -->
-        <span
-          v-for="i in Math.min(prestigeRewardDots, 5)"
-          :key="i"
-          class="reward-token"
-          :class="rewardQuality"
-          >⟲</span
-        >
-        <!-- Empty slots to show potential -->
-        <span
-          v-for="i in Math.max(0, 5 - prestigeRewardDots)"
-          :key="'empty-' + i"
-          class="reward-token empty"
-          >⟲</span
-        >
-      </div>
-
-      <!-- Fragment bonus indicator (sliced icon) -->
-      <div class="fragment-preview" :class="{ visible: hasFragments }">
-        <!-- Full bonus tokens from fragments -->
-        <span
-          v-for="i in Math.min(fragmentBonusTokens, 3)"
-          :key="'bonus-' + i"
-          class="fragment-token filled"
-          >✦</span
-        >
-        <!-- Partial fragment (sliced icon) -->
-        <div v-if="fragmentProgress > 0" class="fragment-partial">
-          <span class="fragment-token empty">✦</span>
+        <!-- First row of tokens -->
+        <div class="token-row">
           <span
-            class="fragment-token filled slice"
-            :style="{ '--fill-percent': fragmentProgress * 100 + '%' }"
-            >✦</span
+            v-for="i in firstRowTokens"
+            :key="'t1-' + i"
+            class="reward-token"
+            :class="rewardQuality"
+            >⟲</span
           >
         </div>
-        <!-- Empty slot when no partial but has full tokens -->
-        <span v-else-if="fragmentBonusTokens > 0" class="fragment-token empty"
+        <!-- Second row (overflow) -->
+        <div v-if="secondRowTokens > 0" class="token-row">
+          <span
+            v-for="i in secondRowTokens"
+            :key="'t2-' + i"
+            class="reward-token"
+            :class="rewardQuality"
+            >⟲</span
+          >
+        </div>
+        <!-- Overflow indicator for very high counts -->
+        <span v-if="showTokenOverflow" class="token-overflow">···</span>
+      </div>
+
+      <!-- Fragment progress indicator (5 discrete stars) -->
+      <div
+        ref="fragmentPreviewRef"
+        class="fragment-preview tooltip-trigger"
+        :class="{ visible: hasFragments }"
+        @mouseenter="handleFragmentEnter"
+        @mouseleave="handleFragmentLeave"
+      >
+        <!-- 5 fragment stars showing progress toward next token -->
+        <span
+          v-for="i in 5"
+          :key="'frag-' + i"
+          class="fragment-star"
+          :class="{ filled: i <= filledFragmentStars }"
           >✦</span
         >
       </div>
@@ -1048,421 +933,6 @@ function handlePrestige() {
 }
 
 /* ============================================
-   NPM MASS (Central Visual)
-   ============================================ */
-.npm-mass {
-  position: relative;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: visible;
-  z-index: 5;
-}
-
-.mass-shape {
-  width: 40px;
-  height: 40px;
-  position: relative;
-  z-index: 2;
-  overflow: visible;
-}
-
-.mass-hex {
-  fill: #2a1a3a;
-  stroke: #5a4a6a;
-  stroke-width: 1.5;
-  transition: all 0.5s ease;
-}
-
-.mass-notch {
-  fill: #1a0a2a;
-  transition: all 0.5s ease;
-}
-
-.mass-core {
-  fill: #0a0010;
-  opacity: 0;
-  transition: all 0.5s ease;
-}
-
-/* Tier 1: Dormant - static, muted */
-.npm-mass.dormant .mass-hex {
-  fill: #1a1225;
-  stroke: #3a3a4a;
-}
-
-/* Tier 2: Breathing - gentle pulse */
-.npm-mass.breathing .mass-hex {
-  fill: #2a1a3a;
-  stroke: #6a5a7a;
-  animation: mass-breathe 3s ease-in-out infinite;
-}
-
-.npm-mass.breathing .mass-notch {
-  animation: mass-breathe 3s ease-in-out infinite 0.1s;
-}
-
-/* Tier 3: Forming - dark core visible */
-.npm-mass.forming .mass-hex {
-  fill: #3a2a4a;
-  stroke: #7a5aff;
-}
-
-.npm-mass.forming .mass-core {
-  opacity: 1;
-  animation: core-pulse 2s ease-in-out infinite;
-}
-
-/* Tier 4: Warping - gravity distortion */
-.npm-mass.warping .mass-hex {
-  fill: #4a3a5a;
-  stroke: #9a7aff;
-  filter: drop-shadow(0 0 4px rgba(122, 90, 255, 0.5));
-}
-
-.npm-mass.warping .mass-core {
-  opacity: 1;
-  fill: #050008;
-}
-
-/* Tier 5: Critical - unstable, crackling */
-.npm-mass.critical .mass-hex {
-  fill: #5a4a6a;
-  stroke: #ff7aff;
-  filter: drop-shadow(0 0 8px rgba(255, 122, 255, 0.6));
-  animation: mass-critical 0.5s ease-in-out infinite;
-}
-
-.npm-mass.critical .mass-core {
-  opacity: 1;
-  fill: #000;
-  animation: core-critical 0.3s ease-in-out infinite;
-}
-
-/* Ready state (can ship) - add glow */
-.npm-mass.ready .mass-hex {
-  filter: drop-shadow(0 0 6px rgba(122, 90, 255, 0.8));
-}
-
-/* Holdable state (Tier 5 - can collapse) */
-.npm-mass.holdable {
-  cursor: pointer;
-}
-
-.npm-mass.holdable::after {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border: 2px dashed rgba(255, 122, 255, 0.4);
-  border-radius: 50%;
-  animation: holdable-hint 2s ease-in-out infinite;
-  pointer-events: none;
-}
-
-@keyframes holdable-hint {
-  0%,
-  100% {
-    opacity: 0.3;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.7;
-    transform: scale(1.05);
-  }
-}
-
-/* Holding state - active collapse charge */
-.npm-mass.holding {
-  transform: scale(1.1);
-  transition: transform 0.2s ease;
-}
-
-.npm-mass.holding .mass-hex {
-  stroke: #ff5aff;
-  filter: drop-shadow(0 0 12px rgba(255, 90, 255, 0.8));
-  animation: holding-pulse 0.3s ease-in-out infinite;
-}
-
-.npm-mass.holding::after {
-  border-color: rgba(255, 90, 255, 0.8);
-  border-style: solid;
-  animation: holding-ring 0.5s linear infinite;
-}
-
-/* Progress ring during hold */
-.npm-mass.holding::before {
-  content: '';
-  position: absolute;
-  inset: -8px;
-  border: 3px solid transparent;
-  border-top-color: #ff5aff;
-  border-radius: 50%;
-  transform: rotate(calc(var(--hold-progress, 0) * 360deg));
-  transition: transform 0.1s linear;
-  pointer-events: none;
-}
-
-@keyframes holding-pulse {
-  0%,
-  100% {
-    filter: drop-shadow(0 0 12px rgba(255, 90, 255, 0.8));
-  }
-  50% {
-    filter: drop-shadow(0 0 20px rgba(255, 90, 255, 1));
-  }
-}
-
-@keyframes holding-ring {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Locked state (>80% - point of no return) */
-.npm-mass.locked .mass-hex {
-  stroke: #ff0000;
-  fill: #3a0a1a;
-  animation: locked-shake 0.1s ease-in-out infinite;
-}
-
-.npm-mass.locked::after {
-  border-color: #ff0000;
-}
-
-@keyframes locked-shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-2px);
-  }
-  75% {
-    transform: translateX(2px);
-  }
-}
-
-/* Cancelled state - "exhale" relief animation */
-.npm-mass.cancelled {
-  animation: cancel-exhale 0.4s ease-out forwards;
-}
-
-.npm-mass.cancelled .mass-hex {
-  animation: cancel-hex-relief 0.4s ease-out forwards;
-}
-
-.npm-mass.cancelled::after {
-  animation: cancel-ring-fade 0.4s ease-out forwards;
-}
-
-@keyframes cancel-exhale {
-  0% {
-    transform: scale(1.1);
-    filter: drop-shadow(0 0 20px rgba(255, 90, 255, 0.8));
-  }
-  40% {
-    transform: scale(0.9);
-  }
-  100% {
-    transform: scale(1);
-    filter: drop-shadow(0 0 8px rgba(122, 90, 255, 0.4));
-  }
-}
-
-@keyframes cancel-hex-relief {
-  0% {
-    fill: #3a0a2a;
-    stroke: #ff5aff;
-  }
-  100% {
-    fill: #1a0a2a;
-    stroke: #7a5aff;
-  }
-}
-
-@keyframes cancel-ring-fade {
-  0% {
-    opacity: 1;
-    border-color: #ff5aff;
-  }
-  100% {
-    opacity: 0;
-    border-color: transparent;
-  }
-}
-
-/* Glow layers */
-.mass-glow {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.mass-glow.outer {
-  background: radial-gradient(
-    circle,
-    rgba(122, 90, 255, 0.15) 0%,
-    transparent 70%
-  );
-  transform: scale(1.8);
-  animation: glow-pulse 3s ease-in-out infinite;
-}
-
-.mass-glow.inner {
-  background: radial-gradient(
-    circle,
-    rgba(90, 60, 180, 0.2) 0%,
-    transparent 60%
-  );
-  transform: scale(1.4);
-  animation: glow-pulse 2s ease-in-out infinite 0.5s;
-}
-
-/* Warp rings (tier 4+) */
-.warp-rings {
-  position: absolute;
-  width: 80px;
-  height: 80px;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.warp-ring {
-  fill: none;
-  stroke: rgba(122, 90, 255, 0.2);
-  stroke-width: 1;
-  animation: warp-rotate 8s linear infinite;
-  transform-origin: center;
-}
-
-.warp-ring.delayed {
-  animation-delay: -4s;
-  stroke: rgba(90, 60, 180, 0.15);
-}
-
-/* Crackling effects (tier 5) */
-.mass-crackle {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 3;
-}
-
-.crack {
-  position: absolute;
-  width: 2px;
-  height: 8px;
-  background: linear-gradient(to bottom, #ff7aff, transparent);
-  border-radius: 1px;
-}
-
-.crack.c1 {
-  top: 2px;
-  left: 50%;
-  transform: translateX(-50%) rotate(-15deg);
-  animation: crack-flash 0.8s ease-in-out infinite;
-}
-
-.crack.c2 {
-  bottom: 6px;
-  right: 4px;
-  transform: rotate(45deg);
-  animation: crack-flash 0.6s ease-in-out infinite 0.2s;
-}
-
-.crack.c3 {
-  bottom: 8px;
-  left: 6px;
-  transform: rotate(-30deg);
-  animation: crack-flash 0.7s ease-in-out infinite 0.4s;
-}
-
-/* Animations */
-@keyframes mass-breathe {
-  0%,
-  100% {
-    opacity: 0.9;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.03);
-  }
-}
-
-@keyframes core-pulse {
-  0%,
-  100% {
-    opacity: 0.8;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes mass-critical {
-  0%,
-  100% {
-    transform: scale(1) rotate(0deg);
-  }
-  25% {
-    transform: scale(1.02) rotate(0.5deg);
-  }
-  75% {
-    transform: scale(0.98) rotate(-0.5deg);
-  }
-}
-
-@keyframes core-critical {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
-}
-
-@keyframes glow-pulse {
-  0%,
-  100% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes warp-rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes crack-flash {
-  0%,
-  100% {
-    opacity: 0;
-    height: 6px;
-  }
-  50% {
-    opacity: 1;
-    height: 10px;
-  }
-}
-
-/* ============================================
    QUALITY ARCS
    ============================================ */
 .quality-arcs {
@@ -1522,391 +992,12 @@ function handlePrestige() {
 }
 
 /* ============================================
-   TIER PROGRESS ARCS
-   ============================================ */
-
-.tier-arcs {
-  position: absolute;
-  width: 200px;
-  height: 200px;
-  pointer-events: none;
-}
-
-.tier-arc-group {
-  transform-origin: 100px 100px;
-  transform: rotate(var(--arc-rotation, 0deg));
-}
-
-.tier-arc-track {
-  fill: none;
-  stroke: rgba(60, 60, 80, 0.25);
-  stroke-width: 4;
-  stroke-linecap: round;
-}
-
-.tier-arc-fill {
-  fill: none;
-  stroke-width: 4;
-  stroke-linecap: round;
-  transition: stroke-dasharray 0.4s ease-out;
-  transform-origin: 100px 100px;
-  transform: rotate(-90deg); /* Start from top of quadrant */
-}
-
-/* Tier-specific colors */
-.tier-arc-fill.tier-2 {
-  stroke: rgba(90, 170, 255, 0.6);
-}
-
-.tier-arc-fill.tier-3 {
-  stroke: rgba(90, 255, 200, 0.6);
-}
-
-.tier-arc-fill.tier-4 {
-  stroke: rgba(255, 200, 90, 0.6);
-}
-
-.tier-arc-fill.tier-5 {
-  stroke: rgba(255, 140, 200, 0.6);
-}
-
-/* Complete tier arcs glow */
-.tier-arc-group.complete .tier-arc-fill.tier-2 {
-  stroke: #5aaaff;
-  filter: drop-shadow(0 0 4px rgba(90, 170, 255, 0.8));
-}
-
-.tier-arc-group.complete .tier-arc-fill.tier-3 {
-  stroke: #5affc8;
-  filter: drop-shadow(0 0 4px rgba(90, 255, 200, 0.8));
-}
-
-.tier-arc-group.complete .tier-arc-fill.tier-4 {
-  stroke: #ffc85a;
-  filter: drop-shadow(0 0 4px rgba(255, 200, 90, 0.8));
-}
-
-.tier-arc-group.complete .tier-arc-fill.tier-5 {
-  stroke: #ff8cc8;
-  filter: drop-shadow(0 0 4px rgba(255, 140, 200, 0.8));
-}
-
-/* Active (in-progress) tier arcs pulse gently */
-.tier-arc-group.active .tier-arc-fill {
-  animation: tier-arc-pulse 2s ease-in-out infinite;
-}
-
-@keyframes tier-arc-pulse {
-  0%,
-  100% {
-    opacity: 0.7;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-/* Draining tier arcs during collapse hold */
-.tier-arc-group.draining .tier-arc-fill {
-  animation: tier-arc-drain 0.3s ease-out infinite;
-  filter: drop-shadow(0 0 8px rgba(255, 90, 255, 0.8));
-}
-
-.tier-arc-group.draining .tier-arc-fill.tier-2 {
-  stroke: #ff5aff;
-}
-
-.tier-arc-group.draining .tier-arc-fill.tier-3 {
-  stroke: #ff5aff;
-}
-
-.tier-arc-group.draining .tier-arc-fill.tier-4 {
-  stroke: #ff5aff;
-}
-
-.tier-arc-group.draining .tier-arc-fill.tier-5 {
-  stroke: #ff5aff;
-}
-
-@keyframes tier-arc-drain {
-  0%,
-  100% {
-    opacity: 1;
-    filter: drop-shadow(0 0 8px rgba(255, 90, 255, 0.8));
-  }
-  50% {
-    opacity: 0.7;
-    filter: drop-shadow(0 0 12px rgba(255, 90, 255, 1));
-  }
-}
-
-/* Tier unlock icons container */
-.tier-unlock-icons {
-  position: absolute;
-  width: 200px;
-  height: 200px;
-  pointer-events: none;
-}
-
-/* Individual tier unlock icons */
-.tier-unlock-icon {
-  position: absolute;
-  font-size: 18px;
-  transition: all 0.3s ease;
-  opacity: 0.25;
-  color: #6a6a8a;
-}
-
-/* Lightning bolt stays smaller */
-.tier-unlock-icon.tier-4 {
-  font-size: 14px;
-}
-
-/* Position icons at the end of each arc quadrant */
-.tier-unlock-icon.tier-2 {
-  top: 50%;
-  right: -8px;
-  transform: translateY(-50%);
-}
-
-.tier-unlock-icon.tier-3 {
-  bottom: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.tier-unlock-icon.tier-4 {
-  top: 50%;
-  left: -8px;
-  transform: translateY(-50%);
-}
-
-.tier-unlock-icon.tier-5 {
-  top: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-/* Active icons (in progress) */
-.tier-unlock-icon.active {
-  opacity: 0.6;
-  animation: tier-icon-pulse 2s ease-in-out infinite;
-}
-
-.tier-unlock-icon.active.tier-2 {
-  color: #5aaaff;
-}
-.tier-unlock-icon.active.tier-3 {
-  color: #5affc8;
-}
-.tier-unlock-icon.active.tier-4 {
-  color: #ffc85a;
-}
-.tier-unlock-icon.active.tier-5 {
-  color: #ff8cc8;
-}
-
-/* Complete icons - bright with glow */
-.tier-unlock-icon.complete {
-  opacity: 1;
-  font-size: 21px;
-}
-
-/* Lightning bolt stays smaller when complete */
-.tier-unlock-icon.complete.tier-4 {
-  font-size: 16px;
-}
-
-.tier-unlock-icon.complete.tier-2 {
-  color: #5aaaff;
-  text-shadow: 0 0 8px rgba(90, 170, 255, 0.8);
-}
-
-.tier-unlock-icon.complete.tier-3 {
-  color: #5affc8;
-  text-shadow: 0 0 8px rgba(90, 255, 200, 0.8);
-}
-
-.tier-unlock-icon.complete.tier-4 {
-  color: #ffc85a;
-  text-shadow: 0 0 8px rgba(255, 200, 90, 0.8);
-}
-
-.tier-unlock-icon.complete.tier-5 {
-  color: #ff8cc8;
-  text-shadow: 0 0 8px rgba(255, 140, 200, 0.8);
-  animation: tier-5-complete 1.5s ease-in-out infinite;
-}
-
-@keyframes tier-icon-pulse {
-  0%,
-  100% {
-    opacity: 0.5;
-  }
-  50% {
-    opacity: 0.8;
-  }
-}
-
-/* Draining tier icons during collapse hold */
-.tier-unlock-icon.draining {
-  color: #ff5aff !important;
-  text-shadow: 0 0 12px rgba(255, 90, 255, 1) !important;
-  animation: tier-icon-drain 0.2s ease-in-out infinite !important;
-}
-
-@keyframes tier-icon-drain {
-  0%,
-  100% {
-    transform: translateX(-50%) scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: translateX(-50%) scale(0.9);
-    opacity: 0.7;
-  }
-}
-
-/* Position-specific drain animations */
-.tier-unlock-icon.draining.tier-2 {
-  animation: tier-icon-drain-right 0.2s ease-in-out infinite !important;
-}
-
-.tier-unlock-icon.draining.tier-3 {
-  animation: tier-icon-drain-bottom 0.2s ease-in-out infinite !important;
-}
-
-.tier-unlock-icon.draining.tier-4 {
-  animation: tier-icon-drain-left 0.2s ease-in-out infinite !important;
-}
-
-.tier-unlock-icon.draining.tier-5 {
-  animation: tier-icon-drain-top 0.2s ease-in-out infinite !important;
-}
-
-@keyframes tier-icon-drain-right {
-  0%,
-  100% {
-    transform: translateY(-50%) scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: translateY(-50%) scale(0.9);
-    opacity: 0.7;
-  }
-}
-
-@keyframes tier-icon-drain-bottom {
-  0%,
-  100% {
-    transform: translateX(-50%) scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: translateX(-50%) scale(0.9);
-    opacity: 0.7;
-  }
-}
-
-@keyframes tier-icon-drain-left {
-  0%,
-  100% {
-    transform: translateY(-50%) scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: translateY(-50%) scale(0.9);
-    opacity: 0.7;
-  }
-}
-
-@keyframes tier-icon-drain-top {
-  0%,
-  100% {
-    transform: translateX(-50%) scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: translateX(-50%) scale(0.9);
-    opacity: 0.7;
-  }
-}
-
-/* Drained (empty) tier icons */
-.tier-unlock-icon.drained {
-  opacity: 0.2 !important;
-  color: #4a4a6a !important;
-  text-shadow: none !important;
-  animation: none !important;
-}
-
-@keyframes tier-5-complete {
-  0%,
-  100% {
-    transform: translateX(-50%) scale(1);
-    text-shadow: 0 0 8px rgba(255, 140, 200, 0.8);
-  }
-  50% {
-    transform: translateX(-50%) scale(1.2);
-    text-shadow: 0 0 16px rgba(255, 140, 200, 1);
-  }
-}
-
-/* Automation active states for tier icons */
-.tier-unlock-icon.auto-active.tier-2 {
-  color: #5aff8a !important;
-  text-shadow: 0 0 12px rgba(90, 255, 138, 1) !important;
-  animation: tier-auto-spin-right 0.6s linear infinite;
-}
-
-.tier-unlock-icon.auto-active.tier-3 {
-  color: #5affff !important;
-  text-shadow: 0 0 12px rgba(90, 255, 255, 1) !important;
-  animation: tier-auto-spin-bottom 0.6s linear infinite;
-}
-
-.tier-unlock-icon.auto-flash {
-  animation: tier-auto-flash 0.3s ease-out;
-}
-
-@keyframes tier-auto-spin-right {
-  from {
-    transform: translateY(-50%) rotate(0deg);
-  }
-  to {
-    transform: translateY(-50%) rotate(360deg);
-  }
-}
-
-@keyframes tier-auto-spin-bottom {
-  from {
-    transform: translateX(-50%) rotate(0deg);
-  }
-  to {
-    transform: translateX(-50%) rotate(360deg);
-  }
-}
-
-@keyframes tier-auto-flash {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.5);
-    filter: brightness(2);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-/* ============================================
-   REWARD TOKEN QUALITY
+   REWARD TOKEN PREVIEW (Unified)
    ============================================ */
 .reward-preview {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   align-items: center;
   justify-content: center;
   min-width: 24px;
@@ -1918,6 +1009,17 @@ function handlePrestige() {
   opacity: 1;
 }
 
+.reward-preview.tooltip-trigger {
+  cursor: help;
+}
+
+.token-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+}
+
 .reward-token {
   font-size: 16px;
   color: #5affff;
@@ -1925,13 +1027,6 @@ function handlePrestige() {
   animation: reward-float 1s ease-in-out infinite alternate;
   transition: all 0.3s ease;
   line-height: 1;
-}
-
-/* Empty token slots (potential rewards) */
-.reward-token.empty {
-  color: rgba(90, 255, 255, 0.15);
-  text-shadow: none;
-  animation: none;
 }
 
 /* Excellent quality - bright glow */
@@ -1964,17 +1059,40 @@ function handlePrestige() {
   animation: reward-shake 0.1s linear infinite;
 }
 
-.reward-token:nth-child(2) {
+/* Staggered animation delays */
+.token-row:first-child .reward-token:nth-child(2) {
   animation-delay: 0.1s;
 }
-.reward-token:nth-child(3) {
+.token-row:first-child .reward-token:nth-child(3) {
   animation-delay: 0.2s;
 }
-.reward-token:nth-child(4) {
+.token-row:first-child .reward-token:nth-child(4) {
   animation-delay: 0.3s;
 }
-.reward-token:nth-child(5) {
+.token-row:first-child .reward-token:nth-child(5) {
   animation-delay: 0.4s;
+}
+.token-row:nth-child(2) .reward-token:nth-child(1) {
+  animation-delay: 0.5s;
+}
+.token-row:nth-child(2) .reward-token:nth-child(2) {
+  animation-delay: 0.6s;
+}
+.token-row:nth-child(2) .reward-token:nth-child(3) {
+  animation-delay: 0.7s;
+}
+.token-row:nth-child(2) .reward-token:nth-child(4) {
+  animation-delay: 0.8s;
+}
+.token-row:nth-child(2) .reward-token:nth-child(5) {
+  animation-delay: 0.9s;
+}
+
+.token-overflow {
+  font-size: 12px;
+  color: rgba(90, 255, 255, 0.5);
+  line-height: 1;
+  letter-spacing: 2px;
 }
 
 @keyframes reward-float {
@@ -1982,7 +1100,7 @@ function handlePrestige() {
     transform: translateY(0);
   }
   to {
-    transform: translateY(-3px);
+    transform: translateY(-2px);
   }
 }
 
@@ -2010,7 +1128,7 @@ function handlePrestige() {
 }
 
 /* ============================================
-   FRAGMENT BONUS PREVIEW
+   FRAGMENT PROGRESS (5 Stars)
    ============================================ */
 .fragment-preview {
   display: flex;
@@ -2018,52 +1136,48 @@ function handlePrestige() {
   gap: 2px;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
+  min-width: 16px;
   opacity: 0;
   transition: opacity 0.3s ease;
-  padding-left: 4px;
+  padding-left: 6px;
   border-left: 1px solid rgba(255, 200, 90, 0.2);
-  margin-left: 4px;
+  margin-left: 6px;
 }
 
 .fragment-preview.visible {
   opacity: 1;
 }
 
-.fragment-token {
-  font-size: 13px;
-  line-height: 1;
-  transition: all 0.3s ease;
+.fragment-preview.tooltip-trigger {
+  cursor: help;
 }
 
-.fragment-token.empty {
+.fragment-star {
+  font-size: 11px;
+  line-height: 1;
+  transition: all 0.3s ease;
   color: rgba(255, 200, 90, 0.15);
   text-shadow: none;
 }
 
-.fragment-token.filled {
+.fragment-star.filled {
   color: #ffc85a;
   text-shadow: 0 0 6px rgba(255, 200, 90, 0.6);
   animation: fragment-glow 2s ease-in-out infinite;
 }
 
-/* Partial fragment container - stacks empty behind filled slice */
-.fragment-partial {
-  position: relative;
-  width: 13px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Staggered glow animation */
+.fragment-star:nth-child(2) {
+  animation-delay: 0.2s;
 }
-
-.fragment-partial .fragment-token {
-  position: absolute;
+.fragment-star:nth-child(3) {
+  animation-delay: 0.4s;
 }
-
-/* Sliced icon - clips from bottom to show fill progress */
-.fragment-token.slice {
-  clip-path: inset(calc(100% - var(--fill-percent)) 0 0 0);
+.fragment-star:nth-child(4) {
+  animation-delay: 0.6s;
+}
+.fragment-star:nth-child(5) {
+  animation-delay: 0.8s;
 }
 
 @keyframes fragment-glow {
