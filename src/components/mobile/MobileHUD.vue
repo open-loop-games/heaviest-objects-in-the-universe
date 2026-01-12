@@ -82,7 +82,8 @@ watchEffect(() => {
   ) {
     unlockTab('ship')
   }
-  if (gameState.meta.timesShipped >= 2) {
+  // Surge tab unlocks after first surge charge (available from T1)
+  if (gameState.onboarding.firstSurgeCharged) {
     unlockTab('surge')
   }
 })

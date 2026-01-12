@@ -413,8 +413,21 @@ export class GameRenderer {
     const rootPulse = this.effectsRenderer.getRootPulseIntensity()
     const showHint = this.effectsRenderer.shouldShowClickHint()
 
-    // Calculate synced pulse phase for duplicates (1.5s cycle)
-    const pulsePhase = (Date.now() % 1500) / 1500
+    // Calculate synced pulse phase for duplicates
+    // Pulse rate scales with combo: 2s (calm) → 1s (active) → 0.5s (urgent) → solid (max)
+    const combo = gameState.stats.comboCount
+    const pulseDuration =
+      combo >= 10
+        ? Infinity // Solid, no pulse
+        : combo >= 7
+          ? 500 // 0.5s urgent
+          : combo >= 4
+            ? 1000 // 1.0s active
+            : 2000 // 2.0s calm
+    const pulsePhase =
+      pulseDuration === Infinity
+        ? 0.5 // Solid state (mid-alpha)
+        : (Date.now() % pulseDuration) / pulseDuration
 
     // Get first conflict dimming intensity
     const firstConflictDim = getFirstConflictDimming()
@@ -579,7 +592,15 @@ export class GameRenderer {
 
     const inScope = isInPackageScope()
     const groups = getAllDuplicateGroups() // Already scope-aware
-    const pulsePhase = (Date.now() % 1500) / 1500
+
+    // Calculate pulse phase based on combo (same as node halos)
+    const combo = gameState.stats.comboCount
+    const pulseDuration =
+      combo >= 10 ? Infinity : combo >= 7 ? 500 : combo >= 4 ? 1000 : 2000
+    const pulsePhase =
+      pulseDuration === Infinity
+        ? 0.5
+        : (Date.now() % pulseDuration) / pulseDuration
 
     // Get packages from current scope
     const scopePackages = inScope

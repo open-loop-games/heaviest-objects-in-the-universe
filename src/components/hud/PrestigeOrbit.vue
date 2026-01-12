@@ -15,7 +15,6 @@ import {
   computed_canPrestige,
 } from '../../game/state'
 import { triggerShipWithAnimation } from '../../game/ship'
-import { calculateStabilityRatio } from '../../game/formulas'
 import {
   isAutomationProcessing,
   getAutomationProcessingType,
@@ -47,15 +46,6 @@ const showCacheTokens = computed(
 // Show gravity pull effect only when ship is fully ready
 // Draws attention without being too noisy during approach
 const showGravityPull = computed(() => gravityReady.value)
-
-// Show quality indicators after first conflict or symlink opportunity
-const showQualityIndicators = computed(() => {
-  return (
-    gameState.onboarding.firstConflictSeen ||
-    gameState.stats.totalSymlinksCreated > 0 ||
-    gameState.packages.size >= 10
-  )
-})
 
 // Current ecosystem tier (1-5) for central mass visual
 const ecosystemTier = computed(() => gameState.meta.ecosystemTier)
@@ -190,17 +180,6 @@ const visibleOrbiterCount = computed(() => {
 })
 
 // ============================================
-// QUALITY METRICS
-// ============================================
-
-const efficiencyValue = computed(() => gameState.stats.currentEfficiency)
-const stabilityValue = computed(() => calculateStabilityRatio(gameState))
-
-// Arc percentages for SVG (0-100 for stroke-dasharray)
-const efficiencyArcPercent = computed(() => efficiencyValue.value * 100)
-const stabilityArcPercent = computed(() => stabilityValue.value * 100)
-
-// ============================================
 // PRESTIGE REWARD
 // ============================================
 
@@ -217,7 +196,7 @@ const prestigeRewardDots = computed(() => {
 
 // Reward quality tier based on efficiency (for token styling)
 const rewardQuality = computed(() => {
-  const eff = efficiencyValue.value
+  const eff = gameState.stats.currentEfficiency
   if (eff >= 0.8) return 'excellent' // Bright glow
   if (eff >= 0.5) return 'good' // Normal
   if (eff >= 0.3) return 'poor' // Faded
@@ -489,34 +468,6 @@ function handlePrestige() {
           @icon-enter="handleTierIconEnter"
           @icon-leave="handleTierIconLeave"
         />
-
-        <!-- Quality arcs around singularity -->
-        <svg
-          v-if="showQualityIndicators"
-          class="quality-arcs"
-          viewBox="0 0 100 100"
-        >
-          <!-- Efficiency arc (inner, cyan) -->
-          <circle class="arc-track" cx="50" cy="50" r="38" />
-          <circle
-            class="arc-fill efficiency-arc"
-            :class="{ low: efficiencyValue < 0.5 }"
-            cx="50"
-            cy="50"
-            r="38"
-            :stroke-dasharray="`${efficiencyArcPercent * 2.39} 239`"
-          />
-          <!-- Stability arc (outer, green) -->
-          <circle class="arc-track" cx="50" cy="50" r="46" />
-          <circle
-            class="arc-fill stability-arc"
-            :class="{ low: stabilityValue < 0.7 }"
-            cx="50"
-            cy="50"
-            r="46"
-            :stroke-dasharray="`${stabilityArcPercent * 2.89} 289`"
-          />
-        </svg>
 
         <!-- Central npm mass (holdable at Tier 5 for collapse) -->
         <NpmMass
@@ -929,65 +880,6 @@ function handlePrestige() {
   }
   to {
     transform: rotate(360deg);
-  }
-}
-
-/* ============================================
-   QUALITY ARCS
-   ============================================ */
-.quality-arcs {
-  position: absolute;
-  width: 100px;
-  height: 100px;
-  transform: rotate(-90deg); /* Start arcs from top */
-  pointer-events: none;
-}
-
-.arc-track {
-  fill: none;
-  stroke: rgba(60, 60, 80, 0.4);
-  stroke-width: 3;
-}
-
-.arc-fill {
-  fill: none;
-  stroke-width: 3;
-  stroke-linecap: round;
-  transition:
-    stroke-dasharray 0.5s ease-out,
-    stroke 0.3s ease;
-}
-
-/* Efficiency arc - cyan/blue */
-.efficiency-arc {
-  stroke: #5affff;
-  filter: drop-shadow(0 0 4px rgba(90, 255, 255, 0.6));
-}
-
-.efficiency-arc.low {
-  stroke: #ffaa5a;
-  filter: drop-shadow(0 0 4px rgba(255, 170, 90, 0.6));
-  animation: arc-warn-pulse 1s ease-in-out infinite;
-}
-
-/* Stability arc - green */
-.stability-arc {
-  stroke: #5aff8a;
-  filter: drop-shadow(0 0 4px rgba(90, 255, 138, 0.6));
-}
-
-.stability-arc.low {
-  stroke: #ff8a5a;
-  filter: drop-shadow(0 0 4px rgba(255, 138, 90, 0.6));
-}
-
-@keyframes arc-warn-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.6;
   }
 }
 

@@ -396,6 +396,20 @@ function migrateGameState(): void {
     ;(gameState.stats as Record<string, unknown>).totalWeight = 0
   }
 
+  // Ensure maxWeightReached exists (initialize to current weight so existing progress counts)
+  if (gameState.stats.maxWeightReached === undefined) {
+    ;(gameState.stats as Record<string, unknown>).maxWeightReached =
+      gameState.resources.weight || 0
+  }
+
+  // Ensure combo system fields exist
+  if (gameState.stats.comboCount === undefined) {
+    ;(gameState.stats as Record<string, unknown>).comboCount = 0
+  }
+  if (gameState.stats.comboLastActionTime === undefined) {
+    ;(gameState.stats as Record<string, unknown>).comboLastActionTime = 0
+  }
+
   // Ensure collapse hold state exists
   if (!gameState.collapseHold) {
     ;(gameState as Record<string, unknown>).collapseHold = {
@@ -410,6 +424,10 @@ function migrateGameState(): void {
   // Ensure new onboarding flags exist
   if (gameState.onboarding.firstSurgeCharged === undefined) {
     ;(gameState.onboarding as Record<string, unknown>).firstSurgeCharged = false
+  }
+  if (gameState.onboarding.firstHighComboSeen === undefined) {
+    ;(gameState.onboarding as Record<string, unknown>).firstHighComboSeen =
+      false
   }
 }
 

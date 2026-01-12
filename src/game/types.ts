@@ -109,6 +109,9 @@ export interface GameStats {
   // Lifetime stats
   peakEfficiency: number // Highest efficiency reached across all runs
   totalWeight: number // Cumulative weight across all runs
+  // Combo system (resolution speed → weight retention)
+  comboCount: number // Current combo level (0-10)
+  comboLastActionTime: number // Timestamp of last combo-building action
 }
 
 // Cascade system for staggered spawning
@@ -161,6 +164,7 @@ export interface OnboardingState {
   firstScopeExited: boolean // Player has exited a stable scope (exit teaching complete)
   firstPrestigeComplete: boolean // Player has prestiged at least once
   firstSurgeCharged: boolean // Player has charged surge at least once (P2+)
+  firstHighComboSeen: boolean // Player reached combo 5+ (unlock combo teaching tab)
   // Sticky UI visibility (persists across prestiges)
   weightSeen: boolean // Weight indicator has been shown
   efficiencySeen: boolean // Efficiency indicator has been shown

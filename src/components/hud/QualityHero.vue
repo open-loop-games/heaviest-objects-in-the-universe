@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { gameState } from '../../game/state'
-import { getEfficiencyTier, getEfficiencyTierRank } from '../../game/formulas'
 import { on } from '../../game/events'
-import { toRaw } from 'vue'
-import type { Package } from '../../game/types'
 import { setActiveTooltip } from '../../game/ui-state'
 
 // ============================================
@@ -13,8 +10,6 @@ import { setActiveTooltip } from '../../game/ui-state'
 
 const efficiencyPulse = ref(false)
 const stabilityPulse = ref(false)
-const tierUpFlash = ref(false)
-const recentlyFilledPip = ref<number | null>(null)
 
 const unsubscribers: Array<() => void> = []
 
@@ -28,15 +23,6 @@ onMounted(() => {
     on('quality:efficiency-improved', () => {
       efficiencyPulse.value = true
       setTimeout(() => (efficiencyPulse.value = false), 400)
-    }),
-    // Flash the tier pips on tier-up
-    on('quality:efficiency-tier-up', ({ newTier }) => {
-      tierUpFlash.value = true
-      recentlyFilledPip.value = getEfficiencyTierRank(newTier) - 1
-      setTimeout(() => {
-        tierUpFlash.value = false
-        recentlyFilledPip.value = null
-      }, 800)
     }),
     // Pulse stability bar on scope stabilization or stability improvement
     on('game:scope-stabilized', () => {
@@ -59,10 +45,6 @@ onUnmounted(() => {
 // ============================================
 
 const efficiencyValue = computed(() => gameState.stats.currentEfficiency)
-const efficiencyTier = computed(() => getEfficiencyTier(efficiencyValue.value))
-const efficiencyTierRank = computed(() =>
-  getEfficiencyTierRank(efficiencyTier.value)
-)
 
 // Efficiency state for styling
 const efficiencyState = computed(() => {
@@ -72,48 +54,11 @@ const efficiencyState = computed(() => {
   return 'normal'
 })
 
-// Multiplier indicator based on efficiency
-// Below 50% = penalty, above 50% = bonus
-const efficiencyMultiplierIndicator = computed(() => {
-  if (efficiencyValue.value < 0.5) return 'penalty'
-  if (efficiencyValue.value >= 0.85) return 'excellent'
-  return 'bonus'
-})
-
 // ============================================
 // STABILITY
 // ============================================
 
 const stabilityValue = computed(() => gameState.stats.currentStability)
-
-// Count stable vs total entered scopes for dot display
-// Optimized: iterative traversal with early bail-out (we only display up to 6 dots)
-const scopeStats = computed(() => {
-  const MAX_DISPLAY = 7 // 6 dots + 1 for overflow check
-  let stable = 0
-  let total = 0
-
-  // Iterative BFS to avoid deep recursion and bail out early
-  const queue: Map<string, Package>[] = [toRaw(gameState.packages)]
-
-  while (queue.length > 0 && total < MAX_DISPLAY) {
-    const packages = queue.shift()!
-    for (const pkg of packages.values()) {
-      if (pkg.internalState !== null && pkg.internalState !== 'pristine') {
-        total++
-        if (pkg.internalState === 'stable') stable++
-        if (total >= MAX_DISPLAY) break
-      }
-      // Queue internal packages for later processing
-      const internal = pkg.internalPackages ? toRaw(pkg.internalPackages) : null
-      if (internal && internal.size > 0) {
-        queue.push(internal)
-      }
-    }
-  }
-
-  return { stable, total }
-})
 
 // Stability state for styling
 const stabilityState = computed(() => {
@@ -122,9 +67,6 @@ const stabilityState = computed(() => {
   if (stabilityValue.value < 0.7) return 'warning'
   return 'normal'
 })
-
-// Tier pip indices (0-4 for 5 tiers)
-const tierPips = [0, 1, 2, 3, 4]
 
 // ============================================
 // TOOLTIP HANDLERS
@@ -153,10 +95,7 @@ function handleStabilityLeave() {
 <template>
   <div class="quality-hero">
     <!-- Efficiency Section -->
-    <div
-      class="quality-section efficiency-section"
-      :class="[efficiencyState, { 'tier-up-flash': tierUpFlash }]"
-    >
+    <div class="quality-section efficiency-section" :class="efficiencyState">
       <div class="section-header">
         <span
           ref="efficiencyIconRef"
@@ -175,32 +114,6 @@ function handleStabilityLeave() {
             <div class="threshold-marker" />
           </div>
         </div>
-        <span
-          class="multiplier-indicator"
-          :class="efficiencyMultiplierIndicator"
-        >
-          {{
-            efficiencyMultiplierIndicator === 'penalty'
-              ? '▼'
-              : efficiencyMultiplierIndicator === 'excellent'
-                ? '▲▲'
-                : '▲'
-          }}
-        </span>
-      </div>
-      <!-- Tier pips -->
-      <div class="tier-pips" :class="{ 'tier-up-flash': tierUpFlash }">
-        <span
-          v-for="i in tierPips"
-          :key="i"
-          class="tier-pip"
-          :class="{
-            filled: i < efficiencyTierRank,
-            current: i === efficiencyTierRank,
-            'tier-pristine': i === 4 && efficiencyTierRank >= 4,
-            'just-filled': i === recentlyFilledPip,
-          }"
-        />
       </div>
     </div>
 
@@ -222,22 +135,6 @@ function handleStabilityLeave() {
             />
           </div>
         </div>
-        <span
-          class="stability-indicator"
-          :class="[stabilityState, { pulse: stabilityPulse }]"
-        >
-          {{ stabilityValue >= 1.0 ? '●' : stabilityValue < 0.5 ? '!' : '○' }}
-        </span>
-      </div>
-      <!-- Scope dots (show up to 6) -->
-      <div v-if="scopeStats.total > 0" class="scope-dots">
-        <span
-          v-for="i in Math.min(scopeStats.total, 6)"
-          :key="i"
-          class="scope-dot"
-          :class="{ stable: i <= scopeStats.stable }"
-        />
-        <span v-if="scopeStats.total > 6" class="scope-overflow">+</span>
       </div>
     </div>
   </div>
@@ -385,128 +282,6 @@ function handleStabilityLeave() {
 }
 
 /* ============================================
-   MULTIPLIER INDICATOR
-   ============================================ */
-
-.multiplier-indicator {
-  font-size: 12px;
-  width: 24px;
-  text-align: center;
-  font-weight: bold;
-  transition: all 0.3s ease;
-}
-
-.multiplier-indicator.penalty {
-  color: #ff6a5a;
-  animation: shake 0.3s ease-in-out infinite;
-}
-
-.multiplier-indicator.bonus {
-  color: #5affaa;
-}
-
-.multiplier-indicator.excellent {
-  color: #5affff;
-  text-shadow: 0 0 8px rgba(90, 255, 255, 0.8);
-  animation: glow-pulse 1.5s ease-in-out infinite;
-}
-
-/* ============================================
-   TIER PIPS
-   ============================================ */
-
-.tier-pips {
-  display: flex;
-  gap: 4px;
-  padding-left: 28px; /* Align with bar */
-}
-
-.tier-pip {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  background: rgba(60, 55, 80, 0.8);
-  border: 1px solid rgba(90, 90, 120, 0.4);
-  transition: all 0.3s ease;
-}
-
-.tier-pip.filled {
-  background: #5affaa;
-  border-color: #5affaa;
-  box-shadow: 0 0 4px rgba(90, 255, 170, 0.5);
-}
-
-.tier-pip.current {
-  background: rgba(90, 255, 170, 0.3);
-  border-color: #5affaa;
-  animation: pip-pulse 1s ease-in-out infinite;
-}
-
-.tier-pip.tier-pristine {
-  background: #5affff;
-  border-color: #5affff;
-  box-shadow: 0 0 8px rgba(90, 255, 255, 0.8);
-  animation: pristine-glow 2s ease-in-out infinite;
-}
-
-/* ============================================
-   STABILITY INDICATOR
-   ============================================ */
-
-.stability-indicator {
-  font-size: 14px;
-  width: 20px;
-  text-align: center;
-  transition: all 0.3s ease;
-}
-
-.stability-indicator.stable {
-  color: #5aff8a;
-  text-shadow: 0 0 8px rgba(90, 255, 138, 0.8);
-}
-
-.stability-indicator.warning {
-  color: #ffaa5a;
-}
-
-.stability-indicator.critical {
-  color: #ff6a5a;
-  animation: icon-pulse 0.5s ease-in-out infinite alternate;
-}
-
-/* ============================================
-   SCOPE DOTS
-   ============================================ */
-
-.scope-dots {
-  display: flex;
-  gap: 3px;
-  padding-left: 28px; /* Align with bar */
-  align-items: center;
-}
-
-.scope-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: rgba(255, 138, 90, 0.4);
-  border: 1px solid rgba(255, 138, 90, 0.6);
-  transition: all 0.3s ease;
-}
-
-.scope-dot.stable {
-  background: #5aff8a;
-  border-color: #5aff8a;
-  box-shadow: 0 0 4px rgba(90, 255, 138, 0.5);
-}
-
-.scope-overflow {
-  font-size: 10px;
-  color: rgba(200, 200, 220, 0.6);
-  margin-left: 2px;
-}
-
-/* ============================================
    ANIMATIONS
    ============================================ */
 
@@ -517,51 +292,6 @@ function handleStabilityLeave() {
   }
   50% {
     opacity: 1;
-  }
-}
-
-@keyframes shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-1px);
-  }
-  75% {
-    transform: translateX(1px);
-  }
-}
-
-@keyframes glow-pulse {
-  0%,
-  100% {
-    text-shadow: 0 0 6px rgba(90, 255, 255, 0.6);
-  }
-  50% {
-    text-shadow: 0 0 12px rgba(90, 255, 255, 1);
-  }
-}
-
-@keyframes pip-pulse {
-  0%,
-  100% {
-    opacity: 0.5;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.1);
-  }
-}
-
-@keyframes pristine-glow {
-  0%,
-  100% {
-    box-shadow: 0 0 6px rgba(90, 255, 255, 0.6);
-  }
-  50% {
-    box-shadow: 0 0 12px rgba(90, 255, 255, 1);
   }
 }
 
@@ -586,63 +316,6 @@ function handleStabilityLeave() {
   100% {
     filter: brightness(1);
     box-shadow: none;
-  }
-}
-
-/* Stability indicator pulse */
-.stability-indicator.pulse {
-  animation: indicator-pulse 0.4s ease-out;
-}
-
-@keyframes indicator-pulse {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.4);
-    text-shadow: 0 0 12px rgba(90, 255, 138, 1);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-/* Tier-up flash on the whole section */
-.efficiency-section.tier-up-flash {
-  animation: section-flash 0.8s ease-out;
-}
-
-@keyframes section-flash {
-  0% {
-    filter: brightness(1);
-  }
-  30% {
-    filter: brightness(1.8);
-  }
-  100% {
-    filter: brightness(1);
-  }
-}
-
-/* Just-filled pip burst animation */
-.tier-pip.just-filled {
-  animation: pip-fill-burst 0.8s ease-out;
-}
-
-@keyframes pip-fill-burst {
-  0% {
-    transform: scale(0.5);
-    opacity: 0.5;
-    background: transparent;
-  }
-  40% {
-    transform: scale(1.6);
-    background: #5affff;
-    box-shadow: 0 0 16px rgba(90, 255, 255, 1);
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
   }
 }
 </style>

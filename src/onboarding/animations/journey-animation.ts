@@ -575,23 +575,6 @@ export class JourneyAnimation {
     // 50% threshold marker
     this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'
     this.ctx.fillRect(x + barWidth * 0.5 - 1, y - 1, 2, barHeight + 2)
-
-    // Multiplier indicator (▼ penalty, ▲ bonus, ▲▲ excellent)
-    const multX = x + barWidth + 4
-    this.ctx.font = 'bold 11px system-ui'
-    if (this.efficiencyFill < 0.5) {
-      // Penalty
-      this.ctx.fillStyle = '#ff5a5a'
-      this.ctx.fillText('▼', multX, y + barHeight - 1)
-    } else if (this.efficiencyFill < 0.85) {
-      // Bonus
-      this.ctx.fillStyle = '#5affaa'
-      this.ctx.fillText('▲', multX, y + barHeight - 1)
-    } else {
-      // Excellent
-      this.ctx.fillStyle = '#5affff'
-      this.ctx.fillText('▲▲', multX, y + barHeight - 1)
-    }
   }
 
   private drawStabilityBar(): void {
@@ -626,28 +609,6 @@ export class JourneyAnimation {
       gradient.addColorStop(1, '#5aff8a')
       this.ctx.fillStyle = gradient
       this.ctx.fillRect(x, y, fillWidth, barHeight)
-    }
-
-    // Scope dots (below bar)
-    if (this.scopeTotalCount > 0) {
-      const dotY = y + barHeight + 6
-      const dotSize = 5
-      const dotGap = 3
-
-      for (let i = 0; i < this.scopeTotalCount; i++) {
-        const dotX = x + i * (dotSize + dotGap)
-        this.ctx.beginPath()
-        this.ctx.arc(dotX + dotSize / 2, dotY, dotSize / 2, 0, Math.PI * 2)
-
-        if (i < this.scopeStableCount) {
-          // Stable scope = green
-          this.ctx.fillStyle = '#5aff8a'
-        } else {
-          // Unstable scope = orange
-          this.ctx.fillStyle = 'rgba(255, 138, 90, 0.6)'
-        }
-        this.ctx.fill()
-      }
     }
   }
 
@@ -734,16 +695,6 @@ export class JourneyAnimation {
       gradient.addColorStop(1, `rgba(90, 255, 255, ${alpha})`)
       this.ctx.fillStyle = gradient
       this.ctx.fillRect(barX, barY, fillWidth, barHeight)
-    }
-
-    // Multiplier indicator
-    this.ctx.font = 'bold 12px system-ui'
-    if (efficiency < 0.5) {
-      this.ctx.fillStyle = hexToCSS(0xff5a5a, alpha)
-      this.ctx.fillText('▼', x + barWidth / 2 + 10, barY + barHeight - 2)
-    } else {
-      this.ctx.fillStyle = hexToCSS(0x5affff, alpha)
-      this.ctx.fillText('▲', x + barWidth / 2 + 10, barY + barHeight - 2)
     }
 
     // Down arrow to tokens

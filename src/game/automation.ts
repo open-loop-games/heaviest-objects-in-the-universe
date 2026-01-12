@@ -14,6 +14,7 @@ import {
 } from './upgrades'
 import { AUTO_RESOLVE_DRAIN } from './config'
 import { emit } from './events'
+import { getCrossPackageConflicts } from './cross-package'
 
 // ============================================
 // AUTOMATION TIMING CONSTANTS
@@ -44,6 +45,51 @@ interface ConflictLocation {
 }
 
 /**
+ * Check if a wire's conflict is caused by a cross-package incompatibility.
+ * Cross-package conflicts require node removal (Prune) to resolve - automation
+ * clearing the flag alone won't work because the conflict gets re-detected next frame.
+ *
+ * @param wireId The wire to check
+ * @param scopePath The scope where this wire lives
+ * @returns true if this is a cross-package conflict that should be skipped
+ */
+function isCrossPackageConflict(wireId: string, scopePath: string[]): boolean {
+  // Cross-package conflicts only affect wires inside top-level packages
+  // (scopePath[0] is the top-level package ID)
+  if (scopePath.length === 0) return false
+
+  const topLevelPkgId = scopePath[0]
+  if (!topLevelPkgId) return false
+
+  // Get the wire and its target package
+  const wires = getWiresAtPath(scopePath)
+  const packages = getPackagesAtPath(scopePath)
+  if (!wires || !packages) return false
+
+  const wire = wires.get(wireId)
+  if (!wire) return false
+
+  const targetPkg = packages.get(wire.toId)
+  if (!targetPkg?.identity) return false
+
+  const targetIdentity = targetPkg.identity.name
+
+  // Check if this package's identity is part of a cross-package conflict
+  // involving our top-level package
+  const crossConflicts = getCrossPackageConflicts()
+  for (const conflict of crossConflicts) {
+    if (conflict.packageAId === topLevelPkgId) {
+      if (conflict.conflictingDepA === targetIdentity) return true
+    }
+    if (conflict.packageBId === topLevelPkgId) {
+      if (conflict.conflictingDepB === targetIdentity) return true
+    }
+  }
+
+  return false
+}
+
+/**
  * Check if a scope path is currently being populated by the cascade system.
  * We should skip automation on scopes that are still populating to avoid
  * race conditions between cascade spawning and automation resolution.
@@ -69,6 +115,8 @@ function isScopePopulating(scopePath: string[]): boolean {
  * Find the first conflicted wire in the CURRENT scope only.
  * Automation should not reach into other scopes - only resolve conflicts
  * where the player is currently viewing.
+ *
+ * Skips cross-package conflicts since they require node removal to truly resolve.
  */
 export function findFirstConflictedWire(): ConflictLocation | null {
   const scopePath = [...gameState.scopeStack]
@@ -82,6 +130,9 @@ export function findFirstConflictedWire(): ConflictLocation | null {
 
   for (const [wireId, wire] of toRaw(wires)) {
     if (wire.conflicted) {
+      // Skip cross-package conflicts - they re-appear unless the node is removed
+      if (isCrossPackageConflict(wireId, scopePath)) continue
+
       return { wireId, scopePath }
     }
   }

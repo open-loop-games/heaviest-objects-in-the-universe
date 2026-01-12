@@ -122,6 +122,20 @@ export const MOMENTUM_DAMPENING_FLOOR = 0.2 // Minimum generation rate (20%)
 export const INSTALL_BASE_COST = 25 // × tier × 1.15^activeScopes
 
 // ============================================
+// COMBO SYSTEM (Resolution speed → weight retention)
+// ============================================
+
+// Maximum combo level
+export const COMBO_MAX = 10
+
+// Time until combo resets (ms)
+export const COMBO_DECAY_MS = 3000
+
+// Weight retention scaling: at combo 0 remove 50%, at combo 10 remove 0%
+export const COMBO_WEIGHT_RETENTION_MIN = 0.5 // 50% weight removed at combo 0
+export const COMBO_WEIGHT_RETENTION_MAX = 1.0 // 0% weight removed at combo 10
+
+// ============================================
 // SURGE SYSTEM (P2+)
 // ============================================
 
@@ -135,6 +149,7 @@ export const SURGE_COST_PER_SEGMENT = 0.1 // 10% of max bandwidth per segment
 export const SURGE_CASCADE_BOOST = 0.08 // +8% cascade size per segment
 export const SURGE_GOLDEN_BOOST = 0.005 // +0.5% absolute golden chance per segment
 export const SURGE_FRAGMENT_BOOST = 0.004 // +0.4% absolute fragment chance per segment
+export const SURGE_PACKAGE_BOOST = 0.05 // +5% package count per segment
 
 // ============================================
 // DEPTH REWARDS
@@ -236,6 +251,7 @@ export function createInitialState(): GameState {
       firstScopeExited: false,
       firstPrestigeComplete: false,
       firstSurgeCharged: false,
+      firstHighComboSeen: false,
       weightSeen: false,
       efficiencySeen: false,
     },
@@ -305,6 +321,8 @@ export function createInitialState(): GameState {
       cacheFragmentsCollected: 0,
       peakEfficiency: 1,
       totalWeight: 0,
+      comboCount: 0,
+      comboLastActionTime: 0,
     },
     camera: {
       x: 0,

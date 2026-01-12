@@ -75,7 +75,12 @@ export interface GameEvents {
   'packages:changed': void // Signal that packages were added/removed/merged
 
   // Particle events
-  'particles:spawn': { type: ParticleType; x: number; y: number }
+  'particles:spawn': {
+    type: ParticleType
+    x: number
+    y: number
+    scale?: number
+  }
   'particles:burst': { type: ParticleType; x: number; y: number; count: number }
 
   // Gravity pull (request particle from visible package)

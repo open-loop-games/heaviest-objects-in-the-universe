@@ -14,7 +14,12 @@ import type { Package } from './types'
 import { updateCrossPackageDuplicates } from './cross-package'
 import { onSymlinkMerged } from './mutations'
 import { emit } from './events'
-import { HALO_COLORS } from './config'
+import {
+  HALO_COLORS,
+  COMBO_MAX,
+  COMBO_WEIGHT_RETENTION_MIN,
+  COMBO_WEIGHT_RETENTION_MAX,
+} from './config'
 
 export interface DuplicateGroup {
   identityName: string
@@ -36,6 +41,25 @@ let lastScopeStackLength = -1
  */
 export function markDuplicateGroupsDirty(): void {
   duplicateGroupsDirty = true
+}
+
+// ============================================
+// COMBO WEIGHT RETENTION
+// ============================================
+
+/**
+ * Calculate weight retention based on current combo level.
+ * At combo 0: 50% of source weight is removed (retention = 0.5)
+ * At combo 10: 0% of source weight is removed (retention = 1.0)
+ */
+function getComboWeightRetention(): number {
+  const combo = gameState.stats.comboCount
+  const t = combo / COMBO_MAX // 0 to 1
+  // Interpolate: 0.5 at combo 0, 1.0 at combo 10
+  return (
+    COMBO_WEIGHT_RETENTION_MIN +
+    t * (COMBO_WEIGHT_RETENTION_MAX - COMBO_WEIGHT_RETENTION_MIN)
+  )
 }
 
 // ============================================
@@ -272,22 +296,25 @@ export function performSymlinkMerge(
     ;[sourceId, targetId] = [targetId, sourceId]
   }
 
-  // Calculate weight savings (50% of source)
-  const weightSaved = Math.floor(source.size / 2)
+  // Calculate weight removal based on combo (higher combo = less weight removed)
+  // At combo 0: 50% removed, at combo 10: 0% removed
+  const retention = getComboWeightRetention()
+  const weightRemoved = Math.floor(source.size * (1 - retention))
+  const weightSaved = source.size - weightRemoved // For stats/particles
   const mergePosition = { x: source.position.x, y: source.position.y }
 
   // === MOMENTUM LOOP: Generate bandwidth for manual merge ===
   // Also emits 'game:symlink-merged' event for UI juice
   onSymlinkMerged(weightSaved, mergePosition)
 
-  // Reduce global weight
-  gameState.resources.weight -= weightSaved
+  // Reduce global weight (combo affects how much is removed)
+  gameState.resources.weight -= weightRemoved
 
   // If in scope, also reduce the scope package's size (works at any depth)
   if (inScope) {
     const scopePkg = getCurrentScopeRoot()
     if (scopePkg) {
-      scopePkg.size -= weightSaved
+      scopePkg.size -= weightRemoved
     }
   }
 

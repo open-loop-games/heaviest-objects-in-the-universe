@@ -53,9 +53,9 @@ export class Tier4Tooltip extends TooltipAnimation {
 
     // Layout - horizontal depth dots
     const centerY = TOOLTIP_HEIGHT / 2 + 4
-    const dotRadius = 6
-    const dotSpacing = 14
-    const totalDots = 4
+    const dotRadius = 5
+    const dotSpacing = 12
+    const totalDots = 5
     const startX = TOOLTIP_WIDTH / 2 - ((totalDots - 1) * dotSpacing) / 2
 
     // Draw connecting line behind dots (matches ScopeNavigation background)
@@ -72,15 +72,15 @@ export class Tier4Tooltip extends TooltipAnimation {
       let dotAlpha = alpha
       let dotScale = pulseScale
 
-      if (i === 3) {
-        // Fourth dot (new one)
+      if (i === 4) {
+        // Fifth dot (new one)
         if (!hasNewDot) continue
         dotAlpha = addDotT * alpha
         dotScale = addDotT
       }
 
-      const isNew = i === 3
-      const glowAmount = isNew && glowT > 0 ? glowT : i < 3 ? 0.2 : 0
+      const isNew = i === 4
+      const glowAmount = isNew && glowT > 0 ? glowT : i < 4 ? 0.2 : 0
 
       this.drawDepthDot(
         dotX,

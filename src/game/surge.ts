@@ -7,6 +7,7 @@ import {
   SURGE_CASCADE_BOOST,
   SURGE_GOLDEN_BOOST,
   SURGE_FRAGMENT_BOOST,
+  SURGE_PACKAGE_BOOST,
 } from './config'
 
 // ============================================
@@ -37,10 +38,11 @@ export function getAvailableBandwidth(): number {
 }
 
 /**
- * Check if surge is unlocked (P2+)
+ * Check if surge is unlocked (always available from T1)
+ * Gives early players "reserve vs spend" bandwidth choice
  */
 export function isSurgeUnlocked(): boolean {
-  return gameState.meta.timesShipped >= 2
+  return true
 }
 
 // ============================================
@@ -93,6 +95,7 @@ export interface SurgeBoosts {
   sizeMultiplier: number
   goldenBoost: number
   fragmentBoost: number
+  packageMultiplier: number
 }
 
 /**
@@ -103,7 +106,12 @@ export function consumeSurge(): SurgeBoosts {
   const segments = gameState.surge.chargedSegments
 
   if (segments === 0) {
-    return { sizeMultiplier: 1, goldenBoost: 0, fragmentBoost: 0 }
+    return {
+      sizeMultiplier: 1,
+      goldenBoost: 0,
+      fragmentBoost: 0,
+      packageMultiplier: 1,
+    }
   }
 
   // Consume the reserved bandwidth
@@ -121,5 +129,6 @@ export function consumeSurge(): SurgeBoosts {
     sizeMultiplier: 1 + segments * SURGE_CASCADE_BOOST, // +8% per segment
     goldenBoost: segments * SURGE_GOLDEN_BOOST, // +0.5% per segment
     fragmentBoost: segments * SURGE_FRAGMENT_BOOST, // +0.4% per segment
+    packageMultiplier: 1 + segments * SURGE_PACKAGE_BOOST, // +5% per segment
   }
 }

@@ -15,6 +15,7 @@ interface Particle {
   progress: number
   duration: number
   startTime: number
+  scale: number // Initial scale multiplier (1.0 = normal)
 }
 
 // Use shallowRef to avoid deep reactivity on particle objects
@@ -124,7 +125,12 @@ function invalidatePositions() {
 }
 
 // Spawn a causal particle
-function spawnParticle(type: ParticleType, fromX: number, fromY: number) {
+function spawnParticle(
+  type: ParticleType,
+  fromX: number,
+  fromY: number,
+  scale: number = 1
+) {
   // Only update positions if cache is invalid (e.g., after resize)
   if (!positionsCacheValid) {
     updateHudPositions()
@@ -233,6 +239,7 @@ function spawnParticle(type: ParticleType, fromX: number, fromY: number) {
     progress: 0,
     duration,
     startTime: Date.now(),
+    scale,
   }
 
   particles.value.push(particle)
@@ -297,11 +304,14 @@ function getParticleStyle(p: Particle) {
   // Add slight arc
   const arcHeight = -30 * Math.sin(p.progress * Math.PI)
 
+  // Apply initial scale and shrink over time
+  const currentScale = p.scale * (1 - p.progress * 0.5)
+
   return {
     left: `${x}px`,
     top: `${y + arcHeight}px`,
     opacity: 1 - p.progress * 0.5,
-    transform: `scale(${1 - p.progress * 0.5})`,
+    transform: `scale(${currentScale})`,
   }
 }
 
@@ -377,8 +387,8 @@ onMounted(() => {
 
   // Subscribe to particle events
   eventUnsubscribers.push(
-    on('particles:spawn', ({ type, x, y }) => {
-      spawnParticle(type, x, y)
+    on('particles:spawn', ({ type, x, y, scale }) => {
+      spawnParticle(type, x, y, scale ?? 1)
     }),
     on('particles:burst', ({ type, x, y, count }) => {
       spawnParticleBurst(type, x, y, count)

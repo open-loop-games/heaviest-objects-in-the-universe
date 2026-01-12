@@ -47,9 +47,11 @@ export const computed_prestigeReward: ComputedRef<number> = computed(() => {
   return calculatePrestigeReward(gameState, computed_prestigeThreshold.value)
 })
 
-// Prestige unlocks when gravity >= 1 (weight >= threshold)
+// Prestige unlocks when max weight ever reached >= threshold
+// Uses peak weight so optimization (merging) doesn't drop below threshold
 export const computed_canPrestige: ComputedRef<boolean> = computed(() => {
-  return computed_gravity.value >= 1
+  const threshold = computed_prestigeThreshold.value
+  return gameState.stats.maxWeightReached >= threshold
 })
 
 // ============================================

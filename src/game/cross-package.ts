@@ -35,11 +35,12 @@ const previouslyConflictedPackages: Set<string> = new Set()
  * Only runs at root scope.
  */
 export function updateCrossPackageConflicts(): void {
+  // Only detect at root scope - preserve existing conflicts when inside a package
+  // so automation can check if a conflict is cross-package and skip it
+  if (gameState.currentScope !== 'root') return
+
   crossPackageConflicts = []
   siblingWires.clear()
-
-  // Only detect at root scope
-  if (gameState.currentScope !== 'root') return
 
   // Clear stale conflict states from previously marked packages
   for (const pkgId of previouslyConflictedPackages) {

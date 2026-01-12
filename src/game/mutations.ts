@@ -14,6 +14,7 @@ import {
   MOMENTUM_DAMPENING_WINDOW,
   MOMENTUM_DAMPENING_THRESHOLD,
   MOMENTUM_DAMPENING_FLOOR,
+  COMBO_MAX,
 } from './config'
 import { calculateEfficiency, calculateStabilityRatio } from './formulas'
 import { gameState } from './state'
@@ -54,6 +55,27 @@ function checkEfficiencyChange(newEfficiency: number): void {
       newValue: newEfficiency,
       newTier,
     })
+  }
+}
+
+// ============================================
+// COMBO SYSTEM (Resolution speed → weight retention)
+// ============================================
+
+/** Increment combo counter on resolve/merge actions */
+export function incrementCombo(): void {
+  gameState.stats.comboCount = Math.min(
+    gameState.stats.comboCount + 1,
+    COMBO_MAX
+  )
+  gameState.stats.comboLastActionTime = Date.now()
+
+  // Trigger teaching book unlock at combo 5
+  if (
+    gameState.stats.comboCount >= 5 &&
+    !gameState.onboarding.firstHighComboSeen
+  ) {
+    gameState.onboarding.firstHighComboSeen = true
   }
 }
 
@@ -133,6 +155,7 @@ export function onConflictResolved(position?: {
   x: number
   y: number
 }): number {
+  incrementCombo()
   const amount = generateBandwidth(MOMENTUM_CONFLICT_RESOLVE)
   emit('game:conflict-resolved', { amount, position })
   return amount
@@ -143,6 +166,7 @@ export function onSymlinkMerged(
   weightSaved: number,
   position: { x: number; y: number }
 ): number {
+  incrementCombo()
   const amount = generateBandwidth(MOMENTUM_SYMLINK_MERGE)
   emit('game:symlink-merged', { amount, weightSaved, position })
   return amount

@@ -51,22 +51,22 @@ export class RewardTooltip extends TooltipAnimation {
       alpha = 1 - this.phaseProgress(progress, phases.reset)
     }
 
-    // Layout
-    const barX = 8
+    // Layout - compact to fit 80x56 with margins
+    const barX = 12
     const barY = 8
-    const barWidth = TOOLTIP_WIDTH - 16
-    const barHeight = 10
+    const barWidth = TOOLTIP_WIDTH - 24
+    const barHeight = 8
 
-    const tokenY = TOOLTIP_HEIGHT / 2 + 8
-    const tokenSpacing = 16
+    const tokenY = TOOLTIP_HEIGHT / 2 + 6
+    const tokenSpacing = 14
     const numTokens = 3
     const tokenStartX = TOOLTIP_WIDTH / 2 - ((numTokens - 1) * tokenSpacing) / 2
 
     // Draw efficiency bar
     this.drawEfficiencyBar(barX, barY, barWidth, barHeight, efficiency, alpha)
 
-    // Draw efficiency icon (⚡)
-    this.drawEfficiencyIcon(barX - 2, barY + barHeight / 2, efficiency, alpha)
+    // Draw efficiency icon (⚡) - positioned inside left margin
+    this.drawEfficiencyIcon(6, barY + barHeight / 2, efficiency, alpha)
 
     // Draw tokens with quality based on efficiency
     for (let i = 0; i < numTokens; i++) {
@@ -147,7 +147,7 @@ export class RewardTooltip extends TooltipAnimation {
   }
 
   /**
-   * Draw efficiency icon (lightning bolt, small)
+   * Draw efficiency icon (⚡) - compact, centered on position
    */
   private drawEfficiencyIcon(
     x: number,
@@ -158,12 +158,10 @@ export class RewardTooltip extends TooltipAnimation {
     if (!this.ctx) return
 
     const color = efficiency > 0.5 ? EFFICIENCY_HIGH : EFFICIENCY_LOW
-    const size = 6
 
-    // Simple lightning shape
-    this.ctx.font = `${size * 2}px sans-serif`
-    this.ctx.fillStyle = hexToCSS(color, alpha * 0.8)
-    this.ctx.textAlign = 'right'
+    this.ctx.font = '10px sans-serif'
+    this.ctx.fillStyle = hexToCSS(color, alpha * 0.9)
+    this.ctx.textAlign = 'center'
     this.ctx.textBaseline = 'middle'
     this.ctx.fillText('⚡', x, y)
   }

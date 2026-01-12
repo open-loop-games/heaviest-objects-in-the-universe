@@ -87,11 +87,13 @@ export class Tier3Tooltip extends TooltipAnimation {
     }
 
     // Depth indicator (bottom) - shows depth increasing
+    // When closed: show 3 dots at full alpha
+    // When open: show 3 dots + 4th fading in with innerT
     this.drawDepthIndicator(
       centerX,
       TOOLTIP_HEIGHT - 8,
-      isOpen ? 3 : 2,
-      innerT,
+      isOpen ? 4 : 3,
+      isOpen ? innerT : 1,
       alpha
     )
   }
@@ -299,8 +301,8 @@ export class Tier3Tooltip extends TooltipAnimation {
       const dotX = startX + i * dotSpacing
       let dotAlpha = alpha
 
-      // Third dot fades in during transition
-      if (i === 2) {
+      // Last dot fades in during transition
+      if (i === depth - 1) {
         dotAlpha = transitionT * alpha
       }
 

@@ -29,8 +29,8 @@ export const TABS: TabMeta[] = [
   { id: 'surge', icon: '◎', order: 5 }, // Concentric circles = power burst
 ]
 
-// Auto-close delay in ms
-const AUTO_CLOSE_DELAY = 5000
+// Auto-close delay in ms (15 seconds to let animation loop)
+const AUTO_CLOSE_DELAY = 15000
 
 // Book state
 interface BookState {

@@ -71,7 +71,8 @@ import { on, emit } from '../game/events'
 import type { Package } from '../game/types'
 import { Colors } from '../rendering/colors'
 import { setSelectedConflictWire } from '../onboarding/tutorial-state'
-import { getDefaultZoom } from '../game/config'
+import { triggerAutoOpen } from '../onboarding'
+import { getDefaultZoom, COMBO_MAX } from '../game/config'
 
 // Inject platform detection
 const platform = inject<Ref<'desktop' | 'mobile'>>('platform')
@@ -202,6 +203,8 @@ onMounted(async () => {
     if (!loaded || !gameState.rootId) {
       // Fresh game - play intro animation before creating root
       playIntroAnimation()
+      // Auto-open teaching book for new players (15 sec then auto-close)
+      triggerAutoOpen('install')
     } else {
       // Loaded save - initialize ID counter to prevent collisions
       // This MUST happen before any user interaction can create new packages
@@ -1095,12 +1098,16 @@ function handleMouseUp(_event?: MouseEvent) {
               x: screenPos.x,
               y: screenPos.y,
             })
-            // Weight saved
-            emit('particles:spawn', {
-              type: 'weight-loss',
-              x: screenPos.x,
-              y: screenPos.y,
-            })
+            // Weight saved (scale based on combo - high combo = tiny/no particle)
+            const weightLossScale = 1 - gameState.stats.comboCount / COMBO_MAX
+            if (weightLossScale > 0.1) {
+              emit('particles:spawn', {
+                type: 'weight-loss',
+                x: screenPos.x,
+                y: screenPos.y,
+                scale: weightLossScale,
+              })
+            }
           }
         }
       } else {
@@ -1130,12 +1137,16 @@ function handleMouseUp(_event?: MouseEvent) {
             x: screenPos.x,
             y: screenPos.y,
           })
-          // Weight saved
-          emit('particles:spawn', {
-            type: 'weight-loss',
-            x: screenPos.x,
-            y: screenPos.y,
-          })
+          // Weight saved (scale based on combo - high combo = tiny/no particle)
+          const weightLossScale = 1 - gameState.stats.comboCount / COMBO_MAX
+          if (weightLossScale > 0.1) {
+            emit('particles:spawn', {
+              type: 'weight-loss',
+              x: screenPos.x,
+              y: screenPos.y,
+              scale: weightLossScale,
+            })
+          }
         }
       }
     } else if (!isDraggingSymlink) {
@@ -1708,11 +1719,16 @@ function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
             x: screenPos.x,
             y: screenPos.y,
           })
-          emit('particles:spawn', {
-            type: 'weight-loss',
-            x: screenPos.x,
-            y: screenPos.y,
-          })
+          // Weight saved (scale based on combo)
+          const weightLossScale = 1 - gameState.stats.comboCount / COMBO_MAX
+          if (weightLossScale > 0.1) {
+            emit('particles:spawn', {
+              type: 'weight-loss',
+              x: screenPos.x,
+              y: screenPos.y,
+              scale: weightLossScale,
+            })
+          }
         }
       }
     } else {
@@ -1735,11 +1751,16 @@ function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
           x: screenPos.x,
           y: screenPos.y,
         })
-        emit('particles:spawn', {
-          type: 'weight-loss',
-          x: screenPos.x,
-          y: screenPos.y,
-        })
+        // Weight saved (scale based on combo)
+        const weightLossScale = 1 - gameState.stats.comboCount / COMBO_MAX
+        if (weightLossScale > 0.1) {
+          emit('particles:spawn', {
+            type: 'weight-loss',
+            x: screenPos.x,
+            y: screenPos.y,
+            scale: weightLossScale,
+          })
+        }
       }
     }
   }

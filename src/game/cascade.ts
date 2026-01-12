@@ -114,13 +114,14 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
   const isThirdPackage = pkg.identity?.name === 'react'
   const isReactDom = pkg.identity?.name === 'react-dom'
 
-  // Consume surge boost only if this cascade can spawn golden packages
-  // Golden packages require effectiveDepth >= GOLDEN_MIN_DEPTH (3)
-  // effectiveDepth = scopePath.length + spawn.depth (which starts at 1)
-  // So we need scopePath.length >= 2 for golden packages to be possible
-  let surgeBoost = { sizeMultiplier: 1, goldenBoost: 0, fragmentBoost: 0 }
-  const canSpawnGolden = depth >= GOLDEN_MIN_DEPTH - 1 // depth 2+ means effective depth 3+
-  if (isSurgeUnlocked() && canSpawnGolden) {
+  // Consume surge only at depth 2+ (not on first dive)
+  let surgeBoost = {
+    sizeMultiplier: 1,
+    goldenBoost: 0,
+    fragmentBoost: 0,
+    packageMultiplier: 1,
+  }
+  if (isSurgeUnlocked() && depth >= 2) {
     surgeBoost = consumeSurge()
   }
 
@@ -165,8 +166,10 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
       emit('cascade:crit', { count })
     }
 
-    // Apply surge size multiplier
-    count = Math.floor(count * surgeBoost.sizeMultiplier)
+    // Apply surge multipliers (size boost + package count boost)
+    count = Math.floor(
+      count * surgeBoost.sizeMultiplier * surgeBoost.packageMultiplier
+    )
 
     count = Math.min(count, 40)
     count = Math.max(count, 3)
@@ -534,12 +537,13 @@ function spawnNextFromQueue(): void {
   // Get surge boosts for this cascade (fragment boost now merged into golden)
   const surgeGoldenBoost = cascade.surgeGoldenBoost + cascade.surgeFragmentBoost
 
-  // Roll for golden package (depth 3+ only, requires surge unlock)
+  // Roll for golden package (effectiveDepth 3+ only, requires first prestige)
   // Golden packages give 4x weight AND guaranteed fragment
-  // Only spawn after surge is unlocked (P2+) so fragments are introduced with their mechanic
+  // Gated behind first prestige so new players learn basics first
   const goldenChance = GOLDEN_SPAWN_CHANCE + surgeGoldenBoost
+  const hasPrestiged = gameState.meta.timesShipped >= 1
   const isGolden =
-    isSurgeUnlocked() &&
+    hasPrestiged &&
     effectiveDepth >= GOLDEN_MIN_DEPTH &&
     Math.random() < goldenChance
 

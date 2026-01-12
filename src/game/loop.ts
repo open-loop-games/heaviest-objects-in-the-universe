@@ -14,6 +14,7 @@ import {
 } from './physics'
 import { updateAutomation } from './automation'
 import { applySafetyRegen, onPackageResolved } from './mutations'
+import { COMBO_DECAY_MS } from './config'
 import type { Package } from './types'
 
 // ============================================
@@ -206,6 +207,14 @@ function tick(): void {
 
   // Update automation (auto-resolve)
   updateAutomation(now, deltaTime)
+
+  // Combo decay (resets to 0 after COMBO_DECAY_MS of inactivity)
+  if (gameState.stats.comboCount > 0) {
+    const elapsed = now - gameState.stats.comboLastActionTime
+    if (elapsed >= COMBO_DECAY_MS) {
+      gameState.stats.comboCount = 0
+    }
+  }
 
   // Call registered callbacks
   for (const callback of tickCallbacks) {
