@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { on } from '../../game/events'
-import { enterEndlessMode } from '../../game/collapse'
+import { enterEndlessMode, restartGame } from '../../game/collapse'
 import type { EndScreenStats } from '../../game/events'
 
 // ============================================
@@ -63,9 +63,9 @@ function handleEndless() {
   isVisible.value = false
 }
 
-function handleTheEnd() {
-  // For now, just close and let them continue
-  // Could navigate to title screen in future
+function handleRestart() {
+  // New Game+ - restart with text unlocked, achievements preserved
+  restartGame()
   isVisible.value = false
 }
 </script>
@@ -76,7 +76,7 @@ function handleTheEnd() {
       <div class="end-screen-modal">
         <!-- Title -->
         <h1 class="end-title">
-          <span class="title-line">THE HEAVIEST OBJECT IN</span>
+          <span class="title-line">THE HEAVIEST OBJECTS IN</span>
           <span class="title-line emphasis">THE UNIVERSE</span>
         </h1>
 
@@ -93,37 +93,53 @@ function handleTheEnd() {
         <!-- Stats grid -->
         <div v-if="stats" class="stats-grid">
           <div class="stat-row">
-            <span class="stat-label">Packages Installed</span>
+            <span class="stat-label"
+              ><span class="stat-icon icon-install">⊕</span>Packages
+              Installed</span
+            >
             <span class="stat-value">{{
               formatNumber(stats.totalPackagesInstalled)
             }}</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">Conflicts Resolved</span>
+            <span class="stat-label"
+              ><span class="stat-icon icon-conflict">✕</span>Conflicts
+              Resolved</span
+            >
             <span class="stat-value">{{
               formatNumber(stats.totalConflictsResolved)
             }}</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">Symlinks Created</span>
+            <span class="stat-label"
+              ><span class="stat-icon icon-symlink">⚭</span>Symlinks
+              Created</span
+            >
             <span class="stat-value">{{
               formatNumber(stats.totalSymlinksCreated)
             }}</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">Peak Efficiency</span>
+            <span class="stat-label"
+              ><span class="stat-icon icon-efficiency">⚡</span>Peak
+              Efficiency</span
+            >
             <span class="stat-value">{{
               formatPercent(stats.peakEfficiency)
             }}</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">Total Weight</span>
+            <span class="stat-label"
+              ><span class="stat-icon icon-weight">◆</span>Total Weight</span
+            >
             <span class="stat-value weight">{{
               formatNumber(stats.totalWeight)
             }}</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">Times Shipped</span>
+            <span class="stat-label"
+              ><span class="stat-icon icon-ship">⟲</span>Times Shipped</span
+            >
             <span class="stat-value">{{ stats.timesShipped }}</span>
           </div>
         </div>
@@ -137,9 +153,9 @@ function handleTheEnd() {
             <span class="button-icon">∞</span>
             <span class="button-label">Endless</span>
           </button>
-          <button class="end-button the-end" @click="handleTheEnd">
-            <span class="button-icon">✓</span>
-            <span class="button-label">The End</span>
+          <button class="end-button restart" @click="handleRestart">
+            <span class="button-icon">⟲</span>
+            <span class="button-label">Restart</span>
           </button>
         </div>
       </div>
@@ -327,8 +343,40 @@ function handleTheEnd() {
 }
 
 .stat-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
   color: rgba(180, 170, 200, 0.8);
+}
+
+.stat-icon {
+  font-size: 16px;
+}
+
+/* Icon colors matching game's visual language */
+.stat-icon.icon-install {
+  color: #7a7aff; /* --hud-bandwidth */
+}
+
+.stat-icon.icon-conflict {
+  color: #ff5a5a; /* --hud-warning */
+}
+
+.stat-icon.icon-symlink {
+  color: #5affff; /* --hud-efficiency / wireSymlink */
+}
+
+.stat-icon.icon-efficiency {
+  color: #5affff; /* --hud-efficiency */
+}
+
+.stat-icon.icon-weight {
+  color: #ffaa5a; /* --hud-weight */
+}
+
+.stat-icon.icon-ship {
+  color: #7a5aff; /* --hud-prestige */
 }
 
 .stat-value {
@@ -395,16 +443,16 @@ function handleTheEnd() {
   transform: translateY(-2px);
 }
 
-.end-button.the-end {
-  background: rgba(40, 80, 60, 0.3);
-  border-color: rgba(90, 200, 140, 0.6);
-  color: #90ffb0;
+.end-button.restart {
+  background: rgba(60, 50, 40, 0.3);
+  border-color: rgba(200, 160, 90, 0.6);
+  color: #ffc85a;
 }
 
-.end-button.the-end:hover {
-  background: rgba(40, 80, 60, 0.5);
-  border-color: rgba(90, 200, 140, 0.9);
-  box-shadow: 0 0 20px rgba(90, 200, 140, 0.4);
+.end-button.restart:hover {
+  background: rgba(60, 50, 40, 0.5);
+  border-color: rgba(200, 160, 90, 0.9);
+  box-shadow: 0 0 20px rgba(200, 160, 90, 0.4);
   transform: translateY(-2px);
 }
 

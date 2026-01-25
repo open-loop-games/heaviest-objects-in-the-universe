@@ -55,6 +55,7 @@ const emit = defineEmits<{
   settings: []
   upgrades: []
   openBook: []
+  openAchievements: []
   prune: []
   resolveInside: []
   toggleAutomation: []
@@ -316,6 +317,9 @@ const canEnterScope = computed(() => {
           <span class="btn-icon">?</span>
           <span v-if="hasUnviewedTabs" class="unviewed-dot" />
         </button>
+        <button class="top-btn trophy-btn" @click="emit('openAchievements')">
+          <span class="btn-icon">🏆</span>
+        </button>
         <button class="top-btn" @click="emit('settings')">
           <span class="btn-icon">⚙</span>
         </button>
@@ -574,6 +578,17 @@ const canEnterScope = computed(() => {
 
 .help-btn:active {
   background: rgba(90, 200, 255, 0.2);
+}
+
+/* Trophy button */
+.trophy-btn {
+  background: rgba(40, 30, 50, 0.9);
+  border-color: rgba(255, 200, 90, 0.4);
+  color: #ffc85a;
+}
+
+.trophy-btn:active {
+  background: rgba(255, 200, 90, 0.2);
 }
 
 .help-btn.has-unviewed {

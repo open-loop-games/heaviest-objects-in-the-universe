@@ -32,6 +32,8 @@ const props = defineProps<{
   locked: boolean
   /** Whether hold was just cancelled (triggers relief animation) */
   cancelled: boolean
+  /** Whether in endless mode (after first collapse) */
+  endless: boolean
 }>()
 
 const emit = defineEmits<{
@@ -65,6 +67,7 @@ function onHoldStart(e: MouseEvent | TouchEvent) {
         holding: holding,
         locked: locked,
         cancelled: cancelled,
+        endless: endless,
       },
     ]"
     :style="holding ? { '--hold-progress': holdProgress } : {}"
@@ -101,6 +104,9 @@ function onHoldStart(e: MouseEvent | TouchEvent) {
       <span class="crack c2"></span>
       <span class="crack c3"></span>
     </div>
+
+    <!-- Endless mode indicator -->
+    <div v-if="endless" class="endless-indicator">∞</div>
   </div>
 </template>
 
@@ -514,6 +520,42 @@ function onHoldStart(e: MouseEvent | TouchEvent) {
   50% {
     opacity: 1;
     height: 10px;
+  }
+}
+
+/* Endless mode indicator */
+.endless-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 18px;
+  font-weight: bold;
+  color: #5affff;
+  text-shadow:
+    0 0 8px rgba(90, 255, 255, 0.9),
+    0 0 16px rgba(90, 255, 255, 0.6),
+    0 0 24px rgba(90, 255, 255, 0.3);
+  z-index: 10;
+  pointer-events: none;
+  animation: endless-pulse 2s ease-in-out infinite;
+}
+
+@keyframes endless-pulse {
+  0%,
+  100% {
+    opacity: 0.8;
+    text-shadow:
+      0 0 8px rgba(90, 255, 255, 0.9),
+      0 0 16px rgba(90, 255, 255, 0.6),
+      0 0 24px rgba(90, 255, 255, 0.3);
+  }
+  50% {
+    opacity: 1;
+    text-shadow:
+      0 0 12px rgba(90, 255, 255, 1),
+      0 0 24px rgba(90, 255, 255, 0.8),
+      0 0 36px rgba(90, 255, 255, 0.5);
   }
 }
 </style>

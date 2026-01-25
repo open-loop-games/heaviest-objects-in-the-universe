@@ -136,6 +136,13 @@ export interface GameEvents {
 
   // Player action event (decouples game → tutorial-state to avoid circular deps)
   'player:action': void
+
+  // Game lifecycle events
+  'game:restart': void // Player chose to restart from end screen
+
+  // Achievement events
+  'achievement:earned': { id: string; icon: string }
+  'achievement:check': void // Trigger check cycle
 }
 
 type EventCallback<T> = T extends void ? () => void : (data: T) => void

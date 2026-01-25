@@ -94,7 +94,7 @@ The game uses a "momentum loop" where actions generate bandwidth:
 - Dependencies spawn with staggered timing (satisfying popcorn effect)
 - Each spawn positioned radially from parent with physics velocity
 - Spawn interval accelerates (120ms → 40ms minimum)
-- Depth rewards: golden packages (8% at depth 3+) give 4x weight + guaranteed fragment
+- Depth rewards: golden packages (8% at depth 3+, requires P1+) give 4x weight + guaranteed fragment
 - Sub-dependencies (40% chance) spawn after main queue
 
 ### Phase 4: Resolve Conflicts (Player Action)
@@ -104,9 +104,9 @@ The game uses a "momentum loop" where actions generate bandwidth:
 
 ### Phase 5: Optimize Duplicates (Player Action)
 - Duplicate packages get colored halos (cyan, magenta, yellow, lime)
+- Halos pulse faster with combo (2s calm → 0.5s urgent → solid at max)
 - **Drag** one duplicate onto another to merge (symlink)
-- Merging reduces weight by 50% of removed node
-- **Hoist** shared dependencies to root ring (Tier 3+)
+- Merging reduces weight based on combo: 50% at combo 0, 0% at combo 10
 
 ### Phase 6: Stabilize & Exit
 - When scope has 0 conflicts and 0 duplicates → stable (green glow)
@@ -170,19 +170,25 @@ root (package.json)
 **Merge:** Drag one duplicate onto another:
 - Keeps "better" node (compressed > lower depth > closer to center)
 - Rewires all connections to kept node
-- Removes 50% of source weight from total
+- Weight removal scales with combo: 50% at combo 0, 0% at combo 10
 
-### Hoisting (Tier 3+)
+### Combo System (Resolution Speed)
 
-**Purpose:** Deduplicate shared dependencies across top-level packages
+**Purpose:** Reward fast, skilled play with better weight retention
 
-**Process:**
-1. Detect deps appearing in 2+ top-level packages
-2. Hoist to root ring (orbital system around root node)
-3. Source instances become "ghosts" (transparent, dashed border)
-4. Weight deduplicated (single copy counted)
+**Mechanic:**
+- Combo counter (0-10) increments on each conflict resolve or symlink merge
+- Decays to 0 after 3 seconds of inactivity
+- Higher combo = less weight removed on merge
 
-**Visual:** Hoisted deps orbit root in 1-2 rings based on count
+**Visual Feedback:**
+- Duplicate halos pulse faster: 2s (calm) → 1s (active) → 0.5s (urgent) → solid (max)
+- Weight-loss particles shrink/disappear at high combo
+
+**Impact:**
+- Combo 0: 50% weight removed on merge
+- Combo 5: 25% weight removed
+- Combo 10: 0% weight removed (pure efficiency gain)
 
 ---
 
@@ -194,20 +200,21 @@ root (package.json)
 |------|--------|-----------|---------|
 | **1** | 0 | 1 | Base game, single-level packages |
 | **2** | 9 | 2 | Auto-resolve, Resolve Speed upgrade |
-| **3** | 21 | 3 | Auto-hoist, Hoist Speed upgrade, Golden packages |
+| **3** | 21 | 3 | Golden packages* |
 | **4** | 42 | 4 | Faster automation intervals |
 | **5** | 63 | 5 | Maximum automation speed |
+
+\* Golden packages require first prestige (P1+) in addition to Tier 3 depth unlock
 
 ### Automation (Tier-Gated)
 
 | Feature | Unlock | Base Interval | Effect |
 |---------|--------|---------------|--------|
 | **Auto-Resolve** | Tier 2 | 3s→2s→1s→0.5s | Resolves conflicted wires automatically |
-| **Auto-Hoist** | Tier 3 | 4s→2.5s→1.5s | Hoists shared deps automatically |
 
 Note: Symlink merging stays manual (core gameplay)
 
-### Upgrade Tracks (6 Total)
+### Upgrade Tracks (5 Total)
 
 | Upgrade | Icon | Max | Unlock | Effect |
 |---------|------|-----|--------|--------|
@@ -215,16 +222,20 @@ Note: Symlink merging stays manual (core gameplay)
 | **Efficiency** | ⚡ | 12 | 15 pkgs | -6% install cost, +25% speed |
 | **Compression** | ◆↓ | 8 | P3+ | -5% weight gain per level |
 | **Resolve Speed** | ⚙+ | 5 | Tier 2 | -10% drain, +15% speed |
-| **Hoist Speed** | ⤴+ | 5 | Tier 3 | -10% drain, +15% speed |
-| **Surge** | ◎ | 9 | P2+ | +1 surge segment per level |
+| **Surge** | ◎ | 9 | T1+ | +1 surge segment per level |
 
-### Surge System (P2+)
+### Surge System (T1+)
+
+Available from Tier 1 to give early "reserve vs spend" bandwidth choice.
 
 - Charge up to 10 segments (costs 10% max bandwidth each)
+- Only consumed at depth 2+ (not on first dive into package)
 - Effects per charged segment:
   - +8% cascade size multiplier
+  - +5% package count boost
   - +0.5% golden package chance
   - +0.4% cache fragment chance
+- Teaching book tab unlocks after first charge
 
 ---
 
@@ -239,6 +250,8 @@ Note: Symlink merging stays manual (core gameplay)
 | P2→P3 | 36,000 | 20,000 × 1.8 |
 | P3→P4 | 65,000 | 20,000 × 1.8² |
 | Pn→Pn+1 | — | 20,000 × 1.8^(n-1) |
+
+**Note:** Prestige unlocks when **peak weight ever reached** >= threshold. This prevents "optimization lockout" where merging duplicates drops you below the threshold.
 
 ### Cache Token Reward Formula
 
@@ -286,7 +299,6 @@ As weight approaches threshold:
 | **Green** | 0x5aff5a | Ready, stable, healthy |
 | **Red** | 0xff5a5a | Conflict, danger, unstable |
 | **Cyan** | 0x5affff | Optimized, symlink, pristine scope |
-| **Purple** | 0x8b5cf6 | Hoistable |
 | **Gold** | 0xffd700 | Golden package, cache fragment, depth reward |
 | **Orange** | 0xffaa5a | Warning, paused |
 | **Gray** | 0x6a6a7a | Unaffordable, inactive |
@@ -326,10 +338,10 @@ Three-tier system:
 | **BandwidthRow** | Segmented bar, cost preview, upgrade pips |
 | **WeightRow** | Weight progress, magnitude dots, prestige progress |
 | **ScopeNavigation** | Back button, depth totem, conflict/dupe indicators |
-| **AutomationRow** | Auto-resolve/hoist toggles with speed pips |
-| **PrestigeOrbit** | Singularity button, tier arcs, quality indicators |
-| **SurgeRow** | Draggable charge bar (P2+) |
-| **QualityHero** | Efficiency/stability bars with multiplier indicators |
+| **AutomationRow** | Auto-resolve toggle with speed pips |
+| **PrestigeOrbit** | Singularity button with gravitational effects |
+| **SurgeRow** | Draggable charge bar (T1+) |
+| **QualityHero** | Efficiency/stability bars |
 | **SettingsPanel** | Save, soft reset, hard reset |
 
 ---
@@ -356,8 +368,7 @@ src/
 │   ├── packages.ts         # Package creation, dependency spawning
 │   ├── cascade.ts          # Staggered spawn system with depth rewards
 │   ├── scope.ts            # Scope navigation (dive into packages)
-│   ├── automation.ts       # Auto-resolve, auto-hoist
-│   ├── hoisting.ts         # Deduplication to root ring
+│   ├── automation.ts       # Auto-resolve
 │   ├── symlinks.ts         # Duplicate detection + merge logic
 │   ├── registry.ts         # Real npm package identities + archetypes
 │   ├── upgrades.ts         # Cache token upgrades + tier system
@@ -392,17 +403,17 @@ src/
 - [x] Force-directed physics (per-scope)
 - [x] Wire-based conflict system (resolution with hold)
 - [x] Duplicate detection + symlink merge UI
-- [x] Hoisting to root ring (manual + auto)
-- [x] Automation system (auto-resolve, auto-hoist)
+- [x] Combo system (resolution speed → weight retention)
+- [x] Automation system (auto-resolve)
 - [x] Tier/progression system (5 tiers)
 - [x] Prestige (black hole animation, cache tokens)
 - [x] Depth rewards (golden packages, cache fragments)
-- [x] Surge system (P2+)
+- [x] Surge system (T1+)
 - [x] Save/load (localStorage)
 - [x] Package icons (Devicon + procedural fallback)
-- [x] Full HUD (8 components)
+- [x] Full HUD
 - [x] Quality metrics (efficiency/stability)
-- [x] 6 upgrade tracks
+- [x] 5 upgrade tracks
 
 ### 🚧 Not Started
 
@@ -422,10 +433,10 @@ src/
 | **Prestige depth** | Single layer | Jam scope—ship clean, not complex |
 | **Automation** | Tier-gated, optional | Player choice, doesn't trivialize gameplay |
 | **Symlink merging** | Manual only | Core interaction, too satisfying to automate |
-| **Hoisting** | Visual orbit ring | Makes deduplication tangible and rewarding |
+| **Combo system** | Speed-based retention | Rewards skilled play, prevents optimization lockout |
 
 ---
 
-*Document Version: 1.0*
-*Last Updated: 2025-12-31*
+*Document Version: 1.1*
+*Last Updated: 2026-01-12*
 *Status: Reflects Current Implementation*

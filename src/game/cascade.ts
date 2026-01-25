@@ -23,6 +23,7 @@ import {
   type PendingSpawn,
   type InternalState,
 } from './types'
+import { recordCascadeSize, recordConflictAppear } from './achievements'
 import {
   pickRandomIdentity,
   areIncompatible,
@@ -717,6 +718,9 @@ function revealDeferredConflicts(): void {
         wire.conflictTime = now
         pkg.state = 'conflict'
 
+        // Track conflict appearance time for achievement
+        recordConflictAppear(wire.id)
+
         if (!gameState.onboarding.firstConflictSeen) {
           gameState.onboarding.firstConflictSeen = true
         }
@@ -732,6 +736,14 @@ function revealDeferredConflicts(): void {
 function endCascade(): void {
   const cascade = gameState.cascade
   const scopePath = cascade.scopePath ? [...cascade.scopePath] : []
+
+  // Track cascade size for achievement
+  if (cascade.scopePackageId) {
+    const scopePkg = getPackageAtPath(scopePath)
+    if (scopePkg?.internalPackages) {
+      recordCascadeSize(scopePkg.internalPackages.size)
+    }
+  }
 
   // Reset cascade state to initial values
   cascade.active = false

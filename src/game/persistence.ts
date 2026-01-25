@@ -3,9 +3,11 @@
 import type { Package, Wire, PackageState, InternalState } from './types'
 import { SAVE_VERSION } from './config'
 import { gameState, syncEcosystemTier, userSettings } from './state'
+import { serializeAchievements, deserializeAchievements } from './achievements'
 
 const STORAGE_KEY = 'heaviest-objects-save'
 const SETTINGS_KEY = 'heaviest-objects-settings'
+const ACHIEVEMENTS_KEY = 'heaviest-objects-achievements'
 const AUTO_SAVE_INTERVAL = 30000 // 30 seconds
 
 let autoSaveIntervalId: ReturnType<typeof setInterval> | null = null
@@ -547,6 +549,7 @@ export function saveToLocalStorage(): boolean {
     const saveString = saveGame()
     localStorage.setItem(STORAGE_KEY, saveString)
     saveSettings()
+    saveAchievements()
     return true
   } catch (e) {
     console.warn('Failed to save game:', e)
@@ -557,6 +560,7 @@ export function saveToLocalStorage(): boolean {
 export function loadFromLocalStorage(): boolean {
   try {
     loadSettings()
+    loadAchievements()
     const saveString = localStorage.getItem(STORAGE_KEY)
     if (!saveString) return false
     return loadGame(saveString)
@@ -595,6 +599,31 @@ export function loadSettings(): void {
     }
   } catch {
     // Ignore invalid settings
+  }
+}
+
+// ============================================
+// ACHIEVEMENTS PERSISTENCE
+// ============================================
+
+export function saveAchievements(): void {
+  try {
+    const data = serializeAchievements()
+    localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(data))
+  } catch (e) {
+    console.warn('Failed to save achievements:', e)
+  }
+}
+
+export function loadAchievements(): void {
+  try {
+    const saved = localStorage.getItem(ACHIEVEMENTS_KEY)
+    if (saved) {
+      const data = JSON.parse(saved)
+      deserializeAchievements(data)
+    }
+  } catch {
+    // Ignore invalid achievements data
   }
 }
 

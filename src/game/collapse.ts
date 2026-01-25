@@ -7,11 +7,14 @@ import {
   COLLAPSE_LOCK_THRESHOLD,
   COLLAPSE_MIN_TIER,
   calculateCollapseDrainProgress,
+  createInitialState,
 } from './config'
+import { createRootPackage } from './packages'
 import { gameState, computed_ecosystemTier } from './state'
 import { emit, on } from './events'
 import type { EndScreenStats } from './events'
 import { saveToLocalStorage } from './persistence'
+import { triggerAchievement, resetRunTracking } from './achievements'
 
 // ============================================
 // HOLD LOOP
@@ -234,4 +237,41 @@ export function isEndlessMode(): boolean {
  */
 export function hasCollapsed(): boolean {
   return gameState.meta.hasCollapsed
+}
+
+// ============================================
+// RESTART (New Game+ after collapse)
+// ============================================
+
+/**
+ * Restart the game after winning (collapse).
+ * Preserves: hasCollapsed (text unlock), achievements
+ * Resets: Everything else (fresh start)
+ */
+export function restartGame(): void {
+  // Preserve permanent unlocks
+  const preservedHasCollapsed = gameState.meta.hasCollapsed
+  // Achievements are stored separately and not reset
+
+  // Reset to initial state
+  const freshState = createInitialState()
+
+  // Apply fresh state
+  Object.assign(gameState, freshState)
+
+  // Restore permanent unlocks
+  gameState.meta.hasCollapsed = preservedHasCollapsed
+
+  // Save the reset state (achievements persist via separate storage key)
+  saveToLocalStorage()
+
+  // Create fresh root package
+  createRootPackage()
+
+  // Trigger "New Game Plus" achievement
+  triggerAchievement('cumulative-2') // New Game Plus
+  resetRunTracking()
+
+  // Emit restart event for UI to respond
+  emit('game:restart')
 }

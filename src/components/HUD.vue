@@ -16,6 +16,8 @@ import PrestigeOrbit from './hud/PrestigeOrbit.vue'
 import TeachingBook from './hud/TeachingBook.vue'
 import JourneyModal from './hud/JourneyModal.vue'
 import EndScreen from './hud/EndScreen.vue'
+import AchievementDrawer from './hud/AchievementDrawer.vue'
+import AchievementToast from './hud/AchievementToast.vue'
 
 // Resource row components
 import BandwidthRow from './hud/BandwidthRow.vue'
@@ -110,6 +112,9 @@ const showPrestigeArea = computed(() => {
       <SettingsPanel />
     </div>
 
+    <!-- Achievement drawer (positions itself) -->
+    <AchievementDrawer />
+
     <!-- Left stack: Resource panel + Scope navigation -->
     <div class="hud-left-stack">
       <!-- Unified resource panel -->
@@ -169,6 +174,9 @@ const showPrestigeArea = computed(() => {
 
     <!-- Upgrade Tooltips (animated mini-demos) -->
     <UpgradeTooltip />
+
+    <!-- Achievement Toast (earn notifications) -->
+    <AchievementToast />
   </div>
 </template>
 

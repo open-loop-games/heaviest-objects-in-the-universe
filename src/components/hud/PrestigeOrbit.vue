@@ -13,6 +13,7 @@ import {
   computed_gravity,
   computed_prestigeReward,
   computed_canPrestige,
+  computed_isEndlessMode,
 } from '../../game/state'
 import { triggerShipWithAnimation } from '../../game/ship'
 import {
@@ -66,6 +67,13 @@ const collapseCancelled = ref(false)
 
 // Hold gesture handlers
 function onMassHoldStart(e: MouseEvent | TouchEvent) {
+  if (!collapseReady.value) return
+  e.preventDefault()
+  isHoldingCollapse.value = true
+  emit('collapse:begin-hold')
+}
+
+function onCollapseHoldStart(e: MouseEvent | TouchEvent) {
   if (!collapseReady.value) return
   e.preventDefault()
   isHoldingCollapse.value = true
@@ -410,8 +418,11 @@ function handlePrestige() {
     <button
       ref="shipButtonRef"
       class="ship-button"
-      :class="{ visible: gravityReady, pulsing: gravityReady }"
-      :disabled="!gravityReady"
+      :class="{
+        visible: gravityReady && !collapseReady,
+        pulsing: gravityReady && !collapseReady,
+      }"
+      :disabled="!gravityReady || collapseReady"
       @click="handlePrestige"
     >
       <svg class="ship-icon" viewBox="0 0 24 24">
@@ -427,6 +438,33 @@ function handlePrestige() {
           <line x1="12" y1="14" x2="12" y2="6" />
           <polyline points="8,9 12,5 16,9" />
         </g>
+      </svg>
+    </button>
+
+    <!-- Collapse button - appears at Tier 5, hold to activate -->
+    <button
+      class="collapse-button"
+      :class="{
+        visible: collapseReady,
+        holding: isHoldingCollapse,
+        locked: collapseHoldLocked,
+      }"
+      :style="
+        isHoldingCollapse ? { '--hold-progress': collapseHoldProgress } : {}
+      "
+      @mousedown="onCollapseHoldStart"
+      @touchstart="onCollapseHoldStart"
+    >
+      <span class="collapse-icon">🕳️</span>
+      <svg v-if="isHoldingCollapse" class="hold-ring" viewBox="0 0 36 36">
+        <circle class="hold-ring-bg" cx="18" cy="18" r="16" />
+        <circle
+          class="hold-ring-progress"
+          cx="18"
+          cy="18"
+          r="16"
+          :stroke-dasharray="`${collapseHoldProgress * 100.5} 100.5`"
+        />
       </svg>
     </button>
 
@@ -478,6 +516,7 @@ function handlePrestige() {
           :hold-progress="collapseHoldProgress"
           :locked="collapseHoldLocked"
           :cancelled="collapseCancelled"
+          :endless="computed_isEndlessMode"
           @hold-start="onMassHoldStart"
         />
       </div>
@@ -829,6 +868,159 @@ function handlePrestige() {
   50% {
     transform: translateY(-2px);
   }
+}
+
+/* ============================================
+   COLLAPSE BUTTON (Tier 5)
+   ============================================ */
+.collapse-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 0;
+  padding: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+  background: rgba(40, 20, 40, 0.8);
+  border: 2px solid rgba(140, 60, 140, 0.4);
+  border-radius: 8px;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease,
+    height 0.3s ease,
+    margin 0.3s ease,
+    padding 0.3s ease,
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+  pointer-events: none;
+}
+
+.collapse-button.visible {
+  height: 44px;
+  margin-bottom: 8px;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  background: rgba(60, 30, 60, 0.9);
+  border-color: rgba(180, 90, 180, 0.6);
+  animation: collapse-button-pulse 2s ease-in-out infinite;
+}
+
+.collapse-button.visible:hover {
+  background: rgba(80, 40, 80, 0.95);
+  border-color: rgba(220, 120, 220, 0.8);
+  box-shadow: 0 0 20px rgba(180, 90, 180, 0.5);
+}
+
+.collapse-button.holding {
+  background: rgba(100, 40, 60, 0.95);
+  border-color: rgba(255, 100, 150, 0.9);
+  box-shadow: 0 0 30px rgba(255, 100, 150, 0.6);
+  animation: collapse-holding-shake 0.1s ease-in-out infinite;
+}
+
+.collapse-button.locked {
+  background: rgba(120, 20, 40, 0.95);
+  border-color: rgba(255, 50, 80, 1);
+  box-shadow: 0 0 40px rgba(255, 50, 80, 0.8);
+  animation: collapse-locked-shake 0.05s ease-in-out infinite;
+}
+
+@keyframes collapse-button-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 12px rgba(180, 90, 180, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(180, 90, 180, 0.6);
+  }
+}
+
+@keyframes collapse-holding-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-1px);
+  }
+  75% {
+    transform: translateX(1px);
+  }
+}
+
+@keyframes collapse-locked-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-2px);
+  }
+  75% {
+    transform: translateX(2px);
+  }
+}
+
+.collapse-icon {
+  font-size: 24px;
+  filter: drop-shadow(0 0 8px rgba(180, 90, 180, 0.8));
+  transition:
+    filter 0.2s ease,
+    transform 0.2s ease;
+}
+
+.collapse-button.holding .collapse-icon {
+  filter: drop-shadow(0 0 12px rgba(255, 100, 150, 1));
+  transform: scale(1.1);
+}
+
+.collapse-button.locked .collapse-icon {
+  filter: drop-shadow(0 0 16px rgba(255, 50, 80, 1));
+  animation: icon-pulse 0.2s ease-in-out infinite;
+}
+
+@keyframes icon-pulse {
+  0%,
+  100% {
+    transform: scale(1.1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+/* Hold progress ring */
+.hold-ring {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.hold-ring-bg {
+  fill: none;
+  stroke: rgba(100, 50, 80, 0.3);
+  stroke-width: 3;
+}
+
+.hold-ring-progress {
+  fill: none;
+  stroke: rgba(255, 100, 150, 0.9);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.1s linear;
+}
+
+.collapse-button.locked .hold-ring-progress {
+  stroke: rgba(255, 50, 80, 1);
 }
 
 .orbit-container {

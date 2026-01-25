@@ -16,6 +16,7 @@ import { updateAutomation } from './automation'
 import { applySafetyRegen, onPackageResolved } from './mutations'
 import { COMBO_DECAY_MS } from './config'
 import type { Package } from './types'
+import { checkAchievements, updatePatienceTimer } from './achievements'
 
 // ============================================
 // LOOP TIMING CONSTANTS
@@ -203,7 +204,11 @@ function tick(): void {
   if (tickCount % STATS_UPDATE_INTERVAL === 0) {
     updateEfficiency()
     updateStability()
+    checkAchievements()
   }
+
+  // Update patience timer for achievement (tracks inactivity)
+  updatePatienceTimer(deltaTime)
 
   // Update automation (auto-resolve)
   updateAutomation(now, deltaTime)

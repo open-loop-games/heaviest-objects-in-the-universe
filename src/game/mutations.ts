@@ -27,6 +27,7 @@ import {
 import { emit, on } from './events'
 import { getCompressionMultiplier, getStabilizationBonus } from './upgrades'
 import { getEfficiencyTierRank, updateEfficiencyTracking } from './formulas'
+import { cleanupConflictTracking, checkAchievements } from './achievements'
 
 // Quality event types are now in the main event bus (src/game/events.ts)
 // Use emit('quality:efficiency-improved', ...) etc.
@@ -335,6 +336,7 @@ export function resolveConflict(packageId: string): void {
     pkg.state = 'ready'
     pkg.conflictProgress = 0
     gameState.stats.totalConflictsResolved++
+    checkAchievements()
   }
 }
 
@@ -370,6 +372,9 @@ export function resolveWireConflict(wireId: string): boolean {
   // Reset ghost hand hint timers on meaningful player action
   emit('player:action')
 
+  // Clean up conflict tracking
+  cleanupConflictTracking(wireId)
+
   // Momentum loop: Generate bandwidth for manual conflict resolution
   onConflictResolved()
 
@@ -389,6 +394,9 @@ export function resolveWireConflict(wireId: string): boolean {
   if (isInPackageScope() && !gameState.onboarding.firstInnerConflictSeen) {
     gameState.onboarding.firstInnerConflictSeen = true
   }
+
+  // Check achievements after conflict resolution
+  checkAchievements()
 
   // Emit event for scope state recalculation
   if (isInPackageScope()) {

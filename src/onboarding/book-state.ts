@@ -3,6 +3,7 @@
 
 import { reactive, computed, ref } from 'vue'
 import { gameState } from '../game/state'
+import { recordTabView } from '../game/achievements'
 
 // Tab identifiers
 export type TabId =
@@ -145,6 +146,8 @@ export function unlockTab(tab: TabId): void {
  */
 export function markTabViewed(tab: TabId): void {
   state.viewedTabs.add(tab)
+  // Track unique tabs viewed for RTFM achievement
+  recordTabView(state.viewedTabs.size)
 }
 
 /**

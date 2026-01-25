@@ -20,6 +20,7 @@ import {
   COMBO_WEIGHT_RETENTION_MIN,
   COMBO_WEIGHT_RETENTION_MAX,
 } from './config'
+import { recordSymlink, checkAchievements } from './achievements'
 
 export interface DuplicateGroup {
   identityName: string
@@ -382,6 +383,10 @@ export function performSymlinkMerge(
   if (!gameState.onboarding.firstSymlinkSeen) {
     gameState.onboarding.firstSymlinkSeen = true
   }
+
+  // === ACHIEVEMENT TRACKING ===
+  recordSymlink()
+  checkAchievements()
 
   // === POST-MERGE ACTIONS ===
   // Mark target and children for physics relocation via event
