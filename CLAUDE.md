@@ -7,12 +7,13 @@ This file provides guidance to Claude Code when working with this repository.
 **The Heaviest Objects in the Universe** - A game jam incremental game about recursive npm dependencies.
 
 **Theme:** Inception (dependencies within dependencies)
-**Constraint:** No text - communicate through shapes, colors, icons only
+**Constraint:** No text until first win (see below)
 **Stack:** TypeScript + Vue 3 + Pixi.js
 
 Core fantasy: Taming chaos through optimization. Watch a messy dependency tree snap into an efficient, deduplicated web.
 
 **Game Jam:** https://itch.io/jam/new-years-incremental-game-jam-2026
+**Status:** Submitted! Now doing post-jam feedback polish.
 
 ## Code Conventions
 
@@ -84,15 +85,17 @@ src/
 - `docs/archived/` - Legacy design docs (may be outdated)
 - `TODO.md` - Incomplete work tracking
 
-## No-Text Communication (STRICT)
+## No-Text Communication (Until First Win)
 
 **Jam rule:** "Anything you can type out is text; symbols are fine."
 
-This means **NO numbers, NO letters** anywhere in the game UI. Only:
+**Before first collapse (win):** NO numbers, NO letters anywhere in the game UI. Only:
 - Unicode symbols (↓ ◆ ★ ⚡ ⟲ ← ✓)
 - Geometric shapes (rendered graphics)
 - Progress bars, fill levels, dot counters
 - Colors and animations
+
+**After first collapse:** Text is unlocked as a reward. The End Screen, achievements, and stats can display text labels alongside icons. This creates a satisfying "reveal moment" where the game finally speaks to you.
 
 | Element | Meaning |
 |---------|---------|
@@ -165,6 +168,10 @@ This means **NO numbers, NO letters** anywhere in the game UI. Only:
 - Teaching book (tabbed drawer with Pixi animations)
 - Ghost hand hints (inactivity-triggered tutorials)
 - Curated starter-kit (slower cascade, deferred conflicts)
+
+**In Progress (Post-Jam Polish):**
+- End screen improvements (Restart button, endless mode indicator)
+- Achievement system (icon-only until win, text revealed after)
 
 **Not Started:**
 - Particle effects (beyond basic ripples)

@@ -187,6 +187,9 @@ export interface AutomationState {
 }
 
 export interface GameState {
+  // RNG seed for deterministic runs (resets per prestige)
+  seed: number
+
   // Core resources
   resources: GameResources
 

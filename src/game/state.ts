@@ -13,9 +13,13 @@ import {
   getEcosystemTier,
   getMaxCompressedDepth,
 } from './formulas'
+import { seedRNG } from './random'
 
 // Global reactive game state
 export const gameState = reactive<GameState>(createInitialState())
+
+// Initialize RNG with the game's seed
+seedRNG(gameState.seed)
 
 // Global config (can be modified for balancing)
 export const gameConfig = reactive<GameConfig>({ ...DEFAULT_CONFIG })

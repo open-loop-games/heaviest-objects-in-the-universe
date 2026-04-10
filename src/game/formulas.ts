@@ -1,6 +1,7 @@
 // Cost and production formulas based on design doc
 
 import { toRaw } from 'vue'
+import { random, chance } from './random'
 import type { GameState, GameConfig, Package } from './types'
 import {
   DEFAULT_CONFIG,
@@ -467,7 +468,7 @@ const TOTAL_DEP_WEIGHT = DEPENDENCY_DISTRIBUTION.reduce(
 export function rollDependencyCount(
   _config: GameConfig = DEFAULT_CONFIG
 ): number {
-  let roll = Math.random() * TOTAL_DEP_WEIGHT
+  let roll = random() * TOTAL_DEP_WEIGHT
 
   for (const tier of DEPENDENCY_DISTRIBUTION) {
     roll -= tier.weight
@@ -484,8 +485,8 @@ export function rollDependencyCount(
  */
 export function rollPackageSize(): number {
   // Most packages are small, some are large
-  const base = 10 + Math.random() * 40
-  const isLarge = Math.random() < 0.1
+  const base = 10 + random() * 40
+  const isLarge = chance(0.1)
   return Math.floor(isLarge ? base * 5 : base)
 }
 

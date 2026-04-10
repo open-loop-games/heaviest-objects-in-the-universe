@@ -4,6 +4,7 @@ import type { Package, Wire, PackageState, InternalState } from './types'
 import { SAVE_VERSION } from './config'
 import { gameState, syncEcosystemTier, userSettings } from './state'
 import { serializeAchievements, deserializeAchievements } from './achievements'
+import { seedRNG } from './random'
 
 const STORAGE_KEY = 'heaviest-objects-save'
 const SETTINGS_KEY = 'heaviest-objects-settings'
@@ -523,6 +524,12 @@ export function loadGame(saveString: string): boolean {
 
     // Migrate missing fields for backwards compatibility
     migrateGameState()
+
+    // Initialize RNG with loaded seed (or generate new one if missing)
+    if (!gameState.seed) {
+      gameState.seed = Date.now()
+    }
+    seedRNG(gameState.seed)
 
     // Reset transient state that can't persist (cascades, active automation)
     resetTransientState()

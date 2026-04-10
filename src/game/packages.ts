@@ -1,6 +1,7 @@
 // Package creation and management logic
 
 import { toRaw } from 'vue'
+import { random, randomInt } from './random'
 import { gameState, gameConfig, spendBandwidth } from './state'
 import { recalculateStateAtPath, _injectCascade } from './scope'
 import { addPackage, addWire } from './mutations'
@@ -118,8 +119,8 @@ export function installPackage(parentId: string): Package | null {
   }
 
   const id = generateId()
-  const angle = Math.random() * Math.PI * 2
-  const distance = 80 + Math.random() * 40
+  const angle = random() * Math.PI * 2
+  const distance = 80 + random() * 40
 
   // First three installs before prestige: use curated packages for teaching
   // - First: starter-kit (basic mechanics)
@@ -239,7 +240,7 @@ export function spawnDependencies(packageId: string): Package[] {
   // Use identity-based dep count if available, otherwise use distribution
   let count: number
   if (pkg.identity && pkg.identity.baseDeps > 0) {
-    const variance = Math.floor(Math.random() * 3) - 1
+    const variance = randomInt(-1, 1)
     count = Math.max(0, pkg.identity.baseDeps + variance)
   } else {
     count = rollDependencyCount(gameConfig)
@@ -265,8 +266,8 @@ export function spawnDependencies(packageId: string): Package[] {
     const startAngle = Math.PI * 0.5 - spreadAngle / 2
     const baseAngle =
       count > 1 ? startAngle + (spreadAngle * i) / (count - 1) : Math.PI * 0.5
-    const angle = baseAngle + (Math.random() - 0.5) * 0.3
-    const distance = 80 + Math.random() * 40
+    const angle = baseAngle + (random() - 0.5) * 0.3
+    const distance = 80 + random() * 40
 
     const id = generateId()
     const identity = pickRandomIdentity()

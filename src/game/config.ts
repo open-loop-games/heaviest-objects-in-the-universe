@@ -216,9 +216,11 @@ export const SAVE_VERSION = 2
 
 /**
  * Create a fresh game state for new game or prestige reset
+ * @param seed - Optional RNG seed. Defaults to Date.now() for unique runs.
  */
-export function createInitialState(): GameState {
+export function createInitialState(seed?: number): GameState {
   return {
+    seed: seed ?? Date.now(),
     resources: {
       bandwidth: STARTING_BANDWIDTH,
       maxBandwidth: STARTING_MAX_BANDWIDTH,

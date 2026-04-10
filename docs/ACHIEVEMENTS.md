@@ -59,8 +59,6 @@ Achievements maintain the no-text constraint throughout the main game. Players s
 |------|------|---------|
 | ⚡→✓ | "Conflict Curious" | Resolve first conflict |
 | ⚡⚡⚡→✓ | "npm audit passing" | Resolve 100 conflicts (cumulative) |
-| 💥💥💥 | "Chaos Monkey" | Have 15+ active conflicts simultaneously |
-| ⚡🧹 | "Clean Sweep" | Clear all conflicts in a scope with 10+ packages |
 
 ### Depth Exploration
 

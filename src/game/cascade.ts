@@ -3,6 +3,7 @@
 // Supports arbitrary depth using scope paths
 
 import { gameState } from './state'
+import { random, randomInt, shuffle, chance } from './random'
 import { getCompressionChance, getMaxCompressedDepth } from './formulas'
 import { setCascadeStarved } from './ui-state'
 import {
@@ -149,17 +150,17 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
   if (!isCurated) {
     let count: number
     if (pkg.identity && pkg.identity.baseDeps > 0) {
-      const variance = Math.floor(Math.random() * 5) - 2
+      const variance = randomInt(-2, 2)
       count = Math.max(4, pkg.identity.baseDeps + variance)
     } else {
       // Fewer deps at deeper levels
       const baseCount = depth === 1 ? 8 : 6
       const variance = depth === 1 ? 8 : 4
-      count = baseCount + Math.floor(Math.random() * variance)
+      count = baseCount + randomInt(0, variance - 1)
     }
     // Check for guaranteed crit from inner scope merges, otherwise 5% random crit
     const hasGuaranteedCrit = gameState.cascade.guaranteedCrits > 0
-    if (hasGuaranteedCrit || Math.random() < 0.05) {
+    if (hasGuaranteedCrit || chance(0.05)) {
       count *= 2
       if (hasGuaranteedCrit) {
         gameState.cascade.guaranteedCrits--
@@ -230,13 +231,9 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
     }
 
     // D: Shuffle to distribute duplicates throughout the spawn sequence
-    for (let i = depIdentities.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[depIdentities[i], depIdentities[j]] = [
-        depIdentities[j]!,
-        depIdentities[i]!,
-      ]
-    }
+    const shuffledIdentities = shuffle(depIdentities)
+    depIdentities.length = 0
+    depIdentities.push(...shuffledIdentities)
   }
 
   // Decide which deps will be compressed (can go deeper)
@@ -260,7 +257,7 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
       // Third package (react): make react-dom (index 0) compressed to teach nested scopes
       if (isThirdPackage && dep.name === 'react-dom') {
         compressedIndices.add(i)
-      } else if (!isCurated && Math.random() < compressionChance) {
+      } else if (!isCurated && chance(compressionChance)) {
         compressedIndices.add(i)
       }
     }
@@ -273,8 +270,8 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
 
   for (let i = 0; i < count; i++) {
     const baseAngle = (Math.PI * 2 * i) / count - Math.PI / 2
-    const angle = baseAngle + (Math.random() - 0.5) * 0.2
-    const dist = distance + Math.random() * (distance * 0.5)
+    const angle = baseAngle + (random() - 0.5) * 0.2
+    const dist = distance + random() * (distance * 0.5)
     const identity = depIdentities[i]!
 
     pendingSpawns.push({
@@ -306,9 +303,9 @@ function startCascadeImmediate(scopePath: string[], pkg: Package): void {
   if (!isCurated) {
     for (let i = 0; i < count; i++) {
       if (compressedIndices.has(i)) continue // Compressed have their own cascade
-      if (Math.random() > 0.4) continue // 40% chance for sub-deps
+      if (!chance(0.4)) continue // 40% chance for sub-deps
 
-      const subDepCount = 1 + Math.floor(Math.random() * 2)
+      const subDepCount = randomInt(1, 2)
       for (let j = 0; j < subDepCount; j++) {
         subDepPlaceholders.push({
           parentIndex: i,
@@ -379,7 +376,7 @@ export function updateCascade(): void {
   const elapsed = now - cascade.lastSpawnTime
 
   // Add jitter to current interval for organic feel
-  const jitter = 1 + (Math.random() - 0.5) * 2 * SPAWN_INTERVAL_JITTER
+  const jitter = 1 + (random() - 0.5) * 2 * SPAWN_INTERVAL_JITTER
   const effectiveInterval = cascade.spawnInterval * jitter
 
   if (elapsed >= effectiveInterval) {
@@ -460,11 +457,11 @@ function spawnNextFromQueue(): void {
           parentPkg.position.y,
           parentPkg.position.x
         )
-        const subAngle = parentAngle + (Math.random() - 0.5) * 0.5
+        const subAngle = parentAngle + (random() - 0.5) * 0.5
         const subDistance =
           Math.sqrt(parentPkg.position.x ** 2 + parentPkg.position.y ** 2) +
           50 +
-          Math.random() * 30
+          random() * 30
 
         cascade.pendingSpawns.push({
           packageId: scopePackageId,
@@ -544,9 +541,7 @@ function spawnNextFromQueue(): void {
   const goldenChance = GOLDEN_SPAWN_CHANCE + surgeGoldenBoost
   const hasPrestiged = gameState.meta.timesShipped >= 1
   const isGolden =
-    hasPrestiged &&
-    effectiveDepth >= GOLDEN_MIN_DEPTH &&
-    Math.random() < goldenChance
+    hasPrestiged && effectiveDepth >= GOLDEN_MIN_DEPTH && chance(goldenChance)
 
   // Cache fragments come only from golden packages (merged mechanic)
   // Easter egg: break_infinity and break_eternity ALWAYS have fragments
@@ -583,7 +578,7 @@ function spawnNextFromQueue(): void {
     size: finalSize,
     depth: spawn.depth,
     children: [],
-    installProgress: 0.7 + Math.random() * 0.3,
+    installProgress: 0.7 + random() * 0.3,
     conflictProgress: 0,
     identity,
     // Compressed packages have internal maps

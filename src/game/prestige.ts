@@ -7,6 +7,7 @@ import { getDefaultZoom, createInitialState } from './config'
 import { gameState } from './state'
 import { saveToLocalStorage, clearSavedGame } from './persistence'
 import { resetEfficiencyTracking } from './formulas'
+import { seedRNG } from './random'
 
 // ============================================
 // RESET UTILITIES
@@ -16,6 +17,10 @@ import { resetEfficiencyTracking } from './formulas'
  * Soft reset: restart current run but keep meta progress (ships, cache tokens, upgrades)
  */
 export function softReset(): void {
+  // Generate new seed for this run (deterministic randomness)
+  gameState.seed = Date.now()
+  seedRNG(gameState.seed)
+
   // Clear current run state
   gameState.packages.clear()
   gameState.wires.clear()
@@ -60,4 +65,6 @@ export function hardReset(): void {
   clearSavedGame()
   // Reset all state to initial
   Object.assign(gameState, createInitialState())
+  // Initialize RNG with the new seed
+  seedRNG(gameState.seed)
 }

@@ -1,6 +1,8 @@
 // Real-world npm package registry for authentic game feel
 // Icon keys map to Devicon identifiers (https://devicon.dev/)
 
+import { random, randomInt, randomItem, chance } from './random'
+
 export type PackageArchetype =
   | 'utility'
   | 'framework'
@@ -1713,7 +1715,7 @@ export const DEPENDENCY_DISTRIBUTION: DependencyTier[] = [
  */
 export function pickRandomIdentity(): PackageIdentity {
   // Weight: leaf/hub appear more often, frameworks rare
-  const roll = Math.random()
+  const roll = random()
 
   let pool: PackageIdentity[] = LEAF_PACKAGES // default
   if (roll < 0.4) {
@@ -1736,8 +1738,7 @@ export function pickRandomIdentity(): PackageIdentity {
     pool = LEGACY_PACKAGES
   }
 
-  const index = Math.floor(Math.random() * pool.length)
-  return pool[index]!
+  return randomItem(pool)
 }
 
 /**
@@ -1782,29 +1783,26 @@ export function pickDirectInstallIdentity(
   }
 
   // Higher tiers weight toward heavier packages
-  if (ecosystemTier >= 3 && Math.random() < 0.4) {
+  if (ecosystemTier >= 3 && chance(0.4)) {
     const tier3Available = exclude
       ? TIER3_DIRECT_INSTALL.filter((p) => !exclude.has(p.name))
       : TIER3_DIRECT_INSTALL
     if (tier3Available.length > 0) {
-      const index = Math.floor(Math.random() * tier3Available.length)
-      return tier3Available[index]!
+      return randomItem(tier3Available)
     }
   }
 
-  if (ecosystemTier >= 2 && Math.random() < 0.3) {
+  if (ecosystemTier >= 2 && chance(0.3)) {
     const tier2Available = exclude
       ? TIER2_DIRECT_INSTALL.filter((p) => !exclude.has(p.name))
       : TIER2_DIRECT_INSTALL
     if (tier2Available.length > 0) {
-      const index = Math.floor(Math.random() * tier2Available.length)
-      return tier2Available[index]!
+      return randomItem(tier2Available)
     }
   }
 
   // Otherwise pick from full available pool
-  const index = Math.floor(Math.random() * pool.length)
-  return pool[index]!
+  return randomItem(pool)
 }
 
 /**
@@ -1817,7 +1815,7 @@ export function rollRealisticDependencyCount(
   // If we have identity, use its baseDeps as influence
   if (identity && identity.baseDeps > 0) {
     // Use package's typical dep count with some variance
-    const variance = Math.floor(Math.random() * 3) - 1 // -1, 0, or 1
+    const variance = randomInt(-1, 1)
     return Math.max(0, identity.baseDeps + variance)
   }
 
@@ -1826,7 +1824,7 @@ export function rollRealisticDependencyCount(
     (sum, tier) => sum + tier.weight,
     0
   )
-  let roll = Math.random() * totalWeight
+  let roll = random() * totalWeight
 
   for (const tier of DEPENDENCY_DISTRIBUTION) {
     roll -= tier.weight
@@ -1962,7 +1960,7 @@ export function pickDistinctDuplicateIdentities(
       )
 
       if (candidates.length > 0) {
-        const pick = candidates[Math.floor(Math.random() * candidates.length)]!
+        const pick = randomItem(candidates)
         result.push(pick)
         usedArchetypes.add(pick.archetype)
         usedIconKeys.add(pick.iconKey)
