@@ -1,0 +1,23 @@
+name: Deploy to Codeberg Pages
+on:
+  push:
+    branches: [main]
+
+jobs:
+  publish:
+    runs-on: codeberg-tiny
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: corepack enable && pnpm install && pnpm build
+        env:
+          BASE_URL: /heaviest-objects-in-the-universe/
+
+      - uses: actions/git-pages@v2
+        with:
+          site: https://namahanna.codeberg.page/heaviest-objects-in-the-universe/
+          source: dist/
