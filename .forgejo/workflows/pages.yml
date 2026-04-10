@@ -21,4 +21,4 @@ jobs:
         with:
           site: https://namahanna.codeberg.page/heaviest-objects-in-the-universe/
           source: dist/
-          token: ${{ secrets.FORGEJO_TOKEN }}
+          token: ${{ forge.token }}
