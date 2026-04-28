@@ -92,6 +92,8 @@ function validatePackage(data: Record<string, unknown>): Package | null {
       typeof data.hasCacheFragment === 'boolean'
         ? data.hasCacheFragment
         : false,
+    hasBeenEntered:
+      typeof data.hasBeenEntered === 'boolean' ? data.hasBeenEntered : false,
   }
 
   return pkg

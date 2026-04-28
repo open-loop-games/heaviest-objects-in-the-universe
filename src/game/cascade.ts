@@ -591,6 +591,7 @@ function spawnNextFromQueue(): void {
     // Depth rewards
     isGolden,
     hasCacheFragment,
+    hasBeenEntered: false,
   }
 
   // Check for conflicts (deferred for starter-kit to allow breath moment)

@@ -45,6 +45,12 @@ export interface Package {
   // Depth rewards
   isGolden: boolean // Golden package (4x weight, only spawns at depth 3+)
   hasCacheFragment: boolean // Contains collectible cache fragment
+
+  // Pristine gate for the SpatialGraph port (OL-500). True once the
+  // owner's child scope has been entered at least once; combined with
+  // child-graph emptiness to derive the pristine|unstable|stable label
+  // from state.ts's recalculate callback.
+  hasBeenEntered: boolean
 }
 
 export interface Wire {

@@ -5,7 +5,21 @@
 // - ref() for primitives or objects replaced wholesale (collapseState, dragState)
 
 import { reactive, ref, computed, type ComputedRef } from 'vue'
-import { type GameState, type GameConfig, type UserSettings } from './types'
+import {
+  createSpatialGraph,
+  createScopeStack,
+  type GraphNode,
+  type ScopeStack,
+  type ScopeState,
+  type SpatialGraph,
+} from 'open-loop-engine'
+import {
+  type GameState,
+  type GameConfig,
+  type Package,
+  type UserSettings,
+  type Wire,
+} from './types'
 import { DEFAULT_CONFIG, createInitialState, TIER_THRESHOLDS } from './config'
 import {
   calculatePrestigeReward,
@@ -20,6 +34,87 @@ export const gameState = reactive<GameState>(createInitialState())
 
 // Initialize RNG with the game's seed
 seedRNG(gameState.seed)
+
+// ============================================
+// SPATIAL GRAPH + SCOPE STACK (OL-500 port in progress)
+// ============================================
+//
+// During the dual-write phase, gameState.packages/wires/scopeStack remain
+// the source of truth. At commit 6 the mirror dies; graph + stack become
+// authoritative.
+//
+// Cascade-gate ordering decision (Decision B in
+// /home/tony/.claude/plans/proceed-tidy-meerkat.md): callers MUST read
+// stack.stateAt(path) BEFORE flipping owner.data.hasBeenEntered, then call
+// stack.recalculateAt(path). If the gate were checked after the flip,
+// recalculate on an empty child graph would already have transitioned
+// pristine → stable, and cascade would never fire.
+//
+// Sibling overlay edges (cross-package conflict markers) stay
+// renderer-only synthetic in cross-package.ts's separate Map; they never
+// reach graph.addEdge.
+export const graph: SpatialGraph<Package, Wire> = createSpatialGraph<
+  Package,
+  Wire
+>()
+
+function recalculate(
+  g: SpatialGraph<Package, Wire>,
+  path: readonly string[]
+): ScopeState {
+  // Root scope (path = []) is never gated; treat as stable.
+  if (path.length === 0) return 'stable'
+
+  // Resolve the owning node by walking the path from the root graph.
+  let walker: SpatialGraph<Package, Wire> = graph
+  let owner: GraphNode<Package> | undefined
+  for (let i = 0; i < path.length; i++) {
+    const id = path[i]!
+    owner = walker.getNode(id)
+    if (!owner) return 'stable' // path no longer resolves; bail
+    if (i < path.length - 1) {
+      const child = walker.getChildGraph(id)
+      if (!child) return 'stable'
+      walker = child
+    }
+  }
+  if (!owner) return 'stable'
+
+  // Pristine: child graph is empty AND the owner has not yet been entered.
+  if (g.nodes.size === 0 && !owner.data.hasBeenEntered) {
+    return 'pristine'
+  }
+
+  // Conflicted edges → unstable.
+  for (const edge of g.edges.values()) {
+    if (edge.data.conflicted) return 'unstable'
+  }
+
+  // Duplicate identities (ignoring ghosts) → unstable.
+  // Ghost nodes and identity-less nodes get a unique-per-node key so they
+  // never bucket together as duplicates.
+  const groups = g.findDuplicateGroups<string>((node) => {
+    if (node.data.isGhost) return `__ghost_${node.id}`
+    const name = node.data.identity?.name
+    return name ? `id:${name}` : `__no_id_${node.id}`
+  })
+  for (const [key, group] of groups) {
+    if (key.startsWith('id:') && group.length > 1) return 'unstable'
+  }
+
+  // Unstable descendant scopes propagate up.
+  for (const [nodeId] of g.nodes) {
+    if (g.getChildGraph(nodeId) === null) continue
+    const childState = stack.stateAt([...path, nodeId])
+    if (childState === 'unstable') return 'unstable'
+  }
+
+  return 'stable'
+}
+
+export const stack: ScopeStack<Package, Wire> = createScopeStack<Package, Wire>(
+  { root: graph, recalculate }
+)
 
 // Global config (can be modified for balancing)
 export const gameConfig = reactive<GameConfig>({ ...DEFAULT_CONFIG })

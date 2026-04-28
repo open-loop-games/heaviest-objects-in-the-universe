@@ -73,6 +73,7 @@ export function createRootPackage(): Package | null {
     // Depth rewards (root doesn't get rewards)
     isGolden: false,
     hasCacheFragment: false,
+    hasBeenEntered: false,
   }
 
   gameState.rootId = id
@@ -196,6 +197,7 @@ export function installPackage(parentId: string): Package | null {
     // Depth rewards (top-level doesn't get rewards - depth 1)
     isGolden: false,
     hasCacheFragment: false,
+    hasBeenEntered: false,
   }
 
   // Add wire connecting parent to child
@@ -300,6 +302,7 @@ export function spawnDependencies(packageId: string): Package[] {
       // Depth rewards (root-level spawn - no rewards)
       isGolden: false,
       hasCacheFragment: false,
+      hasBeenEntered: false,
     }
 
     // Check for incompatibility conflict with ancestors

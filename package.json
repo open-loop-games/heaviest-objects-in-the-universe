@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "typecheck": "vue-tsc -b --noEmit",
     "lint": "eslint src --fix",
-    "circular": "dpdm --circular --exit-code circular:1 'src/game/*.ts'",
+    "circular": "dpdm --circular --exit-code circular:1 --exclude open-loop-engine 'src/game/*.ts'",
     "lint:check": "eslint src",
     "format": "prettier --write src",
     "format:check": "prettier --check src",
