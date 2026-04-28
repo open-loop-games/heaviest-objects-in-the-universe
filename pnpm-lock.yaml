@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      open-loop-engine:
+        specifier: link:../open-loop-engine
+        version: link:../open-loop-engine
       pixi.js:
         specifier: ^8.17.1
         version: 8.17.1
