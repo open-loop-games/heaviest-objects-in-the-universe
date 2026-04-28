@@ -11,6 +11,7 @@ import {
   isCollapseActive,
   isPackageAbsorbed,
 } from '../game/physics'
+import { isPackageCompressed, isRootPackage } from '../game/scope'
 
 const NODE_RADIUS = 25
 const NODE_RADIUS_ROOT = 38 // Largest for root (package.json)
@@ -54,10 +55,10 @@ export interface NodeEffects {
  */
 export function getNodeRadius(pkg: Package): number {
   // Root (package.json) is largest - the anchor point
-  if (pkg.parentId === null) return NODE_RADIUS_ROOT
+  if (isRootPackage(pkg.id)) return NODE_RADIUS_ROOT
 
   // Top-level packages with internal trees are larger (visually distinct)
-  if (pkg.internalPackages !== null) return NODE_RADIUS_TOP_LEVEL
+  if (isPackageCompressed(pkg)) return NODE_RADIUS_TOP_LEVEL
 
   // Hub packages are larger
   if (pkg.identity?.isHub) return NODE_RADIUS_HUB
@@ -383,7 +384,7 @@ export class NodeRenderer {
     }
 
     // Root node (package.json) - distinctive anchor glow
-    const isRoot = pkg.parentId === null
+    const isRoot = isRootPackage(pkg.id)
     if (isRoot) {
       // Outer golden ring - the anchor point
       graphics.circle(0, 0, radius + 6)

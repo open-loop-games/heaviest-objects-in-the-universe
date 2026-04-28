@@ -6,9 +6,6 @@ export type PackageState = 'installing' | 'ready' | 'conflict' | 'optimized'
 
 export type WireType = 'dependency' | 'symlink' | 'sibling'
 
-// Internal state for top-level packages (scope system)
-export type InternalState = 'pristine' | 'unstable' | 'stable'
-
 export interface Position {
   x: number
   y: number
@@ -19,23 +16,19 @@ export interface Velocity {
   vy: number
 }
 
+// Package data lives on a SpatialGraph node. Tree topology (parent/children),
+// nested scopes, and per-scope state labels are owned by the graph and
+// scope stack — not stored on the package.
 export interface Package {
   id: string
-  parentId: string | null
   position: Position
   velocity: Velocity
   state: PackageState
   size: number // Weight contribution
-  depth: number // How deep in the tree (for rendering inner trees)
-  children: string[] // Child package IDs
+  depth: number // Layout depth within its scope
   installProgress: number // 0-1 for installation animation
   conflictProgress: number // 0-1 for conflict resolution
   identity?: PackageIdentity // Real package identity (name, icon, archetype)
-
-  // Scope system (top-level packages only, null for inner deps)
-  internalPackages: Map<string, Package> | null
-  internalWires: Map<string, Wire> | null
-  internalState: InternalState | null // null for inner deps
 
   // Ghost status (for symlinked-away nodes)
   isGhost: boolean
@@ -45,12 +38,6 @@ export interface Package {
   // Depth rewards
   isGolden: boolean // Golden package (4x weight, only spawns at depth 3+)
   hasCacheFragment: boolean // Contains collectible cache fragment
-
-  // Pristine gate for the SpatialGraph port (OL-500). True once the
-  // owner's child scope has been entered at least once; combined with
-  // child-graph emptiness to derive the pristine|unstable|stable label
-  // from state.ts's recalculate callback.
-  hasBeenEntered: boolean
 }
 
 export interface Wire {
@@ -192,6 +179,8 @@ export interface AutomationState {
   lastResolveTime: number // Last time auto-resolve fired
 }
 
+// GameState holds run-level state. Graph topology (packages, wires, scope
+// hierarchy) lives on the SpatialGraph + ScopeStack exported from state.ts.
 export interface GameState {
   // RNG seed for deterministic runs (resets per prestige)
   seed: number
@@ -208,15 +197,8 @@ export interface GameState {
   // Onboarding (for staged HUD reveal)
   onboarding: OnboardingState
 
-  // Graph data
-  packages: Map<string, Package>
-  wires: Map<string, Wire>
-  rootId: string | null
-
-  // Scope system
-  currentScope: 'root' | string // 'root' or package ID (derived from scopeStack)
-  scopeStack: string[] // [] = root, [pkgId] = layer 1, [pkgId, internalId] = layer 2
-  tutorialGating: boolean // true until first prestige - gates package installs
+  // Tutorial gating (true until first prestige - gates package installs)
+  tutorialGating: boolean
 
   // Cascade system (staggered spawning)
   cascade: CascadeState

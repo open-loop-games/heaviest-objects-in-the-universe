@@ -2,9 +2,11 @@
 import { computed, watchEffect } from 'vue'
 import {
   gameState,
+  graphRevision,
   computed_gravity,
   computed_ecosystemTier,
   computed_canPrestige,
+  computed_rootPackageCount,
 } from '../game/state'
 import { isInPackageScope } from '../game/scope'
 
@@ -37,10 +39,16 @@ const showBandwidth = computed(() => gameState.onboarding.firstClickComplete)
 
 // Track onboarding state changes with watchEffect (side effects, not computation)
 watchEffect(() => {
-  if (!gameState.onboarding.weightSeen && gameState.packages.size >= 2) {
+  if (
+    !gameState.onboarding.weightSeen &&
+    computed_rootPackageCount.value >= 2
+  ) {
     gameState.onboarding.weightSeen = true
   }
-  if (!gameState.onboarding.efficiencySeen && gameState.packages.size >= 2) {
+  if (
+    !gameState.onboarding.efficiencySeen &&
+    computed_rootPackageCount.value >= 2
+  ) {
     gameState.onboarding.efficiencySeen = true
   }
 })
@@ -70,11 +78,12 @@ watchEffect(() => {
 
 // Pure computeds - no mutations
 const showWeight = computed(
-  () => gameState.onboarding.weightSeen || gameState.packages.size >= 2
+  () => gameState.onboarding.weightSeen || computed_rootPackageCount.value >= 2
 )
 
 const showEfficiency = computed(
-  () => gameState.onboarding.efficiencySeen || gameState.packages.size >= 2
+  () =>
+    gameState.onboarding.efficiencySeen || computed_rootPackageCount.value >= 2
 )
 
 const showAutomation = computed(() => computed_ecosystemTier.value >= 2)
@@ -83,7 +92,10 @@ const showAutomation = computed(() => computed_ecosystemTier.value >= 2)
 const showSurge = computed(() => gameState.meta.timesShipped >= 2)
 
 // Check if we're inside a package scope
-const inPackageScope = computed(() => isInPackageScope())
+const inPackageScope = computed(() => {
+  void graphRevision.value
+  return isInPackageScope()
+})
 
 // Gravity progress
 const gravityPercent = computed(() =>

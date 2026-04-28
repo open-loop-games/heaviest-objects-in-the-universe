@@ -1,7 +1,8 @@
 // Upgrade definitions and purchase logic
 // 2 core upgrades: Bandwidth, Efficiency
 
-import { gameState, spendBandwidth } from './state'
+import { gameState, graph, spendBandwidth, stack } from './state'
+import { isTopLevelPackage } from './scope'
 
 export interface UpgradeDefinition {
   id: string
@@ -221,10 +222,7 @@ export function isUpgradeUnlocked(upgradeId: string): boolean {
 
   // Check package count requirement (skip if prestige requirement was set and met)
   // Prestige gates are more meaningful than package count for returning players
-  if (
-    !upgrade.prestigeRequirement &&
-    gameState.packages.size < upgrade.unlockAt
-  ) {
+  if (!upgrade.prestigeRequirement && graph.nodes.size < upgrade.unlockAt) {
     return false
   }
 
@@ -282,13 +280,11 @@ export function getEffectiveInstallCost(): number {
  */
 function countActiveScopes(): number {
   let count = 0
-  for (const pkg of gameState.packages.values()) {
-    // Only count top-level packages (direct children of root)
-    if (pkg.parentId === gameState.rootId) {
-      // Count if not stable (pristine, unstable, or null internal state)
-      if (pkg.internalState !== 'stable') {
-        count++
-      }
+  for (const id of graph.nodes.keys()) {
+    if (!isTopLevelPackage(id)) continue
+    const state = stack.stateAt([id])
+    if (state !== 'stable') {
+      count++
     }
   }
   return count

@@ -2,9 +2,9 @@
 
 import { Graphics, Container, type Application } from 'pixi.js'
 import { Colors } from './colors'
-import { gameState } from '../game/state'
+import { gameState, graph, stack } from '../game/state'
 import { prefersReducedMotion } from './accessibility'
-import { getPackageAtPath } from '../game/scope'
+import { getScopeState } from '../game/scope'
 import { isCascadeActive } from '../game/cascade'
 
 interface RippleEffect {
@@ -352,10 +352,9 @@ export class EffectsRenderer {
     }
 
     // Observe scope state for celebration (rendering watches game state)
-    if (gameState.scopeStack.length > 0) {
-      const currentScopePath = gameState.scopeStack.join('/')
-      const pkg = getPackageAtPath(gameState.scopeStack)
-      const currentState = pkg?.internalState ?? null
+    if (stack.depth > 0) {
+      const currentScopePath = stack.path.join('/')
+      const currentState = getScopeState(stack.path)
       const cascadeActive = isCascadeActive()
 
       // Reset tracking when scope changes
@@ -398,7 +397,7 @@ export class EffectsRenderer {
    */
   getRootPulseIntensity(): number {
     // Only pulse if root is the only node or game just started
-    if (gameState.packages.size > 1) {
+    if (graph.nodes.size > 1) {
       return 0
     }
     // Smooth sine wave pulse
@@ -409,10 +408,7 @@ export class EffectsRenderer {
    * Check if we should show "click me" hint on root
    */
   shouldShowClickHint(): boolean {
-    return (
-      gameState.packages.size === 1 &&
-      gameState.stats.totalPackagesInstalled < 3
-    )
+    return graph.nodes.size === 1 && gameState.stats.totalPackagesInstalled < 3
   }
 
   /**

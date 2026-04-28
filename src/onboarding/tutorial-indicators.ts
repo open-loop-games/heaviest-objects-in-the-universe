@@ -1,14 +1,21 @@
 // Tutorial indicators logic - decides what indicators/vignettes to show
 // Based on game state and tutorial progress
 
-import { gameState, computed_canPrestige } from '../game/state'
+import {
+  gameState,
+  graph,
+  rootIdRef,
+  computed_canPrestige,
+} from '../game/state'
 import {
   isInPackageScope,
   getCurrentScopePackages,
   getCurrentScopeWires,
   getCurrentScopeRoot,
 } from '../game/scope'
+import type { Package, Wire } from '../game/types'
 import { getAllDuplicateGroups } from '../game/symlinks'
+import { getSiblingWires } from '../game/cross-package'
 import { Colors } from '../rendering/colors'
 import * as tutorialState from './tutorial-state'
 
@@ -100,13 +107,24 @@ export function getConflictIndicators(
 
   tutorialState.setHasActiveConflict(false)
 
-  for (const wire of gameState.wires.values()) {
-    if (!wire.conflicted) continue
+  // Conflict edges live in two places at root scope: real wires in the
+  // root graph (rootId→top-level dep edges that went conflicted) and
+  // sibling overlay wires (cross-package conflicts) tracked in
+  // cross-package.ts. Indicators must consider both — otherwise
+  // cross-package conflicts silently bypass first-conflict teaching.
+  const conflictWires: Wire[] = []
+  for (const edge of graph.edges.values()) {
+    if (edge.data.conflicted) conflictWires.push(edge.data)
+  }
+  for (const sibling of getSiblingWires().values()) {
+    if (sibling.conflicted) conflictWires.push(sibling)
+  }
 
+  for (const wire of conflictWires) {
     tutorialState.setHasActiveConflict(true)
 
-    const fromPkg = gameState.packages.get(wire.fromId)
-    const toPkg = gameState.packages.get(wire.toId)
+    const fromPkg = graph.getNode(wire.fromId)?.data
+    const toPkg = graph.getNode(wire.toId)?.data
     if (!fromPkg || !toPkg) continue
 
     // Track first conflict
@@ -230,7 +248,13 @@ export function getDuplicateIndicators(
 
   const inScope = isInPackageScope()
   const duplicateGroups = getAllDuplicateGroups()
-  const scopePackages = inScope ? getCurrentScopePackages() : gameState.packages
+  const scopePackages: Map<string, Package> = inScope
+    ? getCurrentScopePackages()
+    : (() => {
+        const m = new Map<string, Package>()
+        for (const [id, n] of graph.nodes) m.set(id, n.data)
+        return m
+      })()
 
   // Only show off-screen arrows (no teaching lines)
   for (const group of duplicateGroups) {
@@ -312,8 +336,8 @@ export function getPrestigeIndicators(
     return { indicators, vignettes }
   }
 
-  const rootPkg = gameState.rootId
-    ? gameState.packages.get(gameState.rootId)
+  const rootPkg = rootIdRef.value
+    ? (graph.getNode(rootIdRef.value)?.data ?? null)
     : null
   if (!rootPkg) return { indicators, vignettes }
 

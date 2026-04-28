@@ -1,8 +1,14 @@
 // Tutorial state tracking - timers and "first seen" flags
 
-import { gameState, computed_canPrestige } from '../game/state'
+import {
+  gameState,
+  graph,
+  rootIdRef,
+  computed_canPrestige,
+} from '../game/state'
 import {
   isInPackageScope,
+  isTopLevelPackage,
   getCurrentScopePackages,
   getCurrentScopeWires,
 } from '../game/scope'
@@ -371,10 +377,8 @@ export function getCursorHintState(): {
   if (gameState.onboarding.firstScopeExited) {
     // Count top-level packages (excluding root)
     let topLevelCount = 0
-    for (const pkg of gameState.packages.values()) {
-      if (pkg.parentId === gameState.rootId) {
-        topLevelCount++
-      }
+    for (const id of graph.nodes.keys()) {
+      if (isTopLevelPackage(id)) topLevelCount++
     }
 
     const isWaitingState = topLevelCount === 1
@@ -417,8 +421,8 @@ export function getActiveGhostHint(): GhostHint | null {
   if (!gameState.onboarding.firstClickComplete) {
     if (!gameState.onboarding.introAnimationComplete) return null
 
-    const rootPkg = gameState.rootId
-      ? gameState.packages.get(gameState.rootId)
+    const rootPkg = rootIdRef.value
+      ? (graph.getNode(rootIdRef.value)?.data ?? null)
       : null
     if (!rootPkg) return null
 
@@ -440,9 +444,10 @@ export function getActiveGhostHint(): GhostHint | null {
   ) {
     // Find the first top-level package (not root)
     let targetPkg: { x: number; y: number } | null = null
-    for (const pkg of gameState.packages.values()) {
-      if (pkg.parentId === gameState.rootId && pkg.state === 'ready') {
-        targetPkg = { x: pkg.position.x, y: pkg.position.y }
+    for (const [id, node] of graph.nodes) {
+      if (!isTopLevelPackage(id)) continue
+      if (node.data.state === 'ready') {
+        targetPkg = { x: node.data.position.x, y: node.data.position.y }
         break
       }
     }

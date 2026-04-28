@@ -2,7 +2,7 @@
 // 28 achievements across 7 categories
 
 import { reactive, computed } from 'vue'
-import { gameState } from './state'
+import { gameState, stack } from './state'
 import { emit, on } from './events'
 
 // Listen for player actions to reset patience timer
@@ -249,7 +249,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     iconData: { symbol: '↓', count: 1 },
     name: 'Down the Rabbit Hole',
     category: 'depth',
-    check: () => gameState.scopeStack.length >= 1,
+    check: () => stack.depth >= 1,
   },
   {
     id: 'depth-2',
@@ -257,7 +257,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     iconData: { symbol: '↓', count: 3 },
     name: 'Inception',
     category: 'depth',
-    check: () => gameState.scopeStack.length >= 3,
+    check: () => stack.depth >= 3,
   },
   {
     id: 'depth-3',
@@ -265,7 +265,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     iconData: { symbol: '↓', count: 5 },
     name: 'Turtles All the Way Down',
     category: 'depth',
-    check: () => gameState.scopeStack.length >= 5,
+    check: () => stack.depth >= 5,
     rare: true,
   },
 

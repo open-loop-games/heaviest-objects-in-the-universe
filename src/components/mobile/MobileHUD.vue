@@ -25,14 +25,18 @@
 import { computed, ref, watchEffect } from 'vue'
 import {
   gameState,
+  graphRevision,
+  stack,
   computed_gravity,
   computed_canPrestige,
   computed_ecosystemTier,
 } from '../../game/state'
 import {
   isInPackageScope,
+  isPackageCompressed,
+  isTopLevelPackage,
   getScopeDepth,
-  getCurrentScopeRoot,
+  getScopeState,
 } from '../../game/scope'
 import { getSiblingWires } from '../../game/cross-package'
 import { getInternalStats } from '../../game/packages'
@@ -93,19 +97,27 @@ watchEffect(() => {
 // SCOPE STATE
 // ============================================
 
-const inScope = computed(() => isInPackageScope())
-const scopeDepth = computed(() => getScopeDepth())
+const inScope = computed(() => {
+  void graphRevision.value
+  return isInPackageScope()
+})
+const scopeDepth = computed(() => {
+  void graphRevision.value
+  return getScopeDepth()
+})
 const maxDepth = 5
 
 const scopeState = computed(() => {
+  void graphRevision.value
   if (!inScope.value) return null
-  const root = getCurrentScopeRoot()
-  return root?.internalState || null
+  return getScopeState(stack.path)
 })
 
 const scopeStats = computed(() => {
-  if (!gameState.currentScope) return { conflicts: 0, duplicates: 0 }
-  return getInternalStats(gameState.currentScope)
+  void graphRevision.value
+  const layer1 = stack.path[0]
+  if (!layer1) return { conflicts: 0, duplicates: 0 }
+  return getInternalStats(layer1)
 })
 
 // ============================================
@@ -241,35 +253,37 @@ const hasSelection = computed(
 )
 
 const selectedWire = computed(() => {
+  void graphRevision.value
   if (!props.selectedWireId) return null
-  const wires = inScope.value
-    ? getCurrentScopeRoot()?.internalWires
-    : gameState.wires
-  let wire = wires?.get(props.selectedWireId)
-  // Also check sibling wires (cross-package conflicts) at root scope
-  if (!wire && !inScope.value) {
-    wire = getSiblingWires().get(props.selectedWireId)
+  const id = props.selectedWireId
+  // Edge in current scope graph.
+  const edge = stack.current.getEdge(id)
+  if (edge) return edge.data
+  // Sibling wires (cross-package conflicts) at root scope.
+  if (!inScope.value) {
+    const sibling = getSiblingWires().get(id)
+    if (sibling) return sibling
   }
-  return wire || null
+  return null
 })
 
 const isSiblingWire = computed(() => selectedWire.value?.wireType === 'sibling')
 const canPrune = computed(() => canAffordConflictResolve())
 
 const selectedNode = computed(() => {
+  void graphRevision.value
   if (!props.selectedNodeId) return null
-  return gameState.packages.get(props.selectedNodeId) || null
+  return stack.current.getNode(props.selectedNodeId)?.data ?? null
 })
 
 const canEnterScope = computed(() => {
-  if (!selectedNode.value) return false
+  void graphRevision.value
+  const node = selectedNode.value
+  if (!node) return false
   if (!inScope.value) {
-    return selectedNode.value.parentId === gameState.rootId
+    return isTopLevelPackage(node.id)
   }
-  return (
-    selectedNode.value.internalPackages !== null &&
-    selectedNode.value.internalWires !== null
-  )
+  return isPackageCompressed(node)
 })
 </script>
 

@@ -1978,36 +1978,37 @@ export function pickDistinctDuplicateIdentities(
 }
 
 /**
- * Check if a new package identity conflicts with any ancestor in its branch
- * Returns true if incompatible pair found
+ * Check if a new package identity conflicts with any ancestor reachable via
+ * the given parent-id resolver. Returns true if any ancestor's identity is
+ * incompatible with `identity`.
  */
 export function checkIncompatibilityWithPackages(
   identity: PackageIdentity | undefined,
   parentId: string,
-  packages: Map<string, { parentId: string | null; identity?: PackageIdentity }>
+  resolvers: {
+    getIdentity: (id: string) => PackageIdentity | undefined
+    getParentId: (id: string) => string | null
+  }
 ): boolean {
   if (!identity) return false
 
   const newName = identity.name
 
-  // Walk up the ancestor chain
   let currentId: string | null = parentId
   const visited = new Set<string>()
 
   while (currentId !== null) {
-    if (visited.has(currentId)) break // Prevent infinite loops
+    if (visited.has(currentId)) break
     visited.add(currentId)
 
-    const ancestor = packages.get(currentId)
-    if (!ancestor) break
-
-    if (ancestor.identity) {
-      if (areIncompatible(newName, ancestor.identity.name)) {
+    const ancestorIdentity = resolvers.getIdentity(currentId)
+    if (ancestorIdentity) {
+      if (areIncompatible(newName, ancestorIdentity.name)) {
         return true
       }
     }
 
-    currentId = ancestor.parentId
+    currentId = resolvers.getParentId(currentId)
   }
 
   return false

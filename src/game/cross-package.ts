@@ -1,136 +1,139 @@
 // Cross-package conflict and duplicate detection (Phase 4-5)
-// These systems detect relationships BETWEEN top-level packages based on their internal dependencies
+// Detects relationships BETWEEN top-level packages by inspecting their
+// child graphs (internal scopes).
 
-import { toRaw } from 'vue'
-import { gameState } from './state'
+import { gameState, graph, rootIdRef, stack } from './state'
 import type { Package, Wire } from './types'
 import { areIncompatible } from './registry'
 import { HALO_COLORS } from './config'
+import type { GraphNode, SpatialGraph } from 'open-loop-engine'
 
 // ============================================
-// CROSS-PACKAGE CONFLICTS (Phase 4)
+// CROSS-PACKAGE CONFLICTS
 // ============================================
 
-/**
- * Represents a conflict between two top-level packages
- * due to incompatible internal dependencies
- */
 export interface CrossPackageConflict {
   packageAId: string
   packageBId: string
-  conflictingDepA: string // Identity name in package A
-  conflictingDepB: string // Identity name in package B
+  conflictingDepA: string
+  conflictingDepB: string
 }
 
-// Cache for cross-package conflicts (recalculated each frame)
 let crossPackageConflicts: CrossPackageConflict[] = []
 const siblingWires: Map<string, Wire> = new Map()
 
-// Track packages marked as cross-package conflicted (to clear stale states)
 const previouslyConflictedPackages: Set<string> = new Set()
+
+function* iterateInnerNodes(
+  child: SpatialGraph<Package, Wire>,
+  ownerId: string
+): Generator<GraphNode<Package>> {
+  for (const [id, node] of child.nodes) {
+    if (id === ownerId) continue
+    yield node
+  }
+}
 
 /**
  * Detect conflicts between top-level packages based on their internal deps.
- * E.g., Package A contains "moment", Package B contains "date-fns" → conflict
  * Only runs at root scope.
  */
 export function updateCrossPackageConflicts(): void {
-  // Only detect at root scope - preserve existing conflicts when inside a package
-  // so automation can check if a conflict is cross-package and skip it
-  if (gameState.currentScope !== 'root') return
+  if (stack.depth !== 0) return
 
   crossPackageConflicts = []
   siblingWires.clear()
 
-  // Clear stale conflict states from previously marked packages
-  for (const pkgId of previouslyConflictedPackages) {
-    // Find the internal package and clear its state if it still exists
-    for (const topLevelPkg of gameState.packages.values()) {
-      if (topLevelPkg.parentId !== gameState.rootId) continue
-      const innerPkg = topLevelPkg.internalPackages?.get(pkgId)
-      if (innerPkg && innerPkg.state === 'conflict') {
-        // Reset to ready (will be re-marked if still conflicted)
-        innerPkg.state = 'ready'
-        // Also clear the wire's conflicted flag
-        if (topLevelPkg.internalWires) {
-          for (const wire of topLevelPkg.internalWires.values()) {
-            if (wire.toId === pkgId) {
-              wire.conflicted = false
-              wire.conflictTime = 0
-            }
+  // Track top-level scopes whose conflict state changed this pass; we need
+  // to recalculate their cached scope-state at the end so portal rings /
+  // stability ratio stay in sync with the per-frame conflict mutation.
+  const dirtyTopLevels = new Set<string>()
+
+  // Clear stale conflict states from previously marked inner packages.
+  for (const innerId of previouslyConflictedPackages) {
+    for (const [topLevelId, topLevelNode] of graph.nodes) {
+      if (topLevelId === rootIdRef.value) continue
+      const child = graph.getChildGraph(topLevelId)
+      if (!child) continue
+      const innerNode = child.getNode(innerId)
+      if (innerNode && innerNode.data.state === 'conflict') {
+        innerNode.data.state = 'ready'
+        dirtyTopLevels.add(topLevelId)
+        for (const edge of child.edges.values()) {
+          if (edge.toId === innerId) {
+            edge.data.conflicted = false
+            edge.data.conflictTime = 0
           }
         }
       }
+      void topLevelNode
     }
   }
   previouslyConflictedPackages.clear()
 
-  const rawPackages = toRaw(gameState.packages)
-  const topLevelPackages: Package[] = []
+  const topLevelEntries: Array<{
+    id: string
+    pkg: Package
+    child: SpatialGraph<Package, Wire>
+  }> = []
 
-  // Collect all top-level packages (direct children of root)
-  for (const pkg of rawPackages.values()) {
-    if (pkg.parentId === gameState.rootId && pkg.internalPackages) {
-      topLevelPackages.push(pkg)
-    }
+  for (const [id, node] of graph.nodes) {
+    if (id === rootIdRef.value) continue
+    const child = graph.getChildGraph(id)
+    if (!child) continue
+    topLevelEntries.push({ id, pkg: node.data, child })
   }
 
-  // Compare each pair of top-level packages
-  for (let i = 0; i < topLevelPackages.length; i++) {
-    for (let j = i + 1; j < topLevelPackages.length; j++) {
-      const pkgA = topLevelPackages[i]!
-      const pkgB = topLevelPackages[j]!
+  for (let i = 0; i < topLevelEntries.length; i++) {
+    for (let j = i + 1; j < topLevelEntries.length; j++) {
+      const a = topLevelEntries[i]!
+      const b = topLevelEntries[j]!
 
-      // Check each internal dep in A against each internal dep in B
-      if (!pkgA.internalPackages || !pkgB.internalPackages) continue
+      for (const innerA of iterateInnerNodes(a.child, a.id)) {
+        if (!innerA.data.identity || innerA.data.isGhost) continue
 
-      for (const innerA of pkgA.internalPackages.values()) {
-        if (!innerA.identity || innerA.isGhost) continue
+        for (const innerB of iterateInnerNodes(b.child, b.id)) {
+          if (!innerB.data.identity || innerB.data.isGhost) continue
 
-        for (const innerB of pkgB.internalPackages.values()) {
-          if (!innerB.identity || innerB.isGhost) continue
-
-          if (areIncompatible(innerA.identity.name, innerB.identity.name)) {
+          if (
+            areIncompatible(
+              innerA.data.identity.name,
+              innerB.data.identity.name
+            )
+          ) {
             crossPackageConflicts.push({
-              packageAId: pkgA.id,
-              packageBId: pkgB.id,
-              conflictingDepA: innerA.identity.name,
-              conflictingDepB: innerB.identity.name,
+              packageAId: a.id,
+              packageBId: b.id,
+              conflictingDepA: innerA.data.identity.name,
+              conflictingDepB: innerB.data.identity.name,
             })
 
-            // Mark the internal packages as conflicted so they show conflict state when inside
-            innerA.state = 'conflict'
-            innerB.state = 'conflict'
-
-            // Track for cleanup on next frame
+            innerA.data.state = 'conflict'
+            innerB.data.state = 'conflict'
             previouslyConflictedPackages.add(innerA.id)
             previouslyConflictedPackages.add(innerB.id)
+            dirtyTopLevels.add(a.id)
+            dirtyTopLevels.add(b.id)
 
-            // Mark the internal wires to these packages as conflicted (for Prune/Upgrade UI)
-            if (pkgA.internalWires) {
-              for (const wire of pkgA.internalWires.values()) {
-                if (wire.toId === innerA.id) {
-                  wire.conflicted = true
-                  if (!wire.conflictTime) wire.conflictTime = Date.now()
-                }
+            for (const edge of a.child.edges.values()) {
+              if (edge.toId === innerA.id) {
+                edge.data.conflicted = true
+                if (!edge.data.conflictTime) edge.data.conflictTime = Date.now()
               }
             }
-            if (pkgB.internalWires) {
-              for (const wire of pkgB.internalWires.values()) {
-                if (wire.toId === innerB.id) {
-                  wire.conflicted = true
-                  if (!wire.conflictTime) wire.conflictTime = Date.now()
-                }
+            for (const edge of b.child.edges.values()) {
+              if (edge.toId === innerB.id) {
+                edge.data.conflicted = true
+                if (!edge.data.conflictTime) edge.data.conflictTime = Date.now()
               }
             }
 
-            // Create sibling conflict wire
-            const wireId = `sibling_${pkgA.id}_${pkgB.id}`
+            const wireId = `sibling_${a.id}_${b.id}`
             if (!siblingWires.has(wireId)) {
               siblingWires.set(wireId, {
                 id: wireId,
-                fromId: pkgA.id,
-                toId: pkgB.id,
+                fromId: a.id,
+                toId: b.id,
                 wireType: 'sibling',
                 flowProgress: 0,
                 conflicted: true,
@@ -142,34 +145,38 @@ export function updateCrossPackageConflicts(): void {
       }
     }
   }
+
+  // Recalculate cached scope state for any top-level package whose inner
+  // conflict set changed this pass — without this, portal rings and the
+  // stability ratio diverge from the in-graph conflict flags.
+  for (const id of dirtyTopLevels) {
+    stack.recalculateAt([id])
+  }
 }
 
-/**
- * Get all cross-package conflicts
- */
+/** Drop all cached cross-package state. Call on ship / prestige / load so
+ *  IDs from the previous run don't linger in the previously-conflicted set. */
+export function resetCrossPackageState(): void {
+  crossPackageConflicts = []
+  siblingWires.clear()
+  previouslyConflictedPackages.clear()
+  crossPackageDuplicates = []
+}
+
 export function getCrossPackageConflicts(): CrossPackageConflict[] {
   return crossPackageConflicts
 }
 
-/**
- * Get sibling wires (for rendering at root scope)
- */
 export function getSiblingWires(): Map<string, Wire> {
   return siblingWires
 }
 
-/**
- * Check if a top-level package has any cross-package conflicts
- */
 export function hasCrossPackageConflict(packageId: string): boolean {
   return crossPackageConflicts.some(
     (c) => c.packageAId === packageId || c.packageBId === packageId
   )
 }
 
-/**
- * Get the conflicting internal dep name for a package in a conflict
- */
 export function getConflictingInternalDep(packageId: string): string | null {
   for (const conflict of crossPackageConflicts) {
     if (conflict.packageAId === packageId) return conflict.conflictingDepA
@@ -179,63 +186,48 @@ export function getConflictingInternalDep(packageId: string): string | null {
 }
 
 // ============================================
-// CROSS-PACKAGE DUPLICATES (Phase 4)
+// CROSS-PACKAGE DUPLICATES
 // ============================================
 
-/**
- * Represents a duplicate shared between two top-level packages
- */
 export interface CrossPackageDuplicate {
   packageAId: string
   packageBId: string
-  identityName: string // The shared internal dep name
+  identityName: string
   haloColor: number
 }
 
-// Cache for cross-package duplicates
 let crossPackageDuplicates: CrossPackageDuplicate[] = []
 
-/**
- * Detect duplicates between top-level packages.
- * E.g., Package A contains "lodash", Package B contains "lodash" → duplicate
- * Only runs at root scope.
- */
 export function updateCrossPackageDuplicates(): void {
   crossPackageDuplicates = []
 
-  // Only detect at root scope
-  if (gameState.currentScope !== 'root') return
+  if (stack.depth !== 0) return
 
-  const rawPackages = toRaw(gameState.packages)
-
-  // Map: identity name → list of (packageId, internalPkgId)
   const identityToPackages = new Map<
     string,
     { packageId: string; internalId: string }[]
   >()
 
-  // Collect all internal deps from all top-level packages
-  for (const pkg of rawPackages.values()) {
-    if (pkg.parentId !== gameState.rootId || !pkg.internalPackages) continue
+  for (const [topLevelId] of graph.nodes) {
+    if (topLevelId === rootIdRef.value) continue
+    const child = graph.getChildGraph(topLevelId)
+    if (!child) continue
 
-    for (const [internalId, innerPkg] of pkg.internalPackages) {
-      if (!innerPkg.identity || innerPkg.isGhost) continue
+    for (const innerNode of iterateInnerNodes(child, topLevelId)) {
+      if (!innerNode.data.identity || innerNode.data.isGhost) continue
 
-      const name = innerPkg.identity.name
+      const name = innerNode.data.identity.name
       const list = identityToPackages.get(name) || []
-      list.push({ packageId: pkg.id, internalId })
+      list.push({ packageId: topLevelId, internalId: innerNode.id })
       identityToPackages.set(name, list)
     }
   }
 
-  // Find identities that appear in multiple top-level packages
   let colorIndex = 0
   for (const [identityName, locations] of identityToPackages) {
-    // Get unique package IDs
     const uniquePackageIds = [...new Set(locations.map((l) => l.packageId))]
 
     if (uniquePackageIds.length >= 2) {
-      // Create pairs of duplicates
       for (let i = 0; i < uniquePackageIds.length; i++) {
         for (let j = i + 1; j < uniquePackageIds.length; j++) {
           crossPackageDuplicates.push({
@@ -251,25 +243,16 @@ export function updateCrossPackageDuplicates(): void {
   }
 }
 
-/**
- * Get all cross-package duplicates
- */
 export function getCrossPackageDuplicates(): CrossPackageDuplicate[] {
   return crossPackageDuplicates
 }
 
-/**
- * Check if a top-level package has any cross-package duplicates
- */
 export function hasCrossPackageDuplicate(packageId: string): boolean {
   return crossPackageDuplicates.some(
     (d) => d.packageAId === packageId || d.packageBId === packageId
   )
 }
 
-/**
- * Get duplicate info for a package (for rendering halo)
- */
 export function getCrossPackageDuplicateInfo(
   packageId: string
 ): { haloColor: number; identityName: string } | null {
@@ -281,38 +264,33 @@ export function getCrossPackageDuplicateInfo(
 }
 
 // ============================================
-// CROSS-PACKAGE SYMLINK (Phase 5)
+// CROSS-PACKAGE SYMLINK
 // ============================================
 
-/**
- * Check if two top-level packages can be symlinked (share internal deps)
- * Returns the shared identity name if symlinkable, null otherwise
- */
 export function canCrossPackageSymlink(
   sourceId: string,
   targetId: string
 ): string | null {
   if (sourceId === targetId) return null
 
-  const source = toRaw(gameState.packages).get(sourceId)
-  const target = toRaw(gameState.packages).get(targetId)
+  const sourceNode = graph.getNode(sourceId)
+  const targetNode = graph.getNode(targetId)
 
-  if (!source || !target) return null
-  if (!source.internalPackages || !target.internalPackages) return null
+  if (!sourceNode || !targetNode) return null
+  if (sourceId === rootIdRef.value || targetId === rootIdRef.value) return null
 
-  // Both must be top-level packages
-  if (source.parentId !== gameState.rootId) return null
-  if (target.parentId !== gameState.rootId) return null
+  const sourceChild = graph.getChildGraph(sourceId)
+  const targetChild = graph.getChildGraph(targetId)
+  if (!sourceChild || !targetChild) return null
 
-  // Find shared internal deps (same identity name)
-  for (const innerSource of source.internalPackages.values()) {
-    if (!innerSource.identity || innerSource.isGhost) continue
+  for (const innerSource of iterateInnerNodes(sourceChild, sourceId)) {
+    if (!innerSource.data.identity || innerSource.data.isGhost) continue
 
-    for (const innerTarget of target.internalPackages.values()) {
-      if (!innerTarget.identity || innerTarget.isGhost) continue
+    for (const innerTarget of iterateInnerNodes(targetChild, targetId)) {
+      if (!innerTarget.data.identity || innerTarget.data.isGhost) continue
 
-      if (innerSource.identity.name === innerTarget.identity.name) {
-        return innerSource.identity.name
+      if (innerSource.data.identity.name === innerTarget.data.identity.name) {
+        return innerSource.data.identity.name
       }
     }
   }
@@ -320,30 +298,30 @@ export function canCrossPackageSymlink(
   return null
 }
 
-/**
- * Get all shared internal dep names between two packages
- */
 export function getSharedInternalDeps(
   pkgAId: string,
   pkgBId: string
 ): string[] {
-  const pkgA = toRaw(gameState.packages).get(pkgAId)
-  const pkgB = toRaw(gameState.packages).get(pkgBId)
-
-  if (!pkgA?.internalPackages || !pkgB?.internalPackages) return []
+  const childA = graph.getChildGraph(pkgAId)
+  const childB = graph.getChildGraph(pkgBId)
+  if (!childA || !childB) return []
 
   const shared: string[] = []
   const namesInA = new Set<string>()
 
-  for (const inner of pkgA.internalPackages.values()) {
-    if (inner.identity && !inner.isGhost) {
-      namesInA.add(inner.identity.name)
+  for (const inner of iterateInnerNodes(childA, pkgAId)) {
+    if (inner.data.identity && !inner.data.isGhost) {
+      namesInA.add(inner.data.identity.name)
     }
   }
 
-  for (const inner of pkgB.internalPackages.values()) {
-    if (inner.identity && !inner.isGhost && namesInA.has(inner.identity.name)) {
-      shared.push(inner.identity.name)
+  for (const inner of iterateInnerNodes(childB, pkgBId)) {
+    if (
+      inner.data.identity &&
+      !inner.data.isGhost &&
+      namesInA.has(inner.data.identity.name)
+    ) {
+      shared.push(inner.data.identity.name)
     }
   }
 
@@ -351,53 +329,48 @@ export function getSharedInternalDeps(
 }
 
 /**
- * Perform cross-package symlink: source package's internal dep becomes a ghost
- * The ghost points to the target package's real instance
- *
- * @param sourcePackageId - Top-level package whose internal dep will become ghost
- * @param targetPackageId - Top-level package that keeps the real dep
- * @param identityName - The internal dep identity to symlink
- * @returns Weight saved by the ghost conversion
+ * Cross-package symlink: source's matching internal dep becomes a ghost.
+ * The smaller of (source, target) loses its real instance.
  */
 export function performCrossPackageSymlink(
   sourcePackageId: string,
   targetPackageId: string,
   identityName: string
 ): number {
-  const source = gameState.packages.get(sourcePackageId)
-  const target = gameState.packages.get(targetPackageId)
+  const source = graph.getNode(sourcePackageId)?.data
+  const target = graph.getNode(targetPackageId)?.data
+  const sourceChild = graph.getChildGraph(sourcePackageId)
+  const targetChild = graph.getChildGraph(targetPackageId)
 
-  if (!source?.internalPackages || !target?.internalPackages) return 0
+  if (!source || !target || !sourceChild || !targetChild) return 0
 
-  // Find the internal dep in source
   let sourceInner: Package | null = null
   let sourceInnerId: string | null = null
-  for (const [id, inner] of source.internalPackages) {
-    if (inner.identity?.name === identityName && !inner.isGhost) {
-      sourceInner = inner
-      sourceInnerId = id
+  for (const inner of iterateInnerNodes(sourceChild, sourcePackageId)) {
+    if (inner.data.identity?.name === identityName && !inner.data.isGhost) {
+      sourceInner = inner.data
+      sourceInnerId = inner.id
       break
     }
   }
 
-  // Find the internal dep in target
   let targetInner: Package | null = null
   let targetInnerId: string | null = null
-  for (const [id, inner] of target.internalPackages) {
-    if (inner.identity?.name === identityName && !inner.isGhost) {
-      targetInner = inner
-      targetInnerId = id
+  for (const inner of iterateInnerNodes(targetChild, targetPackageId)) {
+    if (inner.data.identity?.name === identityName && !inner.data.isGhost) {
+      targetInner = inner.data
+      targetInnerId = inner.id
       break
     }
   }
 
   if (!sourceInner || !targetInner || !sourceInnerId || !targetInnerId) return 0
 
-  // Determine which becomes ghost (smaller package's instance)
   let ghostPkg: Package
   let ghostPkgId: string
   let realPkg: Package
   let ghostOwner: Package
+  let ghostOwnerChild: SpatialGraph<Package, Wire>
   let realOwner: Package
 
   if (source.size <= target.size) {
@@ -405,48 +378,46 @@ export function performCrossPackageSymlink(
     ghostPkgId = sourceInnerId
     realPkg = targetInner
     ghostOwner = source
+    ghostOwnerChild = sourceChild
     realOwner = target
   } else {
     ghostPkg = targetInner
     ghostPkgId = targetInnerId
     realPkg = sourceInner
     ghostOwner = target
+    ghostOwnerChild = targetChild
     realOwner = source
   }
 
-  // Calculate weight to transfer (ghost loses its weight)
   const weightSaved = ghostPkg.size
 
-  // Convert to ghost
   ghostPkg.isGhost = true
   ghostPkg.ghostTargetId = realPkg.id
   ghostPkg.ghostTargetScope = realOwner.id
   ghostPkg.state = 'optimized'
 
-  // Transfer weight: remove from ghost owner
   ghostOwner.size -= weightSaved
-  gameState.resources.weight -= weightSaved
 
-  // Mark real node as optimized
-  realPkg.state = 'optimized'
-
-  // Clear any conflicts on the ghost (ghosts can't conflict)
-  if (ghostOwner.internalWires) {
-    for (const wire of ghostOwner.internalWires.values()) {
-      if (wire.toId === ghostPkgId) {
-        wire.conflicted = false
-        wire.conflictTime = 0
-      }
+  for (const edge of ghostOwnerChild.edges.values()) {
+    if (edge.toId === ghostPkgId) {
+      edge.data.conflicted = false
+      edge.data.conflictTime = 0
     }
   }
 
-  // Update stats
+  realPkg.state = 'optimized'
+
+  gameState.resources.weight -= weightSaved
   gameState.stats.totalSymlinksCreated++
 
-  // Mark first symlink seen
   if (!gameState.onboarding.firstSymlinkSeen) {
     gameState.onboarding.firstSymlinkSeen = true
   }
+
+  // Both owner scopes had inner conflict flags flipped — refresh their
+  // cached scope state so portal rings stop showing 'unstable'.
+  stack.recalculateAt([ghostOwner.id])
+  stack.recalculateAt([realOwner.id])
 
   return weightSaved
 }

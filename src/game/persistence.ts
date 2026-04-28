@@ -1,256 +1,108 @@
 // Save/Load persistence layer
+//
+// Save shape (v3, post-spatial cutover):
+// {
+//   version: 3,
+//   ...gameState fields...
+//   rootId: string | null,
+//   graph: SpatialGraphSnapshot<Package, Wire>,
+//   scope: ScopeStackSnapshot,
+// }
+//
+// No legacy load — older saves are dropped on version mismatch.
 
-import type { Package, Wire, PackageState, InternalState } from './types'
+import type {
+  ScopeStackSnapshot,
+  SpatialGraph,
+  SpatialGraphSnapshot,
+} from 'open-loop-engine'
+import type { Package, Wire } from './types'
 import { SAVE_VERSION } from './config'
-import { gameState, syncEcosystemTier, userSettings } from './state'
+import {
+  gameState,
+  graph,
+  rootIdRef,
+  resetGraphAndStack,
+  stack,
+  syncEcosystemTier,
+  syncIdCountersFromGraph,
+  userSettings,
+} from './state'
 import { serializeAchievements, deserializeAchievements } from './achievements'
 import { seedRNG } from './random'
+import { resetMomentumState } from './mutations'
+import { clearCascadeQueue } from './cascade'
+import { resetCrossPackageState } from './cross-package'
+import { resetPhysicsState } from './physics'
 
 const STORAGE_KEY = 'heaviest-objects-save'
 const SETTINGS_KEY = 'heaviest-objects-settings'
 const ACHIEVEMENTS_KEY = 'heaviest-objects-achievements'
-const AUTO_SAVE_INTERVAL = 30000 // 30 seconds
+const AUTO_SAVE_INTERVAL = 30000
 
 let autoSaveIntervalId: ReturnType<typeof setInterval> | null = null
 
-/**
- * Serialize a package's internal Maps for saving
- */
-function serializePackageForSave(pkg: Package): Record<string, unknown> {
-  const serialized: Record<string, unknown> = { ...pkg }
+interface SaveData {
+  version: number
+  state: typeof gameState
+  rootId: string | null
+  graph: SpatialGraphSnapshot<Package, Wire>
+  scope: ScopeStackSnapshot
+}
 
-  // Serialize internal packages recursively
-  if (pkg.internalPackages) {
-    serialized.internalPackages = Array.from(
-      pkg.internalPackages.entries()
-    ).map(([id, innerPkg]) => [id, serializePackageForSave(innerPkg)])
+function relinkShadowData(g: SpatialGraph<Package, Wire>): void {
+  for (const [nodeId, parentNode] of g.nodes) {
+    const child = g.getChildGraph(nodeId)
+    if (!child) continue
+    const shadow = child.getNode(nodeId)
+    if (shadow && shadow.data !== parentNode.data) {
+      // GraphNode.data is typed `readonly` but the engine stores a plain
+      // object — overwrite the reference so cascade-owner mutations remain
+      // visible across both views.
+      ;(shadow as { data: Package }).data = parentNode.data
+    }
+    relinkShadowData(child)
   }
-
-  // Serialize internal wires
-  if (pkg.internalWires) {
-    serialized.internalWires = Array.from(pkg.internalWires.entries())
-  }
-
-  return serialized
 }
 
-/**
- * Validate and provide defaults for a package loaded from save.
- * Returns null if the data is too corrupted to recover.
- */
-function validatePackage(data: Record<string, unknown>): Package | null {
-  // Required fields that must exist
-  if (typeof data.id !== 'string' || data.id === '') {
-    console.warn('Package missing required id field')
-    return null
-  }
-
-  // Build a validated package with defaults for missing optional fields
-  const pkg: Package = {
-    // Required fields
-    id: data.id,
-
-    // Fields with sensible defaults
-    parentId: typeof data.parentId === 'string' ? data.parentId : null,
-    position: isValidPosition(data.position)
-      ? (data.position as Package['position'])
-      : { x: 0, y: 0 },
-    velocity: isValidVelocity(data.velocity)
-      ? (data.velocity as Package['velocity'])
-      : { vx: 0, vy: 0 },
-    state: isValidPackageState(data.state)
-      ? (data.state as PackageState)
-      : 'ready',
-    size: typeof data.size === 'number' && data.size >= 0 ? data.size : 10,
-    depth: typeof data.depth === 'number' && data.depth >= 0 ? data.depth : 0,
-    children: Array.isArray(data.children)
-      ? data.children.filter((c): c is string => typeof c === 'string')
-      : [],
-    installProgress:
-      typeof data.installProgress === 'number' ? data.installProgress : 1,
-    conflictProgress:
-      typeof data.conflictProgress === 'number' ? data.conflictProgress : 0,
-    identity: data.identity as Package['identity'], // PackageIdentity or undefined
-
-    // Scope system fields (null for inner deps)
-    internalPackages: null, // Restored separately
-    internalWires: null, // Restored separately
-    internalState: isValidInternalState(data.internalState)
-      ? (data.internalState as InternalState)
-      : null,
-
-    // Ghost status
-    isGhost: typeof data.isGhost === 'boolean' ? data.isGhost : false,
-    ghostTargetId:
-      typeof data.ghostTargetId === 'string' ? data.ghostTargetId : null,
-    ghostTargetScope:
-      typeof data.ghostTargetScope === 'string' ? data.ghostTargetScope : null,
-
-    // Depth rewards
-    isGolden: typeof data.isGolden === 'boolean' ? data.isGolden : false,
-    hasCacheFragment:
-      typeof data.hasCacheFragment === 'boolean'
-        ? data.hasCacheFragment
-        : false,
-    hasBeenEntered:
-      typeof data.hasBeenEntered === 'boolean' ? data.hasBeenEntered : false,
-  }
-
-  return pkg
-}
-
-function isValidPosition(pos: unknown): boolean {
-  return (
-    typeof pos === 'object' &&
-    pos !== null &&
-    typeof (pos as Record<string, unknown>).x === 'number' &&
-    typeof (pos as Record<string, unknown>).y === 'number'
-  )
-}
-
-function isValidVelocity(vel: unknown): boolean {
-  return (
-    typeof vel === 'object' &&
-    vel !== null &&
-    typeof (vel as Record<string, unknown>).vx === 'number' &&
-    typeof (vel as Record<string, unknown>).vy === 'number'
-  )
-}
-
-function isValidPackageState(state: unknown): boolean {
-  return (
-    state === 'installing' ||
-    state === 'ready' ||
-    state === 'conflict' ||
-    state === 'optimized'
-  )
-}
-
-function isValidInternalState(state: unknown): boolean {
-  return (
-    state === null ||
-    state === 'pristine' ||
-    state === 'unstable' ||
-    state === 'stable'
-  )
-}
-
-/**
- * Deserialize a package's internal Maps when loading.
- * Validates all fields and provides defaults for missing ones.
- */
-function deserializePackageFromSave(
-  data: Record<string, unknown>
-): Package | null {
-  // Validate and build the package with defaults
-  const pkg = validatePackage(data)
-  if (!pkg) {
-    return null
-  }
-
-  // Check if this package is a compressed package (has internal scope)
-  // A package with internalState set OR with internal arrays in save data is compressed
-  const isCompressedPackage =
-    pkg.internalState !== null ||
-    Array.isArray(data.internalPackages) ||
-    Array.isArray(data.internalWires)
-
-  // Restore internal packages recursively
-  const internalMap = new Map<string, Package>()
-  if (data.internalPackages && Array.isArray(data.internalPackages)) {
-    for (const entry of data.internalPackages) {
-      if (!Array.isArray(entry) || entry.length !== 2) continue
-      const [id, innerData] = entry as [unknown, unknown]
-      if (typeof id !== 'string') continue
-      if (typeof innerData !== 'object' || innerData === null) continue
-
-      const innerPkg = deserializePackageFromSave(
-        innerData as Record<string, unknown>
-      )
-      if (innerPkg) {
-        internalMap.set(id, innerPkg)
+/** Recompute scope-state labels from leaves up, so parent recalcs see
+ *  cached child states rather than `undefined`. The cache is cleared on
+ *  load, so this rebuilds it for every populated scope. */
+function rebuildScopeStateCache(): void {
+  function walk(path: string[]): void {
+    let g: SpatialGraph<Package, Wire> = graph
+    for (const id of path) {
+      const child = g.getChildGraph(id)
+      if (!child) return
+      g = child
+    }
+    const ownerId = path[path.length - 1]
+    for (const [id] of g.nodes) {
+      if (path.length > 0 && id === ownerId) continue
+      if (g.getChildGraph(id) !== null) {
+        walk([...path, id])
       }
     }
-  }
-
-  // Restore internal wires with validation
-  const wireMap = new Map<string, Wire>()
-  if (data.internalWires && Array.isArray(data.internalWires)) {
-    for (const entry of data.internalWires) {
-      if (!Array.isArray(entry) || entry.length !== 2) continue
-      const [id, wireData] = entry as [unknown, unknown]
-      if (typeof id !== 'string') continue
-      if (typeof wireData !== 'object' || wireData === null) continue
-
-      const wire = validateWire(wireData as Record<string, unknown>)
-      if (wire) {
-        wireMap.set(id, wire)
-      }
+    if (path.length > 0) {
+      stack.recalculateAt(path)
     }
   }
-
-  // Preserve empty Maps for compressed packages (pristine state before first entry)
-  // Only set to null for non-compressed packages (leaf nodes)
-  if (isCompressedPackage) {
-    pkg.internalPackages = internalMap
-    pkg.internalWires = wireMap
-    // Ensure internalState is set for compressed packages
-    if (!pkg.internalState) {
-      pkg.internalState = internalMap.size > 0 ? 'stable' : 'pristine'
-    }
-  } else {
-    pkg.internalPackages = null
-    pkg.internalWires = null
-  }
-
-  return pkg
+  walk([])
 }
 
-/**
- * Validate a wire loaded from save
- */
-function validateWire(data: Record<string, unknown>): Wire | null {
-  if (typeof data.id !== 'string' || data.id === '') return null
-  if (typeof data.fromId !== 'string') return null
-  if (typeof data.toId !== 'string') return null
-
-  return {
-    id: data.id,
-    fromId: data.fromId,
-    toId: data.toId,
-    wireType:
-      data.wireType === 'dependency' ||
-      data.wireType === 'symlink' ||
-      data.wireType === 'sibling'
-        ? data.wireType
-        : 'dependency',
-    flowProgress: typeof data.flowProgress === 'number' ? data.flowProgress : 0,
-    conflicted: typeof data.conflicted === 'boolean' ? data.conflicted : false,
-    conflictTime: typeof data.conflictTime === 'number' ? data.conflictTime : 0,
-  }
-}
-
-/**
- * Reset transient state that shouldn't persist across sessions.
- * Cascades and active automation are in-progress operations that
- * can't meaningfully resume after a load.
- */
 function resetTransientState(): void {
-  // Reset cascade state - can't resume mid-cascade after load
-  // (compressedIndices is a Set which doesn't serialize, and timing would be wrong)
   gameState.cascade = {
     active: false,
     scopePackageId: null,
     pendingSpawns: [],
     lastSpawnTime: 0,
     spawnInterval: 100,
-    guaranteedCrits: gameState.cascade.guaranteedCrits ?? 0, // Preserve earned crits
+    guaranteedCrits: gameState.cascade.guaranteedCrits ?? 0,
     scopePath: null,
     subDepQueue: null,
     compressedIndices: null,
     surgeGoldenBoost: 0,
     surgeFragmentBoost: 0,
-    // Tutorial pacing fields
     isStarterKit: false,
     isSecondPackage: false,
     isThirdPackage: false,
@@ -260,289 +112,74 @@ function resetTransientState(): void {
     breathStartTime: 0,
   }
 
-  // Reset active automation state (preserve toggle settings)
   gameState.automation.resolveActive = false
   gameState.automation.resolveTargetWireId = null
   gameState.automation.resolveTargetScope = null
   gameState.automation.processStartTime = 0
 }
 
-/**
- * Validate and fix scope state to prevent softlocks.
- * Ensures scopeStack only references packages that exist.
- */
-function validateScopeState(): void {
-  // Ensure scopeStack is an array
-  if (!Array.isArray(gameState.scopeStack)) {
-    gameState.scopeStack = []
-    gameState.currentScope = 'root'
-    return
-  }
-
-  // Validate each scope in the stack exists and has internal maps
-  const validatedStack: string[] = []
-  for (const scopeId of gameState.scopeStack) {
-    if (typeof scopeId !== 'string') break
-
-    // First level: check top-level packages
-    if (validatedStack.length === 0) {
-      const pkg = gameState.packages.get(scopeId)
-      if (!pkg || !pkg.internalPackages || !pkg.internalWires) break
-      validatedStack.push(scopeId)
-    } else {
-      // Deeper levels: traverse into internal packages
-      let current = gameState.packages.get(validatedStack[0]!)
-      for (let i = 1; i < validatedStack.length && current; i++) {
-        current = current.internalPackages?.get(validatedStack[i]!) ?? undefined
-      }
-      const innerPkg = current?.internalPackages?.get(scopeId)
-      if (!innerPkg || !innerPkg.internalPackages || !innerPkg.internalWires)
-        break
-      validatedStack.push(scopeId)
-    }
-  }
-
-  // Update scope state
-  gameState.scopeStack = validatedStack
-  gameState.currentScope =
-    validatedStack.length > 0
-      ? validatedStack[validatedStack.length - 1]!
-      : 'root'
-}
-
-/**
- * Fix interrupted cascade states.
- * If a scope is 'unstable' but empty/nearly empty (cascade was interrupted),
- * reset to 'pristine' so re-entering triggers a fresh cascade.
- */
-function fixInterruptedCascades(pkg: Package): void {
-  if (!pkg.internalPackages || !pkg.internalWires) return
-
-  // If unstable but empty, reset to pristine
-  if (pkg.internalState === 'unstable' && pkg.internalPackages.size === 0) {
-    pkg.internalState = 'pristine'
-  }
-
-  // Recursively check nested compressed packages
-  for (const innerPkg of pkg.internalPackages.values()) {
-    if (innerPkg.internalPackages) {
-      fixInterruptedCascades(innerPkg)
-    }
-  }
-}
-
-/**
- * Fix all interrupted cascades in the game state.
- */
-function fixAllInterruptedCascades(): void {
-  for (const pkg of gameState.packages.values()) {
-    if (pkg.internalPackages) {
-      fixInterruptedCascades(pkg)
-    }
-  }
-}
-
-/**
- * Migrate game state to ensure all required fields exist
- * Called after loading a save to handle backwards compatibility
- */
-function migrateGameState(): void {
-  // Ensure surge upgrade level exists
-  if (gameState.upgrades.surgeLevel === undefined) {
-    gameState.upgrades.surgeLevel = 0
-  }
-
-  // Ensure surge state exists
-  if (!gameState.surge) {
-    ;(gameState as Record<string, unknown>).surge = {
-      chargedSegments: 0,
-      unlockedSegments: 1 + gameState.upgrades.surgeLevel,
-    }
-  }
-
-  // Ensure surge state has all fields
-  if (gameState.surge.chargedSegments === undefined) {
-    gameState.surge.chargedSegments = 0
-  }
-  if (gameState.surge.unlockedSegments === undefined) {
-    gameState.surge.unlockedSegments = 1 + gameState.upgrades.surgeLevel
-  }
-
-  // ============================================
-  // PRESTIGE REWORK MIGRATIONS
-  // ============================================
-
-  // Rename totalPrestiges → timesShipped
-  const meta = gameState.meta as Record<string, unknown>
-  if (meta.totalPrestiges !== undefined) {
-    meta.timesShipped = meta.totalPrestiges
-    delete meta.totalPrestiges
-  }
-
-  // Ensure timesShipped exists
-  if (gameState.meta.timesShipped === undefined) {
-    ;(gameState.meta as Record<string, unknown>).timesShipped = 0
-  }
-
-  // Ensure new meta fields exist
-  if (gameState.meta.hasCollapsed === undefined) {
-    ;(gameState.meta as Record<string, unknown>).hasCollapsed = false
-  }
-  if (gameState.meta.endlessMode === undefined) {
-    ;(gameState.meta as Record<string, unknown>).endlessMode = false
-  }
-
-  // Ensure new stats exist
-  if (gameState.stats.peakEfficiency === undefined) {
-    ;(gameState.stats as Record<string, unknown>).peakEfficiency =
-      gameState.stats.currentEfficiency || 1
-  }
-  if (gameState.stats.totalWeight === undefined) {
-    ;(gameState.stats as Record<string, unknown>).totalWeight = 0
-  }
-
-  // Ensure maxWeightReached exists (initialize to current weight so existing progress counts)
-  if (gameState.stats.maxWeightReached === undefined) {
-    ;(gameState.stats as Record<string, unknown>).maxWeightReached =
-      gameState.resources.weight || 0
-  }
-
-  // Ensure combo system fields exist
-  if (gameState.stats.comboCount === undefined) {
-    ;(gameState.stats as Record<string, unknown>).comboCount = 0
-  }
-  if (gameState.stats.comboLastActionTime === undefined) {
-    ;(gameState.stats as Record<string, unknown>).comboLastActionTime = 0
-  }
-
-  // Ensure collapse hold state exists
-  if (!gameState.collapseHold) {
-    ;(gameState as Record<string, unknown>).collapseHold = {
-      isHolding: false,
-      startTime: 0,
-      progress: 0,
-      locked: false,
-      drainedTiers: 0,
-    }
-  }
-
-  // Ensure new onboarding flags exist
-  if (gameState.onboarding.firstSurgeCharged === undefined) {
-    ;(gameState.onboarding as Record<string, unknown>).firstSurgeCharged = false
-  }
-  if (gameState.onboarding.firstHighComboSeen === undefined) {
-    ;(gameState.onboarding as Record<string, unknown>).firstHighComboSeen =
-      false
-  }
-}
-
 export function saveGame(): string {
-  const saveData = {
+  const saveData: SaveData = {
     version: SAVE_VERSION,
-    ...gameState,
-    packages: Array.from(gameState.packages.entries()).map(([id, pkg]) => [
-      id,
-      serializePackageForSave(pkg),
-    ]),
-    wires: Array.from(gameState.wires.entries()),
+    state: structuredClone(gameState) as typeof gameState,
+    rootId: rootIdRef.value,
+    graph: graph.serialize(),
+    scope: stack.serialize(),
   }
   return JSON.stringify(saveData)
 }
 
 export function loadGame(saveString: string): boolean {
   try {
-    const data = JSON.parse(saveString)
+    const data = JSON.parse(saveString) as Partial<SaveData>
 
-    // Check save version - force reset if incompatible
-    if (!data.version || data.version < SAVE_VERSION) {
+    if (data.version !== SAVE_VERSION) {
       console.warn(
-        `Save version ${data.version || 'unknown'} is incompatible with current version ${SAVE_VERSION}. Resetting.`
+        `Save version ${data.version ?? 'unknown'} is incompatible with current version ${SAVE_VERSION}. Resetting.`
       )
       return false
     }
 
-    // Validate packages array exists
-    if (!Array.isArray(data.packages)) {
-      console.warn('Save data missing packages array')
-      return false
-    }
+    if (!data.graph) return false
 
-    // Restore packages with internal Maps, filtering out invalid ones
-    const packageMap = new Map<string, Package>()
-    let skippedPackages = 0
-
-    for (const entry of data.packages) {
-      if (!Array.isArray(entry) || entry.length !== 2) {
-        skippedPackages++
-        continue
-      }
-      const [id, pkgData] = entry as [unknown, unknown]
-      if (typeof id !== 'string') {
-        skippedPackages++
-        continue
-      }
-      if (typeof pkgData !== 'object' || pkgData === null) {
-        skippedPackages++
-        continue
-      }
-
-      const pkg = deserializePackageFromSave(pkgData as Record<string, unknown>)
-      if (pkg) {
-        packageMap.set(id, pkg)
-      } else {
-        skippedPackages++
+    // Reset existing state and rebuild from snapshot.
+    resetGraphAndStack()
+    clearCascadeQueue()
+    resetCrossPackageState()
+    resetPhysicsState()
+    resetMomentumState()
+    graph.restore(data.graph)
+    // Re-link shadow scope-owner nodes back to their parent-graph data so
+    // mutations through one are visible to the other (the snapshot path
+    // serialized them as separate objects).
+    relinkShadowData(graph)
+    if (data.scope) {
+      try {
+        stack.restore(data.scope)
+      } catch (e) {
+        console.warn('ScopeStack restore failed; resetting to root.', e)
+        stack.exitToRoot()
       }
     }
 
-    if (skippedPackages > 0) {
-      console.warn(`Skipped ${skippedPackages} invalid packages during load`)
+    rootIdRef.value = data.rootId ?? null
+
+    if (data.state) {
+      Object.assign(gameState, data.state)
     }
 
-    data.packages = packageMap
-
-    // Validate and restore wires, filtering out invalid ones
-    if (Array.isArray(data.wires)) {
-      const wireMap = new Map<string, Wire>()
-      for (const entry of data.wires) {
-        if (!Array.isArray(entry) || entry.length !== 2) continue
-        const [id, wireData] = entry as [unknown, unknown]
-        if (typeof id !== 'string') continue
-        if (typeof wireData !== 'object' || wireData === null) continue
-
-        const wire = validateWire(wireData as Record<string, unknown>)
-        if (wire) {
-          wireMap.set(id, wire)
-        }
-      }
-      data.wires = wireMap
-    } else {
-      data.wires = new Map()
-    }
-
-    // Remove version from data before assigning (not part of GameState)
-    delete data.version
-
-    Object.assign(gameState, data)
-
-    // Migrate missing fields for backwards compatibility
-    migrateGameState()
-
-    // Initialize RNG with loaded seed (or generate new one if missing)
     if (!gameState.seed) {
       gameState.seed = Date.now()
     }
     seedRNG(gameState.seed)
 
-    // Reset transient state that can't persist (cascades, active automation)
+    // Re-seed ID counters past the highest serialized id.
+    syncIdCountersFromGraph()
+
     resetTransientState()
 
-    // Fix interrupted cascades (empty unstable scopes -> pristine)
-    fixAllInterruptedCascades()
+    rebuildScopeStateCache()
 
-    // Validate scope references to prevent softlocks
-    validateScopeState()
-
-    // Sync derived values after loading
     syncEcosystemTier()
 
     return true
@@ -552,7 +189,10 @@ export function loadGame(saveString: string): boolean {
   }
 }
 
-// localStorage wrappers
+// ============================================
+// LOCALSTORAGE WRAPPERS
+// ============================================
+
 export function saveToLocalStorage(): boolean {
   try {
     const saveString = saveGame()

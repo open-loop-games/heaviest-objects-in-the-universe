@@ -1,17 +1,17 @@
 // Package query functions - scope-aware where applicable
 
-import { gameState } from './state'
+import { graph } from './state'
 import {
   getCurrentScopePackages,
   getCurrentScopeRoot,
   isInPackageScope,
+  isPackageCompressed,
 } from './scope'
 import type { Package, Position } from './types'
 import { getNodeRadius } from '../rendering/nodes'
 
 /**
- * Check if position hits any badge on a package
- * Badges: drill-down (bottom), cache fragment (left)
+ * Check if position hits any badge on a package.
  */
 function hitsBadge(
   pos: Position,
@@ -20,10 +20,10 @@ function hitsBadge(
   pkg: Package
 ): boolean {
   const nodeRadius = getNodeRadius(pkg)
-  const badgeRadius = 10 // Slightly generous for easier clicking
+  const badgeRadius = 10
 
   // Drill-down badge (bottom) - for packages with internal scope
-  if (pkg.internalPackages !== null) {
+  if (isPackageCompressed(pkg)) {
     const badgeY = pkgY + nodeRadius + 6
     const dx = pkgX - pos.x
     const dy = badgeY - pos.y
@@ -46,14 +46,13 @@ function hitsBadge(
 }
 
 /**
- * Find package at screen position (for click detection)
- * SCOPE-AWARE: Searches current scope's packages (works at any depth)
+ * Find package at screen position (for click detection).
+ * Searches the current scope.
  */
 export function findPackageAtPosition(
   pos: Position,
   radius: number = 30
 ): Package | null {
-  // When in package scope, check the scope root (rendered at 0,0) and its internal packages
   if (isInPackageScope()) {
     const scopeRoot = getCurrentScopeRoot()
     if (scopeRoot) {
@@ -66,7 +65,6 @@ export function findPackageAtPosition(
       }
     }
 
-    // Search internal packages in current scope
     const scopePackages = getCurrentScopePackages()
     for (const pkg of scopePackages.values()) {
       const dx = pkg.position.x - pos.x
@@ -82,8 +80,9 @@ export function findPackageAtPosition(
     return null
   }
 
-  // Root scope: search main packages
-  for (const pkg of gameState.packages.values()) {
+  // Root scope
+  for (const node of graph.nodes.values()) {
+    const pkg = node.data
     const dx = pkg.position.x - pos.x
     const dy = pkg.position.y - pos.y
     const dist = Math.sqrt(dx * dx + dy * dy)
@@ -96,26 +95,28 @@ export function findPackageAtPosition(
 }
 
 /**
- * Get conflict and duplicate counts for a package's internal tree
+ * Get conflict and duplicate counts for a top-level package's internal tree.
  */
 export function getInternalStats(packageId: string): {
   conflicts: number
   duplicates: number
 } {
-  const pkg = gameState.packages.get(packageId)
-  if (!pkg || !pkg.internalPackages || !pkg.internalWires) {
+  const child = graph.getChildGraph(packageId)
+  if (!child) {
     return { conflicts: 0, duplicates: 0 }
   }
 
   let conflicts = 0
-  for (const wire of pkg.internalWires.values()) {
-    if (wire.conflicted) conflicts++
+  for (const edge of child.edges.values()) {
+    if (edge.data.conflicted) conflicts++
   }
 
   const identityCounts = new Map<string, number>()
-  for (const innerPkg of pkg.internalPackages.values()) {
-    if (innerPkg.identity && !innerPkg.isGhost) {
-      const name = innerPkg.identity.name
+  for (const [id, node] of child.nodes) {
+    if (id === packageId) continue // skip shadow
+    const pkg = node.data
+    if (pkg.identity && !pkg.isGhost) {
+      const name = pkg.identity.name
       identityCounts.set(name, (identityCounts.get(name) || 0) + 1)
     }
   }

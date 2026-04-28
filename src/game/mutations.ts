@@ -1,6 +1,5 @@
-// State mutation helpers
+// State mutation helpers — graph + scope aware
 
-import type { Package, Wire } from './types'
 import {
   MOMENTUM_PACKAGE_RESOLVE,
   MOMENTUM_CONFLICT_RESOLVE,
@@ -16,12 +15,19 @@ import {
   MOMENTUM_DAMPENING_FLOOR,
   COMBO_MAX,
 } from './config'
-import { calculateEfficiency, calculateStabilityRatio } from './formulas'
-import { gameState } from './state'
+import {
+  EFFICIENCY_BASE,
+  EFFICIENCY_SCALE_ANCHOR,
+  countScopeDuplicates,
+} from './formulas'
+import { gameState, generateWireId, graph, rootIdRef, stack } from './state'
 import { getEcosystemTier } from './formulas'
+import type { Package, Wire } from './types'
+import type { SpatialGraph } from 'open-loop-engine'
 import {
   getCurrentScopePackages,
   getCurrentScopeWires,
+  getGraphAtPath,
   isInPackageScope,
 } from './scope'
 import { emit, on } from './events'
@@ -33,15 +39,87 @@ import { cleanupConflictTracking, checkAchievements } from './achievements'
 // Use emit('quality:efficiency-improved', ...) etc.
 
 // ============================================
+// SCOPE WALKING (graph-aware)
+// ============================================
+
+function* iterateEnteredScopes(): Generator<{
+  path: string[]
+  graph: SpatialGraph<Package, Wire>
+  ownerId: string
+}> {
+  function* walk(
+    parent: SpatialGraph<Package, Wire>,
+    parentPath: string[]
+  ): Generator<{
+    path: string[]
+    graph: SpatialGraph<Package, Wire>
+    ownerId: string
+  }> {
+    for (const [nodeId] of parent.nodes) {
+      // Skip the shadow scope-owner inside a child graph.
+      if (
+        parentPath.length > 0 &&
+        nodeId === parentPath[parentPath.length - 1]
+      ) {
+        continue
+      }
+      const child = parent.getChildGraph(nodeId)
+      if (!child) continue
+      const path = [...parentPath, nodeId]
+      // Populated child graphs have shadow + at least one inner dep.
+      if (child.nodes.size > 1) {
+        yield { path, graph: child, ownerId: nodeId }
+      }
+      yield* walk(child, path)
+    }
+  }
+  yield* walk(graph, [])
+}
+
+export function calculateEfficiency(): number {
+  let totalDuplicates = 0
+  let totalConflicts = 0
+  let totalPackages = 0
+
+  for (const { graph: scopeGraph, ownerId } of iterateEnteredScopes()) {
+    const { duplicates, total } = countScopeDuplicates(scopeGraph, ownerId)
+    totalDuplicates += duplicates
+    totalPackages += total
+
+    for (const edge of scopeGraph.edges.values()) {
+      if (edge.data.conflicted) totalConflicts++
+    }
+  }
+
+  if (totalPackages === 0) return 1
+
+  const scale =
+    Math.log10(totalPackages + 10) / Math.log10(EFFICIENCY_SCALE_ANCHOR)
+  const problems = totalDuplicates + totalConflicts
+  const efficiency = Math.pow(EFFICIENCY_BASE, problems / scale)
+
+  return Math.max(0, Math.min(1, efficiency))
+}
+
+export function calculateStabilityRatio(): number {
+  let entered = 0
+  let stable = 0
+  for (const { path } of iterateEnteredScopes()) {
+    entered++
+    if (stack.stateAt(path) === 'stable') stable++
+  }
+  if (entered === 0) return 1
+  return stable / entered
+}
+
+// ============================================
 // EFFICIENCY TRACKING (for tier-up detection)
 // ============================================
 
-/** Check efficiency changes and emit events if needed */
 function checkEfficiencyChange(newEfficiency: number): void {
   const { tierChanged, oldTier, newTier, delta } =
     updateEfficiencyTracking(newEfficiency)
 
-  // Emit tier-up event if tier improved
   const oldRank = getEfficiencyTierRank(oldTier)
   const newRank = getEfficiencyTierRank(newTier)
 
@@ -49,7 +127,6 @@ function checkEfficiencyChange(newEfficiency: number): void {
     emit('quality:efficiency-tier-up', { oldTier, newTier })
   }
 
-  // Emit improvement event if efficiency increased significantly (>1%)
   if (delta > 0.01) {
     emit('quality:efficiency-improved', {
       delta,
@@ -60,10 +137,9 @@ function checkEfficiencyChange(newEfficiency: number): void {
 }
 
 // ============================================
-// COMBO SYSTEM (Resolution speed → weight retention)
+// COMBO SYSTEM
 // ============================================
 
-/** Increment combo counter on resolve/merge actions */
 export function incrementCombo(): void {
   gameState.stats.comboCount = Math.min(
     gameState.stats.comboCount + 1,
@@ -71,7 +147,6 @@ export function incrementCombo(): void {
   )
   gameState.stats.comboLastActionTime = Date.now()
 
-  // Trigger teaching book unlock at combo 5
   if (
     gameState.stats.comboCount >= 5 &&
     !gameState.onboarding.firstHighComboSeen
@@ -84,7 +159,6 @@ export function incrementCombo(): void {
 // MOMENTUM SYSTEM (Activity-driven BW generation)
 // ============================================
 
-// Track recent generation for dampening calculation
 interface GenerationEvent {
   amount: number
   timestamp: number
@@ -94,7 +168,6 @@ const recentGeneration: GenerationEvent[] = []
 
 function cleanOldEvents(): void {
   const cutoff = Date.now() - MOMENTUM_DAMPENING_WINDOW
-  // Use optional chaining for safety (though length check makes it safe)
   while (recentGeneration[0] && recentGeneration[0].timestamp < cutoff) {
     recentGeneration.shift()
   }
@@ -121,6 +194,12 @@ function recordGeneration(amount: number): void {
   recentGeneration.push({ amount, timestamp: Date.now() })
 }
 
+/** Clear momentum dampening history. Call on ship / prestige / load so a
+ *  fresh run isn't immediately throttled by the previous run's events. */
+export function resetMomentumState(): void {
+  recentGeneration.length = 0
+}
+
 function getMomentumTierMultiplier(): number {
   const tier = getEcosystemTier(gameState.meta.cacheTokens)
   return MOMENTUM_TIER_MULTIPLIERS[tier] ?? 1.0
@@ -144,14 +223,12 @@ function generateBandwidth(
   return actualAmount
 }
 
-/** Generate BW when a package finishes installing */
 export function onPackageResolved(): number {
   const amount = generateBandwidth(MOMENTUM_PACKAGE_RESOLVE)
   emit('game:package-resolved', { amount })
   return amount
 }
 
-/** Generate BW when a conflict is manually resolved */
 export function onConflictResolved(position?: {
   x: number
   y: number
@@ -162,7 +239,6 @@ export function onConflictResolved(position?: {
   return amount
 }
 
-/** Generate BW when packages are merged via symlink */
 export function onSymlinkMerged(
   weightSaved: number,
   position: { x: number; y: number }
@@ -173,14 +249,12 @@ export function onSymlinkMerged(
   return amount
 }
 
-/** Generate BW burst when a scope stabilizes */
 export function onScopeStabilized(packageCount: number): number {
   const baseAmount =
     MOMENTUM_STABILIZE_BASE + packageCount * MOMENTUM_STABILIZE_PER_PKG
   const upgradeBonus = getStabilizationBonus()
 
-  const scopeId =
-    gameState.scopeStack[gameState.scopeStack.length - 1] ?? 'root'
+  const scopeId = stack.path[stack.path.length - 1] ?? 'root'
 
   const amount = generateBandwidth(Math.floor(baseAmount * upgradeBonus))
   emit('game:scope-stabilized', { amount, scopeId, packageCount })
@@ -188,27 +262,23 @@ export function onScopeStabilized(packageCount: number): number {
   return amount
 }
 
-/** Generate BW when a golden package spawns */
 export function onGoldenSpawned(): number {
   const amount = generateBandwidth(MOMENTUM_GOLDEN_SPAWN, false)
   emit('game:golden-spawned', { amount })
   return amount
 }
 
-/** Generate BW when a cache fragment is collected */
 export function onFragmentCollected(): number {
   const amount = generateBandwidth(MOMENTUM_FRAGMENT_COLLECT, false)
   emit('game:fragment-collected', { amount })
   return amount
 }
 
-/** Get safety regen rate (BW/sec) - minimal passive to prevent soft-lock */
 export function getSafetyRegenRate(): number {
   const tier = getEcosystemTier(gameState.meta.cacheTokens)
   return SAFETY_REGEN_BY_TIER[tier] ?? 2
 }
 
-/** Apply safety regen for a time delta (called from game loop) */
 export function applySafetyRegen(deltaTime: number): void {
   const regenRate = getSafetyRegenRate()
   gameState.resources.bandwidth = Math.min(
@@ -221,11 +291,6 @@ export function applySafetyRegen(deltaTime: number): void {
 // WEIGHT HELPERS
 // ============================================
 
-/**
- * Add weight with compression multiplier applied
- * @param baseWeight The base weight to add
- * @returns The actual weight added (after multiplier)
- */
 export function addWeight(baseWeight: number): number {
   const finalWeight = baseWeight * getCompressionMultiplier()
   gameState.resources.weight += finalWeight
@@ -237,76 +302,147 @@ export function addWeight(baseWeight: number): number {
 }
 
 // ============================================
-// PACKAGE MUTATIONS
+// PACKAGE / WIRE MUTATIONS (graph-aware)
 // ============================================
 
-export function addPackage(pkg: Package): void {
-  gameState.packages.set(pkg.id, pkg)
+/**
+ * Add a top-level package to the root graph. The wire from rootId to this
+ * package is created automatically. The package's child graph is created
+ * empty with a shadow node so cascade can wire owner→deps inside.
+ */
+export function addTopLevelPackage(pkg: Package, rootId: string): void {
+  graph.addNode(pkg, { id: pkg.id })
+  const wireId = generateWireId()
+  graph.addEdge(rootId, pkg.id, makeDependencyWire(wireId, rootId, pkg.id), {
+    id: wireId,
+  })
+  // Top-level packages always have an internal scope (compressed seed).
+  ensureChildGraphWithShadow(graph, pkg)
+  // Seed the scope-state cache so the renderer can read 'pristine' for the
+  // portal ring + drill-down badge before the player first dives in.
+  stack.recalculateAt([pkg.id])
   addWeight(pkg.size)
   gameState.stats.totalPackagesInstalled++
 }
 
-export function removePackage(id: string): void {
-  // NEVER delete the root node
-  if (id === gameState.rootId) {
+/**
+ * Add the root (package.json) node to the root graph. No wire (it's the
+ * root) and no child graph.
+ */
+export function addRootPackage(pkg: Package): void {
+  graph.addNode(pkg, { id: pkg.id })
+  addWeight(pkg.size)
+  gameState.stats.totalPackagesInstalled++
+}
+
+/**
+ * Attach a node + parent dep-edge to an existing scope graph and, if the
+ * node is itself compressed, ensure its child graph + seed the scope-state
+ * cache. Returns the wire id and the resolved scope graph.
+ *
+ * This is the canonical primitive for "put this package into that scope" —
+ * cascade and addInnerPackage both route through it so the seed-cache step
+ * can't be missed. Callers handle their own weight bookkeeping, stats, and
+ * any package-state mutation downstream of attachment.
+ */
+export function attachNodeToScope(
+  scopePath: readonly string[],
+  pkg: Package,
+  parentInScopeId: string,
+  isCompressed: boolean,
+  conflicted: boolean
+): { wireId: string; scopeGraph: SpatialGraph<Package, Wire> } {
+  const scopeGraph = getGraphAtPath(scopePath)
+  if (!scopeGraph) {
+    throw new Error(
+      `attachNodeToScope: scope path does not resolve: ${scopePath.join('/')}`
+    )
+  }
+  scopeGraph.addNode(pkg, { id: pkg.id })
+  const wireId = generateWireId()
+  const wire = makeDependencyWire(wireId, parentInScopeId, pkg.id)
+  if (conflicted) {
+    wire.conflicted = true
+    wire.conflictTime = Date.now()
+  }
+  scopeGraph.addEdge(parentInScopeId, pkg.id, wire, { id: wireId })
+  if (isCompressed) {
+    ensureChildGraphWithShadow(scopeGraph, pkg)
+    stack.recalculateAt([...scopePath, pkg.id])
+  }
+  return { wireId, scopeGraph }
+}
+
+/**
+ * Add an inner-scope package to the given scope's child graph. Creates the
+ * wire from the parent (scope owner if `parentInScopeId === scopeOwnerId`,
+ * or another inner pkg for sub-deps). If the package itself is compressed,
+ * its own child graph + shadow are created.
+ */
+export function addInnerPackage(
+  scopePath: readonly string[],
+  pkg: Package,
+  parentInScopeId: string,
+  isCompressed: boolean,
+  conflicted: boolean
+): void {
+  if (scopePath.length === 0) {
+    throw new Error('addInnerPackage requires a non-empty scope path')
+  }
+  attachNodeToScope(scopePath, pkg, parentInScopeId, isCompressed, conflicted)
+  addWeight(pkg.size)
+  gameState.stats.totalPackagesInstalled++
+}
+
+/** Create a child graph for `pkg` and add a shadow node mirroring its data. */
+export function ensureChildGraphWithShadow(
+  parent: SpatialGraph<Package, Wire>,
+  pkg: Package
+): SpatialGraph<Package, Wire> {
+  let child = parent.getChildGraph(pkg.id)
+  if (!child) child = parent.createChildGraph(pkg.id)
+  if (!child.getNode(pkg.id)) {
+    child.addNode(pkg, { id: pkg.id })
+  }
+  return child
+}
+
+function makeDependencyWire(id: string, fromId: string, toId: string): Wire {
+  return {
+    id,
+    fromId,
+    toId,
+    wireType: 'dependency',
+    flowProgress: 0,
+    conflicted: false,
+    conflictTime: 0,
+  }
+}
+
+/** Remove a package from the root graph (top-level only). Cascades to
+ *  attached wires and any child graph it owns. Caller is responsible for
+ *  any weight adjustment beyond the node itself — typical use is to
+ *  pre-compute the subtree weight and subtract before calling this. */
+export function removeTopLevelPackage(id: string): void {
+  if (id === rootIdRef.value) {
     console.error('Attempted to remove root package!')
     return
   }
-
-  const pkg = gameState.packages.get(id)
-  if (pkg) {
-    gameState.resources.weight -= pkg.size
-    gameState.packages.delete(id)
-
-    // Remove associated wires
-    for (const [wireId, wire] of gameState.wires) {
-      if (wire.fromId === id || wire.toId === id) {
-        gameState.wires.delete(wireId)
-      }
-    }
-  }
+  const node = graph.getNode(id)
+  if (!node) return
+  graph.removeNode(id)
 }
 
-/**
- * Remove a package and all of its descendants recursively
- */
-export function removePackageWithSubtree(id: string): void {
-  const pkg = gameState.packages.get(id)
-  if (!pkg) return
-
-  // Recursively remove all children first
-  for (const childId of [...pkg.children]) {
-    removePackageWithSubtree(childId)
-  }
-
-  // Remove from parent's children list
-  if (pkg.parentId) {
-    const parent = gameState.packages.get(pkg.parentId)
-    if (parent) {
-      parent.children = parent.children.filter((cid) => cid !== id)
-    }
-  }
-
-  // Remove the package itself
-  removePackage(id)
-}
-
-// ============================================
-// WIRE MUTATIONS
-// ============================================
-
-export function addWire(wire: Wire): void {
-  gameState.wires.set(wire.id, wire)
-  if (wire.wireType === 'symlink') {
-    gameState.stats.totalSymlinksCreated++
-  }
-}
-
-/**
- * Remove a wire by ID
- */
-export function removeWire(id: string): void {
-  gameState.wires.delete(id)
+/** Remove a package from a specific scope (and cascade to its descendants).
+ *  Caller handles weight bookkeeping. */
+export function removeInnerPackage(
+  scopePath: readonly string[],
+  id: string
+): void {
+  const g = getGraphAtPath(scopePath)
+  if (!g) return
+  if (!g.getNode(id)) return
+  g.removeNode(id)
 }
 
 // ============================================
@@ -314,20 +450,15 @@ export function removeWire(id: string): void {
 // ============================================
 
 export function updateEfficiency(): void {
-  const newEfficiency = calculateEfficiency(gameState)
+  const newEfficiency = calculateEfficiency()
   gameState.stats.currentEfficiency = newEfficiency
-  // Check for tier-up events (emits quality events for UI juice)
   checkEfficiencyChange(newEfficiency)
 }
 
 export function updateStability(): void {
-  gameState.stats.currentStability = calculateStabilityRatio(gameState)
+  gameState.stats.currentStability = calculateStabilityRatio()
 }
 
-/**
- * Resolve a conflict on a package
- * SCOPE-AWARE: Works for both outer packages and internal packages
- */
 export function resolveConflict(packageId: string): void {
   const packages = getCurrentScopePackages()
   const pkg = packages.get(packageId)
@@ -340,27 +471,17 @@ export function resolveConflict(packageId: string): void {
   }
 }
 
-/**
- * Get the cost to resolve a conflict
- * Momentum loop: Conflicts are FREE to resolve (generates BW instead)
- */
 export function getConflictResolveCost(): number {
-  return 0 // Free in momentum loop - generates BW instead
+  return 0
 }
 
-/**
- * Check if we can afford to resolve a conflict
- * Always true in momentum loop (no cost)
- */
 export function canAffordConflictResolve(): boolean {
-  return true // Always affordable in momentum loop
+  return true
 }
 
 /**
- * Resolve a conflict on a wire
- * SCOPE-AWARE: Works for both outer wires and internal wires
- * Momentum loop: Generates bandwidth instead of costing
- * Returns false if wire doesn't exist or isn't conflicted
+ * Resolve a wire conflict in the current scope. Returns false if the wire
+ * doesn't exist or isn't conflicted.
  */
 export function resolveWireConflict(wireId: string): boolean {
   const wires = getCurrentScopeWires()
@@ -369,20 +490,13 @@ export function resolveWireConflict(wireId: string): boolean {
   const wire = wires.get(wireId)
   if (!wire || !wire.conflicted) return false
 
-  // Reset ghost hand hint timers on meaningful player action
   emit('player:action')
-
-  // Clean up conflict tracking
   cleanupConflictTracking(wireId)
-
-  // Momentum loop: Generate bandwidth for manual conflict resolution
   onConflictResolved()
 
-  // Mark wire as resolved
   wire.conflicted = false
   wire.conflictTime = 0
 
-  // Find the conflicted package and mark it as ready
   const targetPkg = packages.get(wire.toId)
   if (targetPkg && targetPkg.state === 'conflict') {
     targetPkg.state = 'ready'
@@ -390,17 +504,14 @@ export function resolveWireConflict(wireId: string): boolean {
     gameState.stats.totalConflictsResolved++
   }
 
-  // Mark first inner conflict as seen for onboarding
   if (isInPackageScope() && !gameState.onboarding.firstInnerConflictSeen) {
     gameState.onboarding.firstInnerConflictSeen = true
   }
 
-  // Check achievements after conflict resolution
   checkAchievements()
 
-  // Emit event for scope state recalculation
   if (isInPackageScope()) {
-    emit('scope:recalculate', { scopePath: [...gameState.scopeStack] })
+    emit('scope:recalculate', { scopePath: [...stack.path] })
   }
 
   return true
@@ -410,11 +521,6 @@ export function resolveWireConflict(wireId: string): boolean {
 // CACHE FRAGMENT COLLECTION
 // ============================================
 
-/**
- * Collect a cache fragment from a package
- * @param packageId The package to collect from
- * @returns true if collection succeeded
- */
 export function collectCacheFragment(packageId: string): boolean {
   const packages = getCurrentScopePackages()
   const pkg = packages.get(packageId)
@@ -434,7 +540,6 @@ export function collectCacheFragment(packageId: string): boolean {
 // EVENT SUBSCRIPTIONS
 // ============================================
 
-// Handle scope stabilization event (decouples scope → mutations)
 on('scope:stabilized', ({ packageCount }) => {
   onScopeStabilized(packageCount)
 })

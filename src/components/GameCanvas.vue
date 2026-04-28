@@ -16,7 +16,14 @@ import {
   onTick,
   setCameraTarget,
 } from '../game/loop'
-import { gameState, userSettings } from '../game/state'
+import {
+  gameState,
+  graph,
+  graphRevision,
+  rootIdRef,
+  stack,
+  userSettings,
+} from '../game/state'
 import {
   setActionPreview,
   startDrag,
@@ -26,16 +33,18 @@ import {
 import { TouchInputHandler, type HitTestResult } from '../input/touch-input'
 import {
   isInPackageScope,
+  isRootPackage,
+  isTopLevelPackage,
   getCurrentScopeWires,
   getCurrentScopePackages,
   getCurrentScopeRoot,
+  getGraphAtPath,
   isPackageCompressed,
   exitScope,
   exitToRoot,
 } from '../game/scope'
 import {
-  removePackageWithSubtree,
-  removeWire,
+  removeTopLevelPackage,
   canAffordConflictResolve,
   collectCacheFragment,
 } from '../game/mutations'
@@ -113,7 +122,10 @@ const eventUnsubscribers: Array<() => void> = []
 
 // Clear wire selection when scope changes (exiting inner scope)
 watch(
-  () => gameState.currentScope,
+  () => {
+    void graphRevision.value
+    return stack.currentNodeId
+  },
   () => {
     if (selectedWireId.value) {
       clearWireSelection()
@@ -123,6 +135,7 @@ watch(
 
 // Computed: selected wire data (scope-aware, including sibling wires)
 const selectedWire = computed(() => {
+  void graphRevision.value
   if (!selectedWireId.value) return null
   // Get wire from current scope (outer wires or internal wires)
   const wires = getCurrentScopeWires()
@@ -156,8 +169,9 @@ const canAffordUpgrade = computed(() => {
 
 // Computed: has upgrade path
 const hasUpgradePath = computed(() => {
+  void graphRevision.value
   if (!selectedWire.value) return false
-  const toPkg = gameState.packages.get(selectedWire.value.toId)
+  const toPkg = stack.current.getNode(selectedWire.value.toId)?.data
   if (!toPkg?.identity) return false
   return !!getUpgradePath(toPkg.identity.name)
 })
@@ -200,7 +214,7 @@ onMounted(async () => {
     // Try to load saved game
     const loaded = loadFromLocalStorage()
 
-    if (!loaded || !gameState.rootId) {
+    if (!loaded || !rootIdRef.value) {
       // Fresh game - play intro animation before creating root
       playIntroAnimation()
       // Auto-open teaching book for new players (15 sec then auto-close)
@@ -239,10 +253,10 @@ onMounted(async () => {
         string,
         { position: { x: number; y: number }; depth: number }
       >()
-      for (const pkg of gameState.packages.values()) {
-        packageMap.set(pkg.id, {
-          position: { x: pkg.position.x, y: pkg.position.y },
-          depth: pkg.depth,
+      for (const node of graph.nodes.values()) {
+        packageMap.set(node.data.id, {
+          position: { x: node.data.position.x, y: node.data.position.y },
+          depth: node.data.depth,
         })
       }
       renderer.getEffectsRenderer().startShipAnimation(packageMap, onComplete)
@@ -280,7 +294,7 @@ onMounted(async () => {
     // Subscribe to gravity pull particle requests (from PrestigeOrbit when ship ready)
     const unsubGravityPull = on('gravity:pull-particle', () => {
       // Pick a random visible package and spawn particle from its screen position
-      const packages = Array.from(gameState.packages.values())
+      const packages = Array.from(graph.nodes.values()).map((n) => n.data)
       if (packages.length === 0) return
 
       const pkg = packages[Math.floor(Math.random() * packages.length)]
@@ -358,7 +372,7 @@ onMounted(async () => {
 
       const effects = renderer.getEffectsRenderer()
       // Only iterate packages in current scope - visual effects only matter for visible packages
-      const scopePackages = toRaw(getCurrentScopePackages())
+      const scopePackages = getCurrentScopePackages()
 
       for (const pkg of scopePackages.values()) {
         const prevState = previousPackageStates.get(pkg.id)
@@ -494,7 +508,7 @@ function handleMouseDown(event: MouseEvent) {
     // When inside a scope, the scope root is rendered at (0,0)
     const effects = renderer.getEffectsRenderer()
     const isClickedScopeRoot =
-      isInPackageScope() && clickedPkg.id === gameState.currentScope
+      isInPackageScope() && clickedPkg.id === stack.currentNodeId
     const rippleX = isClickedScopeRoot ? 0 : clickedPkg.position.x
     const rippleY = isClickedScopeRoot ? 0 : clickedPkg.position.y
     effects.spawnRipple(rippleX, rippleY, Colors.borderInstalling)
@@ -550,7 +564,7 @@ function handleMouseDown(event: MouseEvent) {
       }
 
       // At root scope: Check if clicking a top-level package - enter its scope
-      if (!isInPackageScope() && clickedPkg.parentId === gameState.rootId) {
+      if (!isInPackageScope() && isTopLevelPackage(clickedPkg.id)) {
         if (enterPackageScope(clickedPkg.id)) {
           // Smooth camera transition to center
           setCameraTarget(0, 0)
@@ -570,7 +584,7 @@ function handleMouseDown(event: MouseEvent) {
       // Inside scope: non-compressed, non-duplicate leaf nodes wiggle (can't be dragged or entered)
       if (
         isInPackageScope() &&
-        clickedPkg.id !== gameState.currentScope &&
+        clickedPkg.id !== stack.currentNodeId &&
         !isPackageCompressed(clickedPkg)
       ) {
         triggerWiggle(clickedPkg.id)
@@ -579,12 +593,12 @@ function handleMouseDown(event: MouseEvent) {
 
       // When inside a scope, clicking the scope root does nothing
       // (inner scope is for cleanup, not installing)
-      if (isInPackageScope() && clickedPkg.id === gameState.currentScope) {
+      if (isInPackageScope() && clickedPkg.id === stack.currentNodeId) {
         return // No installing inside packages - that's not how npm works!
       }
 
       // Only allow installing from root node (package.json) at root scope
-      const isRoot = clickedPkg.parentId === null
+      const isRoot = isRootPackage(clickedPkg.id)
       if (!isRoot) {
         return // Can only install from root package.json
       }
@@ -674,43 +688,50 @@ function updateWireActionPosition() {
 }
 
 /**
- * Recursively remove an internal package and all its descendants
+ * Sum the total weight contribution of a subtree (= what to subtract from
+ * `gameState.resources.weight` when the subtree is removed).
+ *
+ * Cascade does `targetPkg.size += finalSize` to make compressed scope-owners
+ * grow visually, so `node.size` for a scope owner = its intrinsic + sum of
+ * direct children's intrinsics. Naive summing of `.size` across a subtree
+ * therefore double-counts every non-root node. We recover each node's
+ * intrinsic bottom-up: leaf.intrinsic = leaf.size; internal.intrinsic =
+ * internal.size − sum(direct children intrinsics).
  */
-function removeInternalPackageWithSubtree(
-  scopePkg: Package,
-  packageId: string
-): void {
-  if (!scopePkg.internalPackages || !scopePkg.internalWires) return
+function sumSubtreeSize(
+  scopeGraph: ReturnType<typeof getGraphAtPath> | typeof graph,
+  rootId: string
+): number {
+  if (!scopeGraph) return 0
+  let total = 0
+  const visited = new Set<string>()
+  function walk(g: typeof scopeGraph, id: string): number {
+    if (!g) return 0
+    if (visited.has(id)) return 0
+    visited.add(id)
+    const node = g.getNode(id)
+    if (!node) return 0
 
-  const pkg = scopePkg.internalPackages.get(packageId)
-  if (!pkg) return
-
-  // Recursively remove all children first
-  for (const childId of [...pkg.children]) {
-    removeInternalPackageWithSubtree(scopePkg, childId)
-  }
-
-  // Remove from parent's children list
-  if (pkg.parentId && pkg.parentId !== gameState.currentScope) {
-    const parent = scopePkg.internalPackages.get(pkg.parentId)
-    if (parent) {
-      parent.children = parent.children.filter((cid) => cid !== packageId)
+    let directIntrinsicSum = 0
+    const child = g.getChildGraph(id)
+    if (child) {
+      for (const [innerId] of child.nodes) {
+        if (innerId === id) continue
+        directIntrinsicSum += walk(child, innerId)
+      }
     }
-  }
+    const myIntrinsic = node.data.size - directIntrinsicSum
+    total += myIntrinsic
 
-  // Remove associated internal wires
-  for (const [wireId, wire] of scopePkg.internalWires) {
-    if (wire.fromId === packageId || wire.toId === packageId) {
-      scopePkg.internalWires.delete(wireId)
+    for (const edge of g.edgesOf(id)) {
+      if (edge.fromId === id && edge.data.wireType === 'dependency') {
+        walk(g, edge.toId)
+      }
     }
+    return myIntrinsic
   }
-
-  // Remove weight from parent scope and global
-  scopePkg.size -= pkg.size
-  gameState.resources.weight -= pkg.size
-
-  // Remove the package itself
-  scopePkg.internalPackages.delete(packageId)
+  walk(scopeGraph, rootId)
+  return total
 }
 
 function handlePrune() {
@@ -723,42 +744,48 @@ function handlePrune() {
   onConflictResolved()
 
   if (inScope) {
-    // Pruning inside a package scope (works at any depth)
+    // Pruning inside a package scope (works at any depth).
+    const scopeGraph = getGraphAtPath(stack.path)
     const scopePkg = getCurrentScopeRoot()
-    if (!scopePkg?.internalPackages || !scopePkg.internalWires) return
+    if (!scopeGraph || !scopePkg) return
 
-    const childPkg = scopePkg.internalPackages.get(wire.toId)
-    if (childPkg) {
-      // Visual feedback
+    const childNode = scopeGraph.getNode(wire.toId)
+    if (childNode) {
       const effects = renderer.getEffectsRenderer()
       effects.spawnBurst(
-        childPkg.position.x,
-        childPkg.position.y,
+        childNode.data.position.x,
+        childNode.data.position.y,
         Colors.borderConflict
       )
 
-      // Recursively remove the internal package and all descendants
-      removeInternalPackageWithSubtree(scopePkg, wire.toId)
+      const removedWeight = sumSubtreeSize(scopeGraph, wire.toId)
+      scopePkg.size -= removedWeight
+      gameState.resources.weight -= removedWeight
+      scopeGraph.removeNode(wire.toId)
+    } else {
+      // Wire's target node already missing — drop the dangling edge.
+      const edge = scopeGraph.getEdge(wire.id)
+      if (edge) scopeGraph.removeEdge(wire.id)
     }
 
-    // Remove the wire itself (in case it wasn't caught by the subtree removal)
-    scopePkg.internalWires.delete(wire.id)
-
-    // Recalculate internal state
-    recalculateStateAtPath([...gameState.scopeStack])
+    recalculateStateAtPath([...stack.path])
   } else {
-    // Pruning at root scope (existing behavior)
-    const childPkg = gameState.packages.get(wire.toId)
-    if (childPkg) {
+    // Pruning at root scope.
+    const childNode = graph.getNode(wire.toId)
+    if (childNode) {
       const effects = renderer.getEffectsRenderer()
       effects.spawnBurst(
-        childPkg.position.x,
-        childPkg.position.y,
+        childNode.data.position.x,
+        childNode.data.position.y,
         Colors.borderConflict
       )
-      removePackageWithSubtree(wire.toId)
+      const removedWeight = sumSubtreeSize(graph, wire.toId)
+      gameState.resources.weight -= removedWeight
+      removeTopLevelPackage(wire.toId)
+    } else {
+      const edge = graph.getEdge(wire.id)
+      if (edge) graph.removeEdge(wire.id)
     }
-    removeWire(wire.id)
   }
 
   // Update stats
@@ -783,14 +810,9 @@ function handleUpgrade() {
   const wire = selectedWire.value
   const inScope = isInPackageScope()
 
-  // Get the child package from current scope (works at any depth)
-  let childPkg: Package | undefined
-  if (inScope) {
-    const scopePkg = getCurrentScopeRoot()
-    childPkg = scopePkg?.internalPackages?.get(wire.toId)
-  } else {
-    childPkg = gameState.packages.get(wire.toId)
-  }
+  // Get the child package from current scope.
+  const childPkg: Package | undefined =
+    stack.current.getNode(wire.toId)?.data ?? undefined
 
   if (!childPkg?.identity) return
 
@@ -822,7 +844,7 @@ function handleUpgrade() {
 
   // Recalculate internal state if in scope using full path
   if (inScope) {
-    recalculateStateAtPath([...gameState.scopeStack])
+    recalculateStateAtPath([...stack.path])
   }
 
   // Update stats
@@ -861,8 +883,8 @@ function handleResolveInside() {
 
   // Decide which package to enter (prefer the one with the "fixable" conflict)
   // If one has an upgrade path, prefer that one
-  const pkgA = gameState.packages.get(conflict.packageAId)
-  const pkgB = gameState.packages.get(conflict.packageBId)
+  const pkgA = graph.getNode(conflict.packageAId)?.data
+  const pkgB = graph.getNode(conflict.packageBId)?.data
 
   if (!pkgA || !pkgB) return
 
@@ -921,14 +943,14 @@ function handleMouseMove(event: MouseEvent) {
 
       // Check if this is a cross-package drag (top-level packages at root scope)
       const isCrossPackageDrag =
-        !isInPackageScope() && symlinkDragSource.parentId === gameState.rootId
+        !isInPackageScope() && isTopLevelPackage(symlinkDragSource.id)
 
       if (isCrossPackageDrag) {
         // Find other top-level packages with shared internal deps
-        const rawPackages = toRaw(gameState.packages)
-        for (const pkg of rawPackages.values()) {
-          if (pkg.id === symlinkDragSource.id) continue
-          if (pkg.parentId !== gameState.rootId) continue
+        for (const [id, node] of graph.nodes) {
+          const pkg = node.data
+          if (id === symlinkDragSource.id) continue
+          if (!isTopLevelPackage(id)) continue
 
           const distX = worldPos.x - pkg.position.x
           const distY = worldPos.y - pkg.position.y
@@ -1023,7 +1045,7 @@ function handleMouseMove(event: MouseEvent) {
     } else if (
       hoveredPkg &&
       hoveredPkg.state === 'ready' &&
-      hoveredPkg.parentId === null
+      isRootPackage(hoveredPkg.id)
     ) {
       // Root node - show pointer for installing
       canvasRef.value.style.cursor = 'pointer'
@@ -1032,7 +1054,7 @@ function handleMouseMove(event: MouseEvent) {
     } else if (
       hoveredPkg &&
       hoveredPkg.state === 'ready' &&
-      hoveredPkg.parentId === gameState.rootId
+      isTopLevelPackage(hoveredPkg.id)
     ) {
       // Divable package - show pointer
       canvasRef.value.style.cursor = 'pointer'
@@ -1059,8 +1081,8 @@ function handleMouseUp(_event?: MouseEvent) {
       // Check if this is a cross-package symlink (top-level packages at root scope)
       const isCrossPackage =
         !isInPackageScope() &&
-        symlinkDragSource.parentId === gameState.rootId &&
-        symlinkDropTarget.parentId === gameState.rootId
+        isTopLevelPackage(symlinkDragSource.id) &&
+        isTopLevelPackage(symlinkDropTarget.id)
 
       if (isCrossPackage) {
         // Cross-package symlink: find ALL shared internal deps and symlink them
@@ -1151,7 +1173,7 @@ function handleMouseUp(_event?: MouseEvent) {
       }
     } else if (!isDraggingSymlink) {
       // Was just a click, not a drag - handle based on what was clicked
-      if (symlinkDragSource.parentId === null) {
+      if (isRootPackage(symlinkDragSource.id)) {
         // Click on root node: install new package
         const newPkg = installPackage(symlinkDragSource.id)
         if (newPkg) {
@@ -1164,7 +1186,7 @@ function handleMouseUp(_event?: MouseEvent) {
         }
       } else if (
         !isInPackageScope() &&
-        symlinkDragSource.parentId === gameState.rootId
+        isTopLevelPackage(symlinkDragSource.id)
       ) {
         // Click on top-level package at root scope: enter its scope
         if (enterPackageScope(symlinkDragSource.id)) {
@@ -1366,7 +1388,7 @@ function handleTouchSelect(worldPos: { x: number; y: number }) {
     // Spawn click ripple effect
     const effects = renderer.getEffectsRenderer()
     const isClickedScopeRoot =
-      isInPackageScope() && clickedPkg.id === gameState.currentScope
+      isInPackageScope() && clickedPkg.id === stack.currentNodeId
     const rippleX = isClickedScopeRoot ? 0 : clickedPkg.position.x
     const rippleY = isClickedScopeRoot ? 0 : clickedPkg.position.y
     effects.spawnRipple(rippleX, rippleY, Colors.borderInstalling)
@@ -1467,7 +1489,7 @@ function handleTouchAction(worldPos: { x: number; y: number }) {
   const effects = renderer.getEffectsRenderer()
 
   // Root node: install new package
-  if (clickedPkg.parentId === null && clickedPkg.state === 'ready') {
+  if (isRootPackage(clickedPkg.id) && clickedPkg.state === 'ready') {
     const newPkg = installPackage(clickedPkg.id)
     if (newPkg) {
       effects.spawnRipple(
@@ -1498,7 +1520,7 @@ function handleTouchAction(worldPos: { x: number; y: number }) {
   // Top-level package at root scope: enter its scope
   if (
     !isInPackageScope() &&
-    clickedPkg.parentId === gameState.rootId &&
+    isTopLevelPackage(clickedPkg.id) &&
     clickedPkg.state === 'ready'
   ) {
     if (enterPackageScope(clickedPkg.id)) {
@@ -1526,7 +1548,7 @@ function handleTouchAction(worldPos: { x: number; y: number }) {
   // Non-interactive leaf node: wiggle
   if (
     isInPackageScope() &&
-    clickedPkg.id !== gameState.currentScope &&
+    clickedPkg.id !== stack.currentNodeId &&
     !isPackageCompressed(clickedPkg)
   ) {
     triggerWiggle(clickedPkg.id)
@@ -1586,7 +1608,7 @@ function handleTouchDragStartById(
       clickedPkg = scopePackages.get(nodeId)
     }
   } else {
-    clickedPkg = gameState.packages.get(nodeId)
+    clickedPkg = stack.current.getNode(nodeId)?.data ?? undefined
   }
 
   if (!clickedPkg) return
@@ -1595,7 +1617,7 @@ function handleTouchDragStartById(
   // At root scope, only duplicates can be dragged (for cross-package symlink)
   const canDrag =
     isInPackageScope() ||
-    (clickedPkg.parentId === gameState.rootId && hasDuplicates(clickedPkg.id))
+    (isTopLevelPackage(clickedPkg.id) && hasDuplicates(clickedPkg.id))
 
   if (canDrag && clickedPkg.state === 'ready') {
     touchDragSource = clickedPkg
@@ -1629,13 +1651,13 @@ function handleTouchDragMove(worldPos: { x: number; y: number }) {
 
   // Check for cross-package drag at root
   const isCrossPackageDrag =
-    !isInPackageScope() && touchDragSource.parentId === gameState.rootId
+    !isInPackageScope() && isTopLevelPackage(touchDragSource.id)
 
   if (isCrossPackageDrag) {
-    const rawPackages = toRaw(gameState.packages)
-    for (const pkg of rawPackages.values()) {
-      if (pkg.id === touchDragSource.id) continue
-      if (pkg.parentId !== gameState.rootId) continue
+    for (const [id, node] of graph.nodes) {
+      const pkg = node.data
+      if (id === touchDragSource.id) continue
+      if (!isTopLevelPackage(id)) continue
 
       const distX = worldPos.x - pkg.position.x
       const distY = worldPos.y - pkg.position.y
@@ -1688,8 +1710,8 @@ function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
     // Check if cross-package
     const isCrossPackage =
       !isInPackageScope() &&
-      touchDragSource.parentId === gameState.rootId &&
-      touchDragTarget.parentId === gameState.rootId
+      isTopLevelPackage(touchDragSource.id) &&
+      isTopLevelPackage(touchDragTarget.id)
 
     if (isCrossPackage) {
       const sharedDeps = getSharedInternalDeps(sourceId, targetId)

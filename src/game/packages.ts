@@ -1,12 +1,26 @@
 // Package creation and management logic
 
-import { toRaw } from 'vue'
 import { random, randomInt } from './random'
-import { gameState, gameConfig, spendBandwidth } from './state'
-import { recalculateStateAtPath, _injectCascade } from './scope'
-import { addPackage, addWire } from './mutations'
-import { generateId, generateWireId } from './id-generator'
-import { type Package, type Wire } from './types'
+import {
+  gameState,
+  gameConfig,
+  graph,
+  rootIdRef,
+  spendBandwidth,
+  stack,
+} from './state'
+import {
+  getCurrentScopePackages,
+  isTopLevelPackage,
+  _injectCascade,
+} from './scope'
+import {
+  addInnerPackage,
+  addRootPackage,
+  addTopLevelPackage,
+} from './mutations'
+import { generateId } from './state'
+import type { Package } from './types'
 import { rollDependencyCount, getIdentitySize } from './formulas'
 import { getEffectiveInstallCost } from './upgrades'
 import {
@@ -21,6 +35,7 @@ import {
 import { markDuplicateGroupsDirty } from './symlinks'
 import { emit, on } from './events'
 import { startCascade } from './cascade'
+import { recalculateStateAtPath } from './scope'
 
 // Inject cascade dependency to avoid circular imports
 _injectCascade(startCascade)
@@ -42,79 +57,66 @@ const ROOT_IDENTITY: PackageIdentity = {
 }
 
 /**
- * Create the root package (first package in the tree)
+ * Create the root package (first package in the tree).
  */
 export function createRootPackage(): Package | null {
-  if (gameState.rootId !== null) {
+  if (rootIdRef.value !== null) {
     return null // Root already exists
   }
 
   const id = generateId()
   const pkg: Package = {
     id,
-    parentId: null,
     position: { x: 0, y: 0 },
     velocity: { vx: 0, vy: 0 },
     state: 'ready',
     size: 100,
     depth: 0,
-    children: [],
     installProgress: 1,
     conflictProgress: 0,
     identity: ROOT_IDENTITY,
-    // Scope system - root doesn't have internal tree
-    internalPackages: null,
-    internalWires: null,
-    internalState: null,
-    // Ghost system
     isGhost: false,
     ghostTargetId: null,
     ghostTargetScope: null,
-    // Depth rewards (root doesn't get rewards)
     isGolden: false,
     hasCacheFragment: false,
-    hasBeenEntered: false,
   }
 
-  gameState.rootId = id
-  addPackage(pkg)
+  addRootPackage(pkg)
+  rootIdRef.value = id
   return pkg
 }
 
 /**
- * Attempt to install a new package as a child of the target
- * This is a DIRECT player install - uses tier-appropriate packages
+ * Attempt to install a new package as a top-level child of the root.
+ * Tutorial-gated before first prestige.
  */
 export function installPackage(parentId: string): Package | null {
-  const parent = gameState.packages.get(parentId)
+  const rootId = rootIdRef.value
+  if (!rootId || parentId !== rootId) return null
+
+  const parent = graph.getNode(rootId)?.data
   if (!parent) return null
 
-  // Tutorial gating: before first prestige, must stabilize previous package before installing next
-  if (gameState.meta.timesShipped === 0 && parentId === gameState.rootId) {
-    // Find existing top-level packages
-    const topLevelPackages = Array.from(gameState.packages.values()).filter(
-      (p) => p.parentId === gameState.rootId
-    )
-
-    // If there's already a top-level package that isn't stable, block install
-    const unstableTopLevel = topLevelPackages.find(
-      (p) => p.internalState !== null && p.internalState !== 'stable'
-    )
-    if (unstableTopLevel) {
-      // Can't install new package until current one is stabilized
-      return null
+  // Tutorial gating: before first prestige, must stabilize previous package
+  // before installing the next one.
+  if (gameState.meta.timesShipped === 0) {
+    for (const id of graph.nodes.keys()) {
+      if (id === rootId) continue
+      const state = stack.stateAt([id])
+      if (state !== undefined && state !== 'stable') {
+        return null
+      }
     }
   }
 
   const cost = getEffectiveInstallCost()
   if (!spendBandwidth(cost)) {
-    return null // Not enough bandwidth
+    return null
   }
 
-  // Reset ghost hand hint timers on meaningful player action
   emit('player:action')
 
-  // Mark first click complete for onboarding
   if (!gameState.onboarding.firstClickComplete) {
     gameState.onboarding.firstClickComplete = true
   }
@@ -123,37 +125,24 @@ export function installPackage(parentId: string): Package | null {
   const angle = random() * Math.PI * 2
   const distance = 80 + random() * 40
 
-  // First three installs before prestige: use curated packages for teaching
-  // - First: starter-kit (basic mechanics)
-  // - Second: express (3-way duplicates)
-  // - Third: react (nested scopes)
+  // Curated first three installs: starter-kit → express → react.
+  // Counted by current top-level package count (excluding root).
+  const topLevelCount = graph.nodes.size - 1
   const isFirstInstall =
-    gameState.meta.timesShipped === 0 &&
-    parentId === gameState.rootId &&
-    parent.children.length === 0
-
+    gameState.meta.timesShipped === 0 && topLevelCount === 0
   const isSecondInstall =
-    gameState.meta.timesShipped === 0 &&
-    parentId === gameState.rootId &&
-    parent.children.length === 1
-
+    gameState.meta.timesShipped === 0 && topLevelCount === 1
   const isThirdInstall =
-    gameState.meta.timesShipped === 0 &&
-    parentId === gameState.rootId &&
-    parent.children.length === 2
+    gameState.meta.timesShipped === 0 && topLevelCount === 2
 
-  // Gather existing top-level package names to ensure variety
   const existingTopLevel = new Set<string>()
-  if (parentId === gameState.rootId) {
-    for (const childId of parent.children) {
-      const child = gameState.packages.get(childId)
-      if (child?.identity?.name) {
-        existingTopLevel.add(child.identity.name)
-      }
+  for (const [nodeId, node] of graph.nodes) {
+    if (nodeId === rootId) continue
+    if (node.data.identity?.name) {
+      existingTopLevel.add(node.data.identity.name)
     }
   }
 
-  // Pick a package identity based on ecosystem tier (excluding already-installed at root)
   const identity = isFirstInstall
     ? STARTER_KIT_IDENTITY
     : isSecondInstall
@@ -165,15 +154,10 @@ export function installPackage(parentId: string): Package | null {
             existingTopLevel
           )
 
-  // Use deterministic size based on identity (no variance for duplicate consistency)
   const size = getIdentitySize(identity)
-
-  // Check if this is a top-level package (parent is root)
-  const isTopLevel = parentId === gameState.rootId
 
   const pkg: Package = {
     id,
-    parentId,
     position: {
       x: parent.position.x + Math.cos(angle) * distance,
       y: parent.position.y + Math.sin(angle) * distance,
@@ -182,64 +166,38 @@ export function installPackage(parentId: string): Package | null {
     state: 'installing',
     size,
     depth: parent.depth + 1,
-    children: [],
     installProgress: 0,
     conflictProgress: 0,
     identity,
-    // Scope system - top-level packages have internal trees
-    internalPackages: isTopLevel ? new Map() : null,
-    internalWires: isTopLevel ? new Map() : null,
-    internalState: isTopLevel ? 'pristine' : null,
-    // Ghost system
     isGhost: false,
     ghostTargetId: null,
     ghostTargetScope: null,
-    // Depth rewards (top-level doesn't get rewards - depth 1)
     isGolden: false,
     hasCacheFragment: false,
-    hasBeenEntered: false,
   }
 
-  // Add wire connecting parent to child
-  const wire: Wire = {
-    id: generateWireId(),
-    fromId: parentId,
-    toId: id,
-    wireType: 'dependency',
-    flowProgress: 0,
-    conflicted: false,
-    conflictTime: 0,
-  }
-
-  parent.children.push(id)
-  addPackage(pkg)
-  addWire(wire)
-
+  addTopLevelPackage(pkg, rootId)
   return pkg
 }
 
 /**
- * Spawn dependencies for a package that just finished installing
- * NOTE: Top-level packages (direct children of root) do NOT spawn at root.
- * They are "compressed" and expand when the player enters them.
+ * Spawn dependencies for a top-level package or sub-dep that just finished
+ * installing. Top-level packages don't spawn at root scope (they're
+ * compressed seeds — cascade fires on enter). Inner deps spawned in
+ * cascade may grow sub-trees here.
  */
 export function spawnDependencies(packageId: string): Package[] {
-  const pkg = gameState.packages.get(packageId)
+  // Top-level packages: compressed seed, no cascade until entered.
+  if (isTopLevelPackage(packageId)) return []
+
+  const scopePackages = getCurrentScopePackages()
+  const pkg = scopePackages.get(packageId)
   if (!pkg) return []
 
-  // Top-level packages are "compressed" - they don't cascade at root scope.
-  // Their internal dependencies spawn when the player enters them.
-  const isTopLevel = pkg.parentId === gameState.rootId
-  if (isTopLevel) {
-    return [] // Compressed seed - cascade happens on enter
-  }
-
-  // Don't spawn if too deep
   if (pkg.depth >= gameConfig.dependencyDepthLimit) {
     return []
   }
 
-  // Use identity-based dep count if available, otherwise use distribution
   let count: number
   if (pkg.identity && pkg.identity.baseDeps > 0) {
     const variance = randomInt(-1, 1)
@@ -248,9 +206,8 @@ export function spawnDependencies(packageId: string): Package[] {
     count = rollDependencyCount(gameConfig)
   }
 
-  // Early game clamp: before first prestige, limit cascade size
   if (gameState.meta.timesShipped === 0) {
-    const packageCount = gameState.packages.size
+    const packageCount = scopePackages.size
     if (packageCount < 10) {
       count = Math.min(count, 2)
     } else if (packageCount < 30) {
@@ -261,9 +218,25 @@ export function spawnDependencies(packageId: string): Package[] {
   }
 
   const spawned: Package[] = []
+  const scopePath: string[] = [...stack.path]
+  const scopeGraph = stack.current
+
+  const resolvers = {
+    getIdentity: (id: string): PackageIdentity | undefined => {
+      return scopeGraph.getNode(id)?.data.identity
+    },
+    getParentId: (id: string): string | null => {
+      if (!scopeGraph.getNode(id)) return null
+      for (const edge of scopeGraph.edgesOf(id)) {
+        if (edge.toId === id && edge.data.wireType === 'dependency') {
+          return edge.fromId
+        }
+      }
+      return null
+    },
+  }
 
   for (let i = 0; i < count; i++) {
-    // Fan children downward, spread evenly with randomness
     const spreadAngle = Math.PI * 0.7
     const startAngle = Math.PI * 0.5 - spreadAngle / 2
     const baseAngle =
@@ -277,7 +250,6 @@ export function spawnDependencies(packageId: string): Package[] {
 
     const child: Package = {
       id,
-      parentId: packageId,
       position: {
         x: pkg.position.x + Math.cos(angle) * distance,
         y: pkg.position.y + Math.sin(angle) * distance,
@@ -289,39 +261,21 @@ export function spawnDependencies(packageId: string): Package[] {
       state: 'installing',
       size,
       depth: pkg.depth + 1,
-      children: [],
       installProgress: 0,
       conflictProgress: 0,
       identity,
-      internalPackages: null,
-      internalWires: null,
-      internalState: null,
       isGhost: false,
       ghostTargetId: null,
       ghostTargetScope: null,
-      // Depth rewards (root-level spawn - no rewards)
       isGolden: false,
       hasCacheFragment: false,
-      hasBeenEntered: false,
     }
 
-    // Check for incompatibility conflict with ancestors
     const isConflicted = checkIncompatibilityWithPackages(
       identity,
       packageId,
-      toRaw(gameState.packages)
+      resolvers
     )
-
-    const wire: Wire = {
-      id: generateWireId(),
-      fromId: packageId,
-      toId: id,
-      wireType: 'dependency',
-      flowProgress: 0,
-      conflicted: isConflicted,
-      conflictTime: isConflicted ? Date.now() : 0,
-    }
-
     if (isConflicted) {
       child.state = 'conflict'
       if (!gameState.onboarding.firstConflictSeen) {
@@ -329,9 +283,7 @@ export function spawnDependencies(packageId: string): Package[] {
       }
     }
 
-    pkg.children.push(id)
-    addPackage(child)
-    addWire(wire)
+    addInnerPackage(scopePath, child, packageId, false, isConflicted)
     spawned.push(child)
   }
 
@@ -342,18 +294,15 @@ export function spawnDependencies(packageId: string): Package[] {
 // EVENT SUBSCRIPTIONS
 // ============================================
 
-// Subscribe to cascade end events
 on('cascade:end', ({ scopePath }) => {
   recalculateStateAtPath(scopePath)
   markDuplicateGroupsDirty()
 })
 
-// Subscribe to scope recalculation requests
 on('scope:recalculate', ({ scopePath }) => {
   recalculateStateAtPath(scopePath)
 })
 
-// Subscribe to package changes (for duplicate detection)
 on('packages:changed', () => {
   markDuplicateGroupsDirty()
 })

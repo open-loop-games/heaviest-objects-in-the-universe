@@ -1,300 +1,252 @@
-// Scope navigation - entering/exiting package internal views
-// Supports 2 layers: root → layer 1 (top-level pkg) → layer 2 (compressed internal dep)
+// Scope navigation — thin wrapper around the engine ScopeStack.
+//
+// HOITU-specific contract: each populated child graph contains a *shadow*
+// node carrying the scope owner's id and Package data reference, so that
+// wires from the owner to first-level deps can live as edges within the
+// child graph (SpatialGraph requires both endpoints in the same graph).
+// Iteration helpers strip the shadow when returning user-facing collections.
 
-import type { Package, Wire, InternalState } from './types'
-import { gameState } from './state'
-import { countScopeDuplicates } from './formulas'
+import type { Package, Wire } from './types'
+import { graph, rootIdRef, stack } from './state'
 import { emit } from './events'
+import type { SpatialGraph } from 'open-loop-engine'
 
 // ============================================
 // SCOPE DEPTH HELPERS
 // ============================================
 
-/**
- * Get current scope depth
- * 0 = root, 1 = inside top-level package, 2 = inside compressed internal dep
- */
 export function getScopeDepth(): number {
-  return gameState.scopeStack.length
+  return stack.depth
 }
 
-/**
- * Check if we're at root scope
- */
 export function isAtRoot(): boolean {
-  return gameState.scopeStack.length === 0
+  return stack.depth === 0
 }
 
-/**
- * Check if we're at layer 1 (inside a top-level package)
- */
 export function isAtLayer1(): boolean {
-  return gameState.scopeStack.length === 1
+  return stack.depth === 1
 }
 
-/**
- * Check if we're at layer 2 (inside a compressed internal dep)
- */
 export function isAtLayer2(): boolean {
-  return gameState.scopeStack.length === 2
+  return stack.depth === 2
 }
 
 // ============================================
-// SCOPE PRIMITIVES
+// PACKAGE / GRAPH UTILITIES
 // ============================================
 
-/**
- * Enter a top-level package's internal scope (layer 1)
- * Only works from root scope
- */
+/** True for the root package.json node. */
+export function isRootPackage(pkgId: string): boolean {
+  return rootIdRef.value !== null && pkgId === rootIdRef.value
+}
+
+/** True for top-level packages: nodes in the root graph other than rootId. */
+export function isTopLevelPackage(pkgId: string): boolean {
+  if (rootIdRef.value === null) return false
+  if (pkgId === rootIdRef.value) return false
+  return graph.getNode(pkgId) !== undefined
+}
+
+/** Resolve the SpatialGraph at a path (root for empty path), or null. */
+export function getGraphAtPath(
+  path: readonly string[]
+): SpatialGraph<Package, Wire> | null {
+  let g: SpatialGraph<Package, Wire> = graph
+  for (const id of path) {
+    const child = g.getChildGraph(id)
+    if (!child) return null
+    g = child
+  }
+  return g
+}
+
+/** Build a Map<id, Package> from a graph's nodes, optionally excluding the
+ *  shadow scope-owner node when iterating a child graph. */
+function nodesAsPackageMap(
+  g: SpatialGraph<Package, Wire>,
+  excludeId?: string
+): Map<string, Package> {
+  const result = new Map<string, Package>()
+  for (const [id, node] of g.nodes) {
+    if (excludeId !== undefined && id === excludeId) continue
+    result.set(id, node.data)
+  }
+  return result
+}
+
+/** Build a Map<id, Wire> from a graph's edges. */
+function edgesAsWireMap(g: SpatialGraph<Package, Wire>): Map<string, Wire> {
+  const result = new Map<string, Wire>()
+  for (const [id, edge] of g.edges) {
+    result.set(id, edge.data)
+  }
+  return result
+}
+
+// ============================================
+// SCOPE PRIMITIVES (event-emitting wrappers)
+// ============================================
+
+/** Enter a top-level package's scope (must be at root). Returns false if
+ *  the target isn't a top-level package or has no child graph. */
 export function enterScope(packageId: string): boolean {
-  const pkg = gameState.packages.get(packageId)
-  if (!pkg) return false
-
-  // Only enter top-level packages (direct children of root)
-  if (pkg.parentId !== gameState.rootId) return false
-
-  // Can only enter layer 1 from root
   if (!isAtRoot()) return false
-
-  gameState.scopeStack.push(packageId)
-  gameState.currentScope = packageId
+  if (!isTopLevelPackage(packageId)) return false
+  if (!graph.getChildGraph(packageId)) return false
+  stack.enter(packageId)
   return true
 }
 
-/**
- * Enter a compressed internal dep's scope (works at any depth)
- * Requires being inside a package scope already
- */
+/** Enter a deeper scope from inside a package scope. */
 export function enterInternalScope(internalPkgId: string): boolean {
-  // Must be inside a package scope to enter an internal package
-  if (gameState.scopeStack.length === 0) return false
-
-  // Use the generic path-based entry
+  if (stack.depth === 0) return false
   return enterScopeAtPath(internalPkgId)
 }
 
-/**
- * Exit current scope (go up one level)
- * Layer 2 → Layer 1, Layer 1 → Root
- */
+/** Exit current scope (one level up). No-op at root. */
 export function exitScope(): void {
-  if (gameState.scopeStack.length === 0) return
-
-  gameState.scopeStack.pop()
-
-  // Keep currentScope in sync
-  if (gameState.scopeStack.length === 0) {
-    gameState.currentScope = 'root'
-  } else {
-    gameState.currentScope =
-      gameState.scopeStack[gameState.scopeStack.length - 1] ?? 'root'
-  }
+  stack.exit()
 }
 
-/**
- * Exit all the way to root
- */
+/** Exit all the way to root. */
 export function exitToRoot(): void {
-  gameState.scopeStack = []
-  gameState.currentScope = 'root'
+  stack.exitToRoot()
 }
 
 // ============================================
 // SCOPE ACCESSORS
 // ============================================
 
-/**
- * Get packages for the current scope (works at any depth)
- */
 export function getCurrentScopePackages(): Map<string, Package> {
-  return getPackagesAtPath(gameState.scopeStack)
+  if (stack.depth === 0) {
+    return nodesAsPackageMap(graph)
+  }
+  const ownerId = stack.path[stack.path.length - 1]
+  return nodesAsPackageMap(stack.current, ownerId)
 }
 
-/**
- * Get package count for current scope (for per-scope cost scaling)
- * Each scope has its own cost curve - entering a scope resets the scaling
- */
 export function getScopePackageCount(): number {
   return getCurrentScopePackages().size
 }
 
-/**
- * Get wires for the current scope (works at any depth)
- */
 export function getCurrentScopeWires(): Map<string, Wire> {
-  return getWiresAtPath(gameState.scopeStack)
+  return edgesAsWireMap(stack.current)
 }
 
-/**
- * Get the local root package for current scope (works at any depth)
- */
+/** The package at the head of the scope stack (or root at depth 0). */
 export function getCurrentScopeRoot(): Package | null {
   if (isAtRoot()) {
-    return gameState.rootId
-      ? gameState.packages.get(gameState.rootId) || null
-      : null
+    if (rootIdRef.value === null) return null
+    return graph.getNode(rootIdRef.value)?.data ?? null
   }
-  return getPackageAtPath(gameState.scopeStack)
+  return getPackageAtPath(stack.path)
 }
 
-/**
- * Get the parent scope's package (works at any depth)
- * Returns the package one level up, or null if at root or layer 1
- */
+/** The package one scope level up (or null at root or layer 1). */
 export function getParentScopePackage(): Package | null {
-  if (gameState.scopeStack.length < 2) return null
-  return getPackageAtPath(gameState.scopeStack.slice(0, -1))
+  if (stack.depth < 2) return null
+  return getPackageAtPath(stack.path.slice(0, -1))
 }
 
 // ============================================
 // SCOPE QUERIES
 // ============================================
 
-/**
- * Check if we're currently inside a package scope (layer 1 or 2)
- */
 export function isInPackageScope(): boolean {
-  return gameState.scopeStack.length > 0
+  return stack.depth > 0
 }
 
-/**
- * Get the current scope ID
- * Returns 'root' or a package ID
- */
+/** Returns 'root' or the innermost scope's package id. */
 export function getCurrentScope(): string {
-  return gameState.currentScope
+  return stack.currentNodeId ?? 'root'
 }
 
-/**
- * Get the full scope stack
- */
 export function getScopeStack(): readonly string[] {
-  return gameState.scopeStack
+  return stack.path
 }
 
-/**
- * Check if a package is the current scope's root
- */
 export function isCurrentScopeRoot(packageId: string): boolean {
-  if (isAtRoot()) {
-    return packageId === gameState.rootId
-  }
-  const currentId = gameState.scopeStack[gameState.scopeStack.length - 1]
-  return packageId === currentId
+  if (isAtRoot()) return isRootPackage(packageId)
+  return packageId === stack.currentNodeId
 }
 
-/**
- * Check if a package is compressed (has internal scope) and can be entered
- */
+/** True if the package owns a child graph (i.e., can be entered).
+ *  Checks the root graph first, then the currently-viewed scope graph so
+ *  compressed inner deps (which live as nodes in `stack.current`, not in
+ *  root) are detected correctly. */
 export function isPackageCompressed(pkg: Package): boolean {
-  return pkg.internalPackages !== null && pkg.internalWires !== null
+  if (graph.getChildGraph(pkg.id) !== null) return true
+  if (stack.depth > 0 && stack.current.getChildGraph(pkg.id) !== null) {
+    return true
+  }
+  return false
 }
 
-/**
- * Get the layer 1 package ID (if in layer 1 or 2)
- */
 export function getLayer1PackageId(): string | null {
-  if (gameState.scopeStack.length >= 1) {
-    return gameState.scopeStack[0] ?? null
-  }
-  return null
+  return stack.path[0] ?? null
 }
 
-/**
- * Get the layer 2 package ID (if in layer 2)
- */
 export function getLayer2PackageId(): string | null {
-  if (gameState.scopeStack.length >= 2) {
-    return gameState.scopeStack[1] ?? null
-  }
-  return null
+  return stack.path[1] ?? null
 }
 
 // ============================================
-// GENERIC PATH-BASED ACCESSORS (arbitrary depth)
+// PATH-BASED ACCESSORS (arbitrary depth)
 // ============================================
 
-/**
- * Get a package at an arbitrary path in the nested tree
- * Path is array of package IDs: [topLevelId, internalId, deeperId, ...]
- * Empty path returns null (root is not a package in this context)
- */
-export function getPackageAtPath(path: string[]): Package | null {
+/** Resolve a package by walking the scope-graph hierarchy.
+ *  Path [topLevelId] returns the top-level package; deeper paths walk into
+ *  child graphs and return the matching node's data, or null on miss. */
+export function getPackageAtPath(path: readonly string[]): Package | null {
   if (path.length === 0) return null
-
-  // First element is always a top-level package
-  const topLevelId = path[0]
-  if (!topLevelId) return null
-
-  let current: Package | undefined = gameState.packages.get(topLevelId)
+  const topId = path[0]
+  if (!topId) return null
+  let current = graph.getNode(topId)?.data ?? null
   if (!current) return null
-
-  // Traverse deeper into internal packages
+  let parentGraph: SpatialGraph<Package, Wire> = graph
   for (let i = 1; i < path.length; i++) {
-    const nextId = path[i]
-    if (!nextId || !current.internalPackages) return null
-    current = current.internalPackages.get(nextId)
-    if (!current) return null
+    const child = parentGraph.getChildGraph(path[i - 1]!)
+    if (!child) return null
+    const nextId = path[i]!
+    const node = child.getNode(nextId)
+    if (!node) return null
+    current = node.data
+    parentGraph = child
   }
-
   return current
 }
 
-/**
- * Get the internal packages map at a given path
- * Empty path returns root-level packages
- */
-export function getPackagesAtPath(path: string[]): Map<string, Package> {
+/** Get packages at a given scope path (root for empty path). */
+export function getPackagesAtPath(
+  path: readonly string[]
+): Map<string, Package> {
+  const g = getGraphAtPath(path)
+  if (!g) return new Map()
   if (path.length === 0) {
-    return gameState.packages
+    return nodesAsPackageMap(g)
   }
-
-  const pkg = getPackageAtPath(path)
-  return pkg?.internalPackages || new Map()
+  const ownerId = path[path.length - 1]
+  return nodesAsPackageMap(g, ownerId)
 }
 
-/**
- * Get the internal wires map at a given path
- * Empty path returns root-level wires
- */
-export function getWiresAtPath(path: string[]): Map<string, Wire> {
-  if (path.length === 0) {
-    return gameState.wires
-  }
-
-  const pkg = getPackageAtPath(path)
-  return pkg?.internalWires || new Map()
+/** Get wires at a given scope path. */
+export function getWiresAtPath(path: readonly string[]): Map<string, Wire> {
+  const g = getGraphAtPath(path)
+  if (!g) return new Map()
+  return edgesAsWireMap(g)
 }
 
-/**
- * Enter a package scope at any depth
- * Returns true if successful
- */
+/** Enter a scope by package id at any depth. */
 export function enterScopeAtPath(packageId: string): boolean {
-  // If at root, entering means the package must be a top-level package
-  if (gameState.scopeStack.length === 0) {
-    const pkg = gameState.packages.get(packageId)
-    if (!pkg || pkg.parentId !== gameState.rootId) return false
-    if (!pkg.internalPackages || !pkg.internalWires) return false
-
-    gameState.scopeStack.push(packageId)
-    gameState.currentScope = packageId
+  if (stack.depth === 0) {
+    if (!isTopLevelPackage(packageId)) return false
+    if (!graph.getChildGraph(packageId)) return false
+    stack.enter(packageId)
     return true
   }
-
-  // Otherwise, we're entering a deeper scope
-  const currentPkg = getPackageAtPath(gameState.scopeStack)
-  if (!currentPkg?.internalPackages) return false
-
-  const targetPkg = currentPkg.internalPackages.get(packageId)
-  if (!targetPkg) return false
-
-  // Can only enter compressed packages (those with internal maps)
-  if (!targetPkg.internalPackages || !targetPkg.internalWires) return false
-
-  gameState.scopeStack.push(packageId)
-  gameState.currentScope = packageId
+  if (!stack.current.getNode(packageId)) return false
+  if (!stack.current.getChildGraph(packageId)) return false
+  stack.enter(packageId)
   return true
 }
 
@@ -302,7 +254,7 @@ export function enterScopeAtPath(packageId: string): boolean {
 // SCOPE OPERATIONS (enter/exit with cascade integration)
 // ============================================
 
-// Lazy import to avoid circular dependency
+// Lazy import to avoid circular dependency with cascade
 let _startCascade: ((scopePath: string[]) => void) | null = null
 
 export function _injectCascade(
@@ -311,141 +263,90 @@ export function _injectCascade(
   _startCascade = startCascade
 }
 
-/**
- * Enter a package's internal scope (works at any depth)
- * If the package is pristine, starts the cascade (staggered spawning)
- */
+/** Enter a package's scope. If the scope is pristine (never cascaded into),
+ *  triggers the staggered cascade. */
 export function enterPackageScope(packageId: string): boolean {
-  // Reset ghost hand hint timers on meaningful player action
   emit('player:action')
 
-  // For layer 1 (entering from root), use the original enterScope
-  if (gameState.scopeStack.length === 0) {
-    const pkg = gameState.packages.get(packageId)
-    if (!pkg) return false
-
-    if (!enterScope(packageId)) return false
-
-    // Mark first dive for teaching book
-    if (!gameState.onboarding.firstDiveSeen) {
-      gameState.onboarding.firstDiveSeen = true
-    }
-
-    // If pristine, start the staggered cascade
-    if (pkg.internalState === 'pristine') {
-      _startCascade?.([packageId])
-      pkg.internalState = 'unstable'
-    }
-
-    return true
+  if (stack.depth === 0) {
+    if (!isTopLevelPackage(packageId)) return false
+    if (!graph.getChildGraph(packageId)) return false
+    stack.enter(packageId)
+  } else {
+    if (!enterScopeAtPath(packageId)) return false
   }
 
-  // For deeper layers, use generic path-based entry
-  if (!enterScopeAtPath(packageId)) return false
-
-  // Mark first dive for teaching book
-  if (!gameState.onboarding.firstDiveSeen) {
-    gameState.onboarding.firstDiveSeen = true
+  if (!gameStateOnboardingFirstDive()) {
+    setOnboardingFirstDiveSeen()
   }
 
-  // Get the package we just entered using the new scope path
-  const pkg = getPackageAtPath(gameState.scopeStack)
-  if (!pkg) return false
-
-  // If pristine, start the cascade
-  if (pkg.internalState === 'pristine') {
-    _startCascade?.([...gameState.scopeStack])
-    pkg.internalState = 'unstable'
+  // Pristine check via the stack's cached state (recalculate on demand).
+  stack.recalculateAt(stack.path)
+  if (stack.stateAt(stack.path) === 'pristine') {
+    _startCascade?.([...stack.path])
   }
-
   return true
 }
 
-/**
- * Exit the current scope (go up one level)
- */
+/** Exit the current scope, recalculating its state on the way out. */
 export function exitPackageScope(): void {
-  // Reset ghost hand hint timers on meaningful player action
   emit('player:action')
-
-  // Recalculate state before exiting (at current depth)
-  if (gameState.scopeStack.length > 0) {
-    recalculateStateAtPath([...gameState.scopeStack])
-
-    // Track first stable scope exit for onboarding
-    const pkg = getPackageAtPath(gameState.scopeStack)
+  if (stack.depth > 0) {
+    stack.recalculateAt(stack.path)
     if (
-      pkg?.internalState === 'stable' &&
-      !gameState.onboarding.firstScopeExited
+      stack.stateAt(stack.path) === 'stable' &&
+      !gameStateOnboardingFirstScopeExited()
     ) {
-      gameState.onboarding.firstScopeExited = true
+      setOnboardingFirstScopeExitedSeen()
     }
   }
-
-  exitScope()
+  stack.exit()
 }
 
-/**
- * Recalculate internal state for a package at any path
- * Works for top-level packages (path length 1) or nested packages (path length 2+)
- */
-export function recalculateStateAtPath(scopePath: string[]): void {
+/** Trigger a recalculate at the given path (and let it bubble up). Emits a
+ *  'scope:stabilized' event when a scope transitions from non-stable to
+ *  stable (used by mutations.ts to spawn momentum bursts). */
+export function recalculateStateAtPath(scopePath: readonly string[]): void {
   if (scopePath.length === 0) return
-
-  const pkg = getPackageAtPath(scopePath)
-  if (!pkg?.internalPackages || !pkg?.internalWires) return
-
-  const previousState = pkg.internalState
-
-  // Check for conflicted wires
-  let conflictCount = 0
-  for (const wire of pkg.internalWires.values()) {
-    if (wire.conflicted) conflictCount++
-  }
-
-  // Check for unstable compressed internal deps (propagation from deeper levels)
-  let unstableCompressedCount = 0
-  for (const innerPkg of pkg.internalPackages.values()) {
-    // Compressed packages have internal maps
-    if (innerPkg.internalPackages && innerPkg.internalWires) {
-      // If compressed dep hasn't been entered yet (pristine), count as stable
-      // If it's been entered and explored, check its state
-      if (
-        innerPkg.internalState !== null &&
-        innerPkg.internalState !== 'stable'
-      ) {
-        unstableCompressedCount++
+  const before = stack.stateAt(scopePath)
+  stack.recalculateAt(scopePath)
+  const after = stack.stateAt(scopePath)
+  if (before !== 'stable' && after === 'stable') {
+    const g = getGraphAtPath(scopePath)
+    const ownerId = scopePath[scopePath.length - 1]
+    let count = 0
+    if (g) {
+      for (const id of g.nodes.keys()) {
+        if (id !== ownerId) count++
       }
     }
+    emit('scope:stabilized', { packageCount: count })
   }
+}
 
-  // Check for duplicate identities using shared helper
-  const { duplicates: duplicateCount } = countScopeDuplicates(
-    pkg.internalPackages
-  )
+/** Read the cached scope state, or null when never recalculated. */
+export function getScopeState(
+  path: readonly string[]
+): 'pristine' | 'unstable' | 'stable' | null {
+  const s = stack.stateAt(path)
+  if (s === undefined) return null
+  if (s === 'pristine' || s === 'unstable' || s === 'stable') return s
+  return null
+}
 
-  let newState: InternalState
-  if (
-    conflictCount === 0 &&
-    duplicateCount === 0 &&
-    unstableCompressedCount === 0
-  ) {
-    newState = 'stable'
-  } else {
-    newState = 'unstable'
-  }
-
-  pkg.internalState = newState
-
-  // Momentum loop: Generate burst when scope becomes stable (via event)
-  if (previousState !== 'stable' && newState === 'stable') {
-    const packageCount = pkg.internalPackages?.size ?? 0
-    emit('scope:stabilized', { packageCount })
-  }
-
-  // Propagate state change up the tree
-  // If this package became stable/unstable, parent may need recalculation
-  if (scopePath.length > 1 && previousState !== newState) {
-    recalculateStateAtPath(scopePath.slice(0, -1))
-  }
+// ============================================
+// LAZY ONBOARDING ACCESS (avoids circular import with state's reactive)
+// ============================================
+import { gameState } from './state'
+function gameStateOnboardingFirstDive(): boolean {
+  return gameState.onboarding.firstDiveSeen
+}
+function setOnboardingFirstDiveSeen(): void {
+  gameState.onboarding.firstDiveSeen = true
+}
+function gameStateOnboardingFirstScopeExited(): boolean {
+  return gameState.onboarding.firstScopeExited
+}
+function setOnboardingFirstScopeExitedSeen(): void {
+  gameState.onboarding.firstScopeExited = true
 }

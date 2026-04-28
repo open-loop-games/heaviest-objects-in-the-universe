@@ -1,14 +1,14 @@
 // Main renderer coordinating all rendering components
 
 import { Application, Container, Graphics, BlurFilter } from 'pixi.js'
-import { toRaw } from 'vue'
 import { NodeRenderer } from './nodes'
 import { WireRenderer } from './wires'
 import { EffectsRenderer } from './effects'
 import { BlackHoleRenderer } from './blackhole'
 import { EdgeIndicatorRenderer } from './edge-indicators'
 import { Colors } from './colors'
-import { gameState } from '../game/state'
+import { gameState, graph, rootIdRef, stack } from '../game/state'
+import type { Package, Wire } from '../game/types'
 import {
   getWigglePhase,
   setBackButtonHighlight,
@@ -19,9 +19,13 @@ import {
   getCurrentScopePackages,
   getCurrentScopeWires,
   getCurrentScopeRoot,
-  isInPackageScope,
-  getScopeDepth,
+  getGraphAtPath,
   getPackageAtPath,
+  getScopeDepth,
+  getScopeState,
+  isInPackageScope,
+  isRootPackage,
+  isTopLevelPackage,
 } from '../game/scope'
 import { onTick } from '../game/loop'
 import {
@@ -32,6 +36,7 @@ import {
 } from '../game/symlinks'
 import {
   updateCrossPackageConflicts,
+  updateCrossPackageDuplicates,
   getSiblingWires,
 } from '../game/cross-package'
 import { getCleanliness, isOrganizing } from '../game/physics'
@@ -321,8 +326,7 @@ export class GameRenderer {
 
     // Back button highlight: when in stable scope, guide player to exit
     if (inScopeForHighlight) {
-      const scopeRoot = getCurrentScopeRoot()
-      const isStable = scopeRoot?.internalState === 'stable'
+      const isStable = getScopeState(stack.path) === 'stable'
       setBackButtonHighlight(isStable)
     } else {
       setBackButtonHighlight(false)
@@ -338,8 +342,10 @@ export class GameRenderer {
       triggerDuplicateHighlights(allDuplicateIds)
     }
 
-    // Update cross-package systems (sibling conflicts)
+    // Update cross-package systems (sibling conflicts + duplicate halos).
+    // Both early-return when not at root scope.
     updateCrossPackageConflicts()
+    updateCrossPackageDuplicates()
 
     // Determine if badges should render in elevated layer (above all nodes)
     // Elevated when: physics is settled AND no symlink drag is active
@@ -348,37 +354,29 @@ export class GameRenderer {
     const badgesShouldElevate = physicsSettled && !isSymlinkDragActive
     this.nodeRenderer.setBadgesElevated(badgesShouldElevate)
 
-    // Use toRaw() to avoid Vue reactivity tracking in render loop
-    // Use scope-aware getters for packages and wires
+    // Build a flat snapshot of nodes/wires for the current scope.
     const inScope = isInPackageScope()
-    const scopePackages = toRaw(getCurrentScopePackages())
-    const scopeWires = toRaw(getCurrentScopeWires())
+    const scopePackages = getCurrentScopePackages()
+    const scopeWires = getCurrentScopeWires()
 
-    // When in package scope, we also need to render the scope root (parent package)
-    // Create a combined package map for rendering
-    const rawPackages: Map<
-      string,
-      typeof gameState.packages extends Map<string, infer V> ? V : never
-    > = new Map(scopePackages)
-    let scopeRootPkg: ReturnType<typeof gameState.packages.get> | null = null
+    const rawPackages: Map<string, Package> = new Map(scopePackages)
+    let scopeRootPkg: Package | null = null
 
     if (inScope) {
-      // Get the scope root package (works for both layer 1 and layer 2)
       scopeRootPkg = getCurrentScopeRoot()
       if (scopeRootPkg) {
-        // Add scope root to our rendering map (it acts as local root at position 0,0)
-        const scopeRootForRender = {
-          ...toRaw(scopeRootPkg),
-          // Override position to (0,0) for internal view
+        // Render the scope root at the local origin (0,0). The shadow node
+        // in the scope graph carries the same Package reference, so we
+        // build a per-frame copy with overridden position.
+        const scopeRootForRender: Package = {
+          ...scopeRootPkg,
           position: { x: 0, y: 0 },
-          // Treat as root within scope (no parent in this context)
-          parentId: null,
         }
         rawPackages.set(scopeRootPkg.id, scopeRootForRender)
       }
     }
 
-    const rawWires = scopeWires
+    const rawWires: Map<string, Wire> = scopeWires
 
     // Check affordability for conflict resolution (cached for this frame)
     const canAffordResolve = canAffordConflictResolve()
@@ -442,7 +440,7 @@ export class GameRenderer {
     }
 
     for (const pkg of rawPackages.values()) {
-      const isRoot = pkg.parentId === null
+      const isRoot = isRootPackage(pkg.id)
       const pulseIntensity = isRoot ? rootPulse : 0
       const shakeOffset =
         pkg.state === 'conflict'
@@ -450,7 +448,7 @@ export class GameRenderer {
           : { x: 0, y: 0 }
 
       // Is this a top-level package (direct child of root)?
-      const isTopLevel = !inScope && pkg.parentId === gameState.rootId
+      const isTopLevel = !inScope && isTopLevelPackage(pkg.id)
 
       // Get duplicate halo info if applicable (getDuplicateGroup is scope-aware)
       // Check affordability once for all duplicates this frame
@@ -489,12 +487,17 @@ export class GameRenderer {
       const dimAmount = conflictPackageIds.has(pkg.id) ? 0 : firstConflictDim
 
       // Internal state glow for packages with internal scope
-      // - At root: top-level packages
-      // - Inside scope: compressed internal deps (have internalPackages)
-      const isCompressed =
-        pkg.internalPackages !== null && pkg.internalWires !== null
-      const internalState =
-        isTopLevel || (inScope && isCompressed) ? pkg.internalState : null
+      // - At root: top-level packages — read state from stack.stateAt([id])
+      // - Inside scope: compressed internal deps — read state at scope path + id
+      const isCompressed = inScope
+        ? stack.current.getChildGraph(pkg.id) !== null
+        : graph.getChildGraph(pkg.id) !== null
+      let internalState: 'pristine' | 'unstable' | 'stable' | null = null
+      if (isTopLevel) {
+        internalState = getScopeState([pkg.id])
+      } else if (inScope && isCompressed) {
+        internalState = getScopeState([...stack.path, pkg.id])
+      }
 
       // Ghost node rendering (cross-package symlink)
       const isGhost = pkg.isGhost || false
@@ -516,7 +519,7 @@ export class GameRenderer {
         inScope &&
         scopeRootPkg &&
         pkg.id === scopeRootPkg.id &&
-        scopeRootPkg.internalState === 'stable'
+        getScopeState(stack.path) === 'stable'
       )
 
       this.nodeRenderer.updateNode(pkg, {
@@ -561,7 +564,7 @@ export class GameRenderer {
     // Clean up nodes that no longer exist in current scope
     // Protect the current scope's root (global root at root scope, or scope package when inside)
     const currentPackageIds = new Set(rawPackages.keys())
-    const protectedRootId = inScope ? gameState.currentScope : gameState.rootId
+    const protectedRootId = inScope ? stack.currentNodeId : rootIdRef.value
     for (const [nodeId] of this.nodeRenderer.getAllNodeGraphics()) {
       if (!currentPackageIds.has(nodeId) && nodeId !== protectedRootId) {
         this.nodeRenderer.removeNode(nodeId)
@@ -603,9 +606,13 @@ export class GameRenderer {
         : (Date.now() % pulseDuration) / pulseDuration
 
     // Get packages from current scope
-    const scopePackages = inScope
-      ? toRaw(getCurrentScopePackages())
-      : toRaw(gameState.packages)
+    const scopePackages: Map<string, Package> = inScope
+      ? getCurrentScopePackages()
+      : (() => {
+          const m = new Map<string, Package>()
+          for (const [id, n] of graph.nodes) m.set(id, n.data)
+          return m
+        })()
 
     // Check if this is the first time seeing duplicates (teaching moment)
     const isFirstDuplicates =
@@ -709,7 +716,7 @@ export class GameRenderer {
     // - Background: shows grandparent scope (scopeDepth - 2), if exists
 
     // Get current scope's package (for centering parent layers)
-    const currentScopePath = [...gameState.scopeStack]
+    const currentScopePath = [...stack.path]
     const currentPkg = getPackageAtPath(currentScopePath)
 
     // Parent scope (one level up)
@@ -745,31 +752,43 @@ export class GameRenderer {
 
     // Render parent scope to midground
     if (parentPath.length === 0) {
-      // Parent is root - render root scope
+      // Parent is root — render root scope.
+      const rootPackages = new Map<string, Package>()
+      const rootWires = new Map<string, Wire>()
+      for (const [id, n] of graph.nodes) rootPackages.set(id, n.data)
+      for (const [id, e] of graph.edges) rootWires.set(id, e.data)
       this.renderScopeToLayer(
-        toRaw(gameState.packages),
-        toRaw(gameState.wires),
+        rootPackages,
+        rootWires,
         this.midgroundNodeRenderer,
         this.midgroundWireRenderer,
-        gameState.rootId
+        rootIdRef.value
       )
-    } else if (parentPkg?.internalPackages && parentPkg?.internalWires) {
-      // Parent is a nested package - render its internals
-      const parentId = parentPath[parentPath.length - 1]!
-      const parentPackages = new Map(toRaw(parentPkg.internalPackages))
-      parentPackages.set(parentId, {
-        ...toRaw(parentPkg),
-        position: { x: 0, y: 0 },
-        parentId: null,
-      } as typeof parentPkg)
+    } else if (parentPkg) {
+      const parentScopeGraph = getGraphAtPath(parentPath)
+      if (parentScopeGraph) {
+        const parentId = parentPath[parentPath.length - 1]!
+        const parentPackages = new Map<string, Package>()
+        for (const [id, n] of parentScopeGraph.nodes) {
+          if (id === parentId) {
+            // Render the scope owner at the local origin.
+            parentPackages.set(id, { ...n.data, position: { x: 0, y: 0 } })
+          } else {
+            parentPackages.set(id, n.data)
+          }
+        }
+        const parentWires = new Map<string, Wire>()
+        for (const [id, e] of parentScopeGraph.edges)
+          parentWires.set(id, e.data)
 
-      this.renderScopeToLayer(
-        parentPackages,
-        toRaw(parentPkg.internalWires),
-        this.midgroundNodeRenderer,
-        this.midgroundWireRenderer,
-        parentId
-      )
+        this.renderScopeToLayer(
+          parentPackages,
+          parentWires,
+          this.midgroundNodeRenderer,
+          this.midgroundWireRenderer,
+          parentId
+        )
+      }
     }
 
     // Background: shows grandparent scope if we're at depth 2+
@@ -791,30 +810,40 @@ export class GameRenderer {
 
       // Render grandparent scope to background
       if (grandparentPath.length === 0) {
-        // Grandparent is root
+        const rootPackages = new Map<string, Package>()
+        const rootWires = new Map<string, Wire>()
+        for (const [id, n] of graph.nodes) rootPackages.set(id, n.data)
+        for (const [id, e] of graph.edges) rootWires.set(id, e.data)
         this.renderScopeToLayer(
-          toRaw(gameState.packages),
-          toRaw(gameState.wires),
+          rootPackages,
+          rootWires,
           this.backgroundNodeRenderer,
           this.backgroundWireRenderer,
-          gameState.rootId
+          rootIdRef.value
         )
       } else {
-        const grandparentPkg = getPackageAtPath(grandparentPath)
-        if (grandparentPkg?.internalPackages && grandparentPkg?.internalWires) {
+        const grandparentGraph = getGraphAtPath(grandparentPath)
+        if (grandparentGraph) {
           const grandparentId = grandparentPath[grandparentPath.length - 1]!
-          const grandparentPackages = new Map(
-            toRaw(grandparentPkg.internalPackages)
-          )
-          grandparentPackages.set(grandparentId, {
-            ...toRaw(grandparentPkg),
-            position: { x: 0, y: 0 },
-            parentId: null,
-          } as typeof grandparentPkg)
+          const grandparentPackages = new Map<string, Package>()
+          for (const [id, n] of grandparentGraph.nodes) {
+            if (id === grandparentId) {
+              grandparentPackages.set(id, {
+                ...n.data,
+                position: { x: 0, y: 0 },
+              })
+            } else {
+              grandparentPackages.set(id, n.data)
+            }
+          }
+          const grandparentWires = new Map<string, Wire>()
+          for (const [id, e] of grandparentGraph.edges) {
+            grandparentWires.set(id, e.data)
+          }
 
           this.renderScopeToLayer(
             grandparentPackages,
-            toRaw(grandparentPkg.internalWires),
+            grandparentWires,
             this.backgroundNodeRenderer,
             this.backgroundWireRenderer,
             grandparentId
@@ -835,8 +864,8 @@ export class GameRenderer {
    * Render a scope's packages and wires to a specific layer
    */
   private renderScopeToLayer(
-    packages: Map<string, ReturnType<typeof gameState.packages.get>>,
-    wires: Map<string, ReturnType<typeof gameState.wires.get>>,
+    packages: Map<string, Package>,
+    wires: Map<string, Wire>,
     nodeRenderer: NodeRenderer,
     wireRenderer: WireRenderer,
     _rootId: string | null // Currently unused but kept for potential future use

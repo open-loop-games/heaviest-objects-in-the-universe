@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { gameState } from '../../game/state'
+import { gameState, graph, graphRevision, stack } from '../../game/state'
 import {
   getScopeDepth,
   exitPackageScope,
-  getCurrentScopeRoot,
+  getScopeState,
 } from '../../game/scope'
 import { getInternalStats } from '../../game/packages'
 import { setCameraTarget } from '../../game/loop'
@@ -18,11 +18,10 @@ const backBtnRef = ref<HTMLElement | null>(null)
 // SCOPE STATE
 // ============================================
 
-// Get the current scope package's internal state
-// Uses getCurrentScopeRoot() to handle nested scopes (e.g., react-dom inside react)
+// Get the current scope's state ('pristine' | 'unstable' | 'stable' | null)
 const scopePackageState = computed(() => {
-  const pkg = getCurrentScopeRoot()
-  return pkg?.internalState || null
+  void graphRevision.value
+  return getScopeState(stack.path)
 })
 
 // Is the current scope stable (ready to exit with satisfaction)?
@@ -35,7 +34,10 @@ const isFirstStableExit = computed(
 
 // Internal stats for the current scope
 const scopeStats = computed(() => {
-  return getInternalStats(gameState.currentScope)
+  void graphRevision.value
+  const layer1 = stack.path[0]
+  if (!layer1) return { conflicts: 0, duplicates: 0 }
+  return getInternalStats(layer1)
 })
 
 // ============================================
@@ -43,7 +45,10 @@ const scopeStats = computed(() => {
 // ============================================
 
 // Current scope depth (0 = root, 1 = layer 1, 2 = layer 2)
-const currentDepth = computed(() => getScopeDepth())
+const currentDepth = computed(() => {
+  void graphRevision.value
+  return getScopeDepth()
+})
 
 // Track depth changes for pulse animation
 const depthJustChanged = ref(false)
@@ -79,8 +84,9 @@ const depthLevels = computed(() => {
 // ============================================
 
 function handleBackClick() {
-  // Get the current scope package position before exiting
-  const scopePkg = gameState.packages.get(gameState.currentScope)
+  // Get the current scope package position before exiting (top-level if any)
+  const layer1Id = stack.path[0]
+  const scopePkg = layer1Id ? graph.getNode(layer1Id)?.data : null
   const targetX = scopePkg?.position.x ?? 0
   const targetY = scopePkg?.position.y ?? 0
 

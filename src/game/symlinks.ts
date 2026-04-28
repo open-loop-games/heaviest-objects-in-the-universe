@@ -1,16 +1,14 @@
-// Symlink detection and duplicate management
-// SCOPE-AWARE: All functions work for both root scope and internal package scopes
+// Symlink detection and merge — scope-aware via graph + stack.
 
-import { toRaw } from 'vue'
-import { gameState } from './state'
+import { gameState, generateWireId, graph, stack } from './state'
 import {
-  getCurrentScopePackages,
-  getCurrentScopeWires,
   getCurrentScopeRoot,
-  isInPackageScope,
+  getGraphAtPath,
   isCurrentScopeRoot,
+  isInPackageScope,
+  isRootPackage,
 } from './scope'
-import type { Package } from './types'
+import type { Package, Wire } from './types'
 import { updateCrossPackageDuplicates } from './cross-package'
 import { onSymlinkMerged } from './mutations'
 import { emit } from './events'
@@ -21,6 +19,7 @@ import {
   COMBO_WEIGHT_RETENTION_MAX,
 } from './config'
 import { recordSymlink, checkAchievements } from './achievements'
+import type { SpatialGraph } from 'open-loop-engine'
 
 export interface DuplicateGroup {
   identityName: string
@@ -29,17 +28,11 @@ export interface DuplicateGroup {
   haloColorIndex: number
 }
 
-// Cache of duplicate groups (recalculated when dirty)
 const duplicateGroups: Map<string, DuplicateGroup> = new Map()
 
-// Dirty flag for duplicate group recalculation
 let duplicateGroupsDirty = true
 let lastScopeStackLength = -1
 
-/**
- * Mark duplicate groups as needing recalculation.
- * Call this when packages are added, removed, or merged.
- */
 export function markDuplicateGroupsDirty(): void {
   duplicateGroupsDirty = true
 }
@@ -48,15 +41,9 @@ export function markDuplicateGroupsDirty(): void {
 // COMBO WEIGHT RETENTION
 // ============================================
 
-/**
- * Calculate weight retention based on current combo level.
- * At combo 0: 50% of source weight is removed (retention = 0.5)
- * At combo 10: 0% of source weight is removed (retention = 1.0)
- */
 function getComboWeightRetention(): number {
   const combo = gameState.stats.comboCount
-  const t = combo / COMBO_MAX // 0 to 1
-  // Interpolate: 0.5 at combo 0, 1.0 at combo 10
+  const t = combo / COMBO_MAX
   return (
     COMBO_WEIGHT_RETENTION_MIN +
     t * (COMBO_WEIGHT_RETENTION_MAX - COMBO_WEIGHT_RETENTION_MIN)
@@ -64,46 +51,61 @@ function getComboWeightRetention(): number {
 }
 
 // ============================================
-// DUPLICATE DETECTION (SCOPE-AWARE)
+// HELPERS
 // ============================================
 
-/**
- * Find all duplicate package groups (packages with same identity)
- * SCOPE-AWARE: Uses getCurrentScopePackages() so it works both at root and inside packages
- * Uses dirty flag to avoid recalculating every frame
- */
+function currentScopeGraph(): SpatialGraph<Package, Wire> {
+  return stack.current
+}
+
+function currentScopeOwnerId(): string | null {
+  return stack.depth === 0 ? null : stack.path[stack.path.length - 1]!
+}
+
+/** Iterate user-visible packages in the current scope (skipping the shadow
+ *  scope-owner when inside a scope). */
+function* iterateScopePackages(): Generator<{ id: string; pkg: Package }> {
+  const g = currentScopeGraph()
+  const ownerId = currentScopeOwnerId()
+  for (const [id, node] of g.nodes) {
+    if (ownerId !== null && id === ownerId) continue
+    yield { id, pkg: node.data }
+  }
+}
+
+// ============================================
+// DUPLICATE DETECTION
+// ============================================
+
 export function updateDuplicateGroups(): void {
-  // Also invalidate on scope change
-  const currentScopeLength = gameState.scopeStack.length
+  const currentScopeLength = stack.depth
   if (currentScopeLength !== lastScopeStackLength) {
     duplicateGroupsDirty = true
     lastScopeStackLength = currentScopeLength
   }
 
-  // Skip recalculation if not dirty
   if (!duplicateGroupsDirty) return
   duplicateGroupsDirty = false
 
   duplicateGroups.clear()
 
   const identityGroups = new Map<string, string[]>()
-  const scopePackages = toRaw(getCurrentScopePackages())
 
-  for (const [id, pkg] of scopePackages) {
+  for (const { id, pkg } of iterateScopePackages()) {
     if (!pkg.identity) continue
     if (pkg.isGhost) continue
 
-    // At root scope, never include root in duplicate groups
-    if (!isInPackageScope() && id === gameState.rootId) continue
+    // At root scope, exclude root.
+    if (!isInPackageScope() && isRootPackage(id)) continue
 
-    // At root scope, exclude packages with internal scopes (complex packages)
-    // These have portal rings and can't be simply merged like duplicates
-    if (
-      !isInPackageScope() &&
-      pkg.internalPackages &&
-      pkg.internalPackages.size > 0
-    )
-      continue
+    // At root scope, exclude packages with non-empty internal scope (these
+    // are top-level packages with portal rings — they can't be naively
+    // merged because their internals carry meaningful state).
+    if (!isInPackageScope()) {
+      const child = graph.getChildGraph(id)
+      // child has shadow-only when pristine; size > 1 means populated.
+      if (child && child.nodes.size > 1) continue
+    }
 
     const name = pkg.identity.name
     const group = identityGroups.get(name) || []
@@ -111,7 +113,6 @@ export function updateDuplicateGroups(): void {
     identityGroups.set(name, group)
   }
 
-  // Only keep groups with 2+ packages (actual duplicates)
   let colorIndex = 0
   for (const [name, ids] of identityGroups) {
     if (ids.length >= 2) {
@@ -125,70 +126,49 @@ export function updateDuplicateGroups(): void {
     }
   }
 
-  // Set firstSymlinkSeen when duplicates are first detected
   if (duplicateGroups.size > 0 && !gameState.onboarding.firstSymlinkSeen) {
     gameState.onboarding.firstSymlinkSeen = true
   }
 }
 
-/**
- * Get the duplicate group for a package (if any)
- * SCOPE-AWARE
- */
 export function getDuplicateGroup(packageId: string): DuplicateGroup | null {
-  const scopePackages = toRaw(getCurrentScopePackages())
-  const pkg = scopePackages.get(packageId)
-  if (!pkg?.identity) return null
+  const g = currentScopeGraph()
+  const node = g.getNode(packageId)
+  if (!node?.data.identity) return null
 
-  return duplicateGroups.get(pkg.identity.name) || null
+  return duplicateGroups.get(node.data.identity.name) || null
 }
 
-/**
- * Check if a package has duplicates
- */
 export function hasDuplicates(packageId: string): boolean {
   return getDuplicateGroup(packageId) !== null
 }
 
-/**
- * Get all duplicate groups
- */
 export function getAllDuplicateGroups(): DuplicateGroup[] {
   return Array.from(duplicateGroups.values())
 }
 
-/**
- * Get other packages that are duplicates of this one
- * SCOPE-AWARE
- */
 export function getOtherDuplicates(packageId: string): Package[] {
   const group = getDuplicateGroup(packageId)
   if (!group) return []
 
-  const scopePackages = toRaw(getCurrentScopePackages())
+  const g = currentScopeGraph()
   return group.packageIds
     .filter((id) => id !== packageId)
-    .map((id) => scopePackages.get(id))
+    .map((id) => g.getNode(id)?.data)
     .filter((pkg): pkg is Package => pkg !== undefined)
 }
 
 // ============================================
-// SYMLINK OPERATIONS (SCOPE-AWARE)
+// SYMLINK OPERATIONS
 // ============================================
 
-/**
- * Check if two packages can be symlinked (same identity)
- * SCOPE-AWARE: Works for both root scope and internal packages
- */
 export function canSymlink(sourceId: string, targetId: string): boolean {
   if (sourceId === targetId) return false
-
-  // Never allow scope root to be a symlink source
   if (isCurrentScopeRoot(sourceId)) return false
 
-  const scopePackages = toRaw(getCurrentScopePackages())
-  const source = scopePackages.get(sourceId)
-  const target = scopePackages.get(targetId)
+  const g = currentScopeGraph()
+  const source = g.getNode(sourceId)?.data
+  const target = g.getNode(targetId)?.data
 
   if (!source?.identity || !target?.identity) return false
   if (source.identity.name !== target.identity.name) return false
@@ -196,81 +176,47 @@ export function canSymlink(sourceId: string, targetId: string): boolean {
   return true
 }
 
-/**
- * Check if we can afford to perform a symlink merge
- * Momentum loop: Always affordable (generates BW instead of costing)
- */
 export function canAffordSymlinkMerge(): boolean {
-  return true // Always affordable in momentum loop
+  return true
 }
 
-/**
- * Get the cost to perform a symlink merge
- * Momentum loop: Free (generates BW instead)
- */
 export function getSymlinkMergeCost(): number {
-  return 0 // Free in momentum loop
+  return 0
 }
 
-/**
- * Result of a symlink merge operation
- */
 export interface MergeResult {
   weightSaved: number
   bandwidthRefund: number
 }
 
-/**
- * Check if a package is compressed (has internal scope)
- */
-function isCompressed(pkg: Package): boolean {
-  return pkg.internalPackages !== null && pkg.internalWires !== null
+function isCompressed(g: SpatialGraph<Package, Wire>, pkgId: string): boolean {
+  return g.getChildGraph(pkgId) !== null
 }
 
-/**
- * Check if rewiring would create a duplicate wire
- * Used during symlink merge to avoid creating parallel wires
- */
-function wouldCreateDuplicateWire(
-  wireId: string,
-  newFromId: string,
-  newToId: string,
-  allWires: Map<string, import('./types').Wire>
+function shouldKeep(
+  g: SpatialGraph<Package, Wire>,
+  a: Package,
+  b: Package
 ): boolean {
-  return Array.from(allWires.values()).some(
-    (w) => w.id !== wireId && w.fromId === newFromId && w.toId === newToId
-  )
-}
-
-/**
- * Determine which node should be kept in a merge.
- * Priority: 1) compressed packages, 2) lower depth, 3) closer to origin.
- * Returns true if A should be kept over B.
- */
-function shouldKeep(a: Package, b: Package): boolean {
-  // First priority: prefer compressed packages (preserve nested content)
-  const aCompressed = isCompressed(a)
-  const bCompressed = isCompressed(b)
+  const aCompressed = isCompressed(g, a.id)
+  const bCompressed = isCompressed(g, b.id)
   if (aCompressed !== bCompressed) {
     return aCompressed
   }
 
-  // Second priority: lower depth = more central (closer to root in tree)
   if (a.depth !== b.depth) {
     return a.depth < b.depth
   }
 
-  // Third priority: closer to center (euclidean distance)
   const distA = Math.sqrt(a.position.x ** 2 + a.position.y ** 2)
   const distB = Math.sqrt(b.position.x ** 2 + b.position.y ** 2)
   return distA < distB
 }
 
 /**
- * Perform a symlink merge: keep the more central node, other vanishes cleanly
- * SCOPE-AWARE: Works for both root scope and internal packages
- * Momentum loop: Generates bandwidth instead of costing
- * Returns the weight saved from the merge (0 if failed)
+ * Perform a symlink merge in the current scope. The source vanishes; its
+ * dependency edges are redirected to point at the target (modulo dedup).
+ * Returns the weight saved (0 if the merge couldn't proceed).
  */
 export function performSymlinkMerge(
   sourceId: string,
@@ -278,40 +224,29 @@ export function performSymlinkMerge(
 ): number {
   if (!canSymlink(sourceId, targetId)) return 0
 
-  // Reset ghost hand hint timers on meaningful player action
   emit('player:action')
 
-  const packages = getCurrentScopePackages()
-  const wires = getCurrentScopeWires()
+  const g = currentScopeGraph()
   const inScope = isInPackageScope()
 
-  let source = packages.get(sourceId)
-  let target = packages.get(targetId)
+  let source = g.getNode(sourceId)?.data
+  let target = g.getNode(targetId)?.data
   if (!source || !target) return 0
 
-  // Prefer keeping: compressed packages > lower depth > closer to center
-  // This preserves nested content and keeps merged hub nodes well-positioned
-  if (shouldKeep(source, target)) {
-    // Swap: source becomes target, target becomes source
+  if (shouldKeep(g, source, target)) {
     ;[source, target] = [target, source]
     ;[sourceId, targetId] = [targetId, sourceId]
   }
 
-  // Calculate weight removal based on combo (higher combo = less weight removed)
-  // At combo 0: 50% removed, at combo 10: 0% removed
   const retention = getComboWeightRetention()
   const weightRemoved = Math.floor(source.size * (1 - retention))
-  const weightSaved = source.size - weightRemoved // For stats/particles
+  const weightSaved = source.size - weightRemoved
   const mergePosition = { x: source.position.x, y: source.position.y }
 
-  // === MOMENTUM LOOP: Generate bandwidth for manual merge ===
-  // Also emits 'game:symlink-merged' event for UI juice
   onSymlinkMerged(weightSaved, mergePosition)
 
-  // Reduce global weight (combo affects how much is removed)
   gameState.resources.weight -= weightRemoved
 
-  // If in scope, also reduce the scope package's size (works at any depth)
   if (inScope) {
     const scopePkg = getCurrentScopeRoot()
     if (scopePkg) {
@@ -319,114 +254,118 @@ export function performSymlinkMerge(
     }
   }
 
-  // === HANDLE WIRES ===
-  const wiresToDelete: string[] = []
-
-  for (const [wireId, wire] of wires) {
-    if (wire.toId === sourceId) {
-      // Wire points TO source - redirect to target or delete if duplicate
-      if (wire.fromId === targetId) {
-        wiresToDelete.push(wireId) // Direct connection between source/target
-      } else if (
-        wouldCreateDuplicateWire(wireId, wire.fromId, targetId, wires)
-      ) {
-        wiresToDelete.push(wireId)
-      } else {
-        wire.toId = targetId
-      }
-    } else if (wire.fromId === sourceId) {
-      // Wire points FROM source - redirect from target or delete if duplicate
-      if (wire.toId === targetId) {
-        wiresToDelete.push(wireId) // Direct connection between source/target
-      } else if (wouldCreateDuplicateWire(wireId, targetId, wire.toId, wires)) {
-        wiresToDelete.push(wireId)
-      } else {
-        wire.fromId = targetId
-      }
-    }
+  // Plan edge redirections before we mutate the graph. At root scope, the
+  // wires include the rootId→sourceId edge. At inner scope, they include
+  // owner→sourceId and sourceId→subDep edges.
+  type Plan = {
+    drop: string[]
+    add: Array<{ fromId: string; toId: string; data: Wire }>
+    relocatedChildIds: string[]
   }
+  const plan: Plan = { drop: [], add: [], relocatedChildIds: [] }
 
-  for (const wireId of wiresToDelete) {
-    wires.delete(wireId)
-  }
-
-  // === HANDLE PARENT'S CHILDREN LIST ===
-  if (source.parentId && !isCurrentScopeRoot(source.parentId)) {
-    const parent = packages.get(source.parentId)
-    if (parent) {
-      parent.children = parent.children.filter((id) => id !== sourceId)
-    }
-  }
-
-  // === TRANSFER CHILDREN ===
-  // Collect IDs for physics relocation (at root scope)
-  const relocatedIds: string[] = []
-  for (const childId of source.children) {
-    const child = packages.get(childId)
-    if (child) {
-      child.parentId = targetId
-      if (!target.children.includes(childId)) {
-        target.children.push(childId)
+  for (const edge of g.edgesOf(sourceId)) {
+    if (edge.toId === sourceId) {
+      // Inbound edge — redirect to target unless the target already has the
+      // same incoming endpoint or it would self-loop.
+      if (edge.fromId === targetId) {
+        plan.drop.push(edge.id)
+        continue
       }
-      // At root scope, collect subtree for relocation
-      if (!inScope) {
-        collectSubtreeIds(childId, packages, relocatedIds)
+      if (hasEdgeBetween(g, edge.fromId, targetId)) {
+        plan.drop.push(edge.id)
+        continue
+      }
+      plan.drop.push(edge.id)
+      plan.add.push({
+        fromId: edge.fromId,
+        toId: targetId,
+        data: { ...edge.data, fromId: edge.fromId, toId: targetId },
+      })
+    } else if (edge.fromId === sourceId) {
+      // Outbound edge — redirect from target.
+      if (edge.toId === targetId) {
+        plan.drop.push(edge.id)
+        continue
+      }
+      if (hasEdgeBetween(g, targetId, edge.toId)) {
+        plan.drop.push(edge.id)
+        continue
+      }
+      plan.drop.push(edge.id)
+      plan.add.push({
+        fromId: targetId,
+        toId: edge.toId,
+        data: { ...edge.data, fromId: targetId, toId: edge.toId },
+      })
+      // Track sub-deps that are getting reparented for physics relocation.
+      if (edge.data.wireType === 'dependency') {
+        plan.relocatedChildIds.push(edge.toId)
       }
     }
   }
 
-  // === REMOVE SOURCE ===
-  packages.delete(sourceId)
+  for (const id of plan.drop) {
+    g.removeEdge(id)
+  }
+  for (const { fromId, toId, data } of plan.add) {
+    const id = generateWireId()
+    g.addEdge(fromId, toId, { ...data, id }, { id })
+  }
 
-  // === UPDATE STATS ===
+  // Remove the source node — this cascades to any remaining edges + child graph.
+  g.removeNode(sourceId)
+
   gameState.stats.totalSymlinksCreated++
   if (!gameState.onboarding.firstSymlinkSeen) {
     gameState.onboarding.firstSymlinkSeen = true
   }
 
-  // === ACHIEVEMENT TRACKING ===
   recordSymlink()
   checkAchievements()
 
-  // === POST-MERGE ACTIONS ===
-  // Mark target and children for physics relocation via event
+  // Physics relocation: at root scope, the merge collapses an entire subtree
+  // (the source's child graph went away with it). At inner scope, sub-deps
+  // got reparented to target, so we relocate their physics anchors.
   if (!inScope) {
-    relocatedIds.push(targetId)
-    emit('physics:trigger-organize', { relocatedIds })
+    emit('physics:trigger-organize', { relocatedIds: [targetId] })
+  } else if (plan.relocatedChildIds.length > 0) {
+    plan.relocatedChildIds.push(targetId)
+    emit('physics:trigger-organize', {
+      relocatedIds: plan.relocatedChildIds,
+    })
   }
 
   if (inScope) {
-    // Merging duplicates in inner scope grants a guaranteed crit on next pop
     gameState.cascade.guaranteedCrits++
-
-    // Emit event for scope state recalculation
-    emit('scope:recalculate', { scopePath: [...gameState.scopeStack] })
+    emit('scope:recalculate', { scopePath: [...stack.path] })
   }
 
-  // Mark duplicate groups as dirty and refresh immediately
   markDuplicateGroupsDirty()
   updateDuplicateGroups()
   updateCrossPackageDuplicates()
 
-  // Also emit packages changed for any other listeners
   emit('packages:changed')
 
   return weightSaved
 }
 
-/**
- * Helper: Collect all package IDs in a subtree for physics relocation
- */
-function collectSubtreeIds(
-  pkgId: string,
-  packages: Map<string, Package>,
-  result: string[]
-): void {
-  result.push(pkgId)
-  const pkg = packages.get(pkgId)
-  if (pkg) {
-    for (const childId of pkg.children) {
-      collectSubtreeIds(childId, packages, result)
-    }
+function hasEdgeBetween(
+  g: SpatialGraph<Package, Wire>,
+  fromId: string,
+  toId: string
+): boolean {
+  // Check both endpoints exist before iterating, to match graph contract.
+  if (!g.getNode(fromId) || !g.getNode(toId)) return false
+  for (const edge of g.edgesBetween(fromId, toId)) {
+    if (edge.fromId === fromId && edge.toId === toId) return true
   }
+  return false
+}
+
+// Lazy access to scope path graph for the cross-scope helpers below.
+export function getScopeGraph(
+  path: readonly string[]
+): SpatialGraph<Package, Wire> | null {
+  return getGraphAtPath(path)
 }

@@ -4,7 +4,7 @@
 
 import { Graphics, Container, type Application } from 'pixi.js'
 import { Colors } from './colors'
-import { gameState, computed_gravity } from '../game/state'
+import { gameState, graph, computed_gravity } from '../game/state'
 import { on } from '../game/events'
 import {
   startCollapse as startCollapseState,
@@ -657,7 +657,7 @@ export class BlackHoleRenderer {
     this.collapseProgress = progress
 
     // Get absorbed count from physics state
-    const totalPackages = gameState.packages.size
+    const totalPackages = graph.nodes.size
     const absorbedCount = collapseState.value.absorbedPackages.size
     const absorbedRatio = totalPackages > 0 ? absorbedCount / totalPackages : 0
 
@@ -1462,7 +1462,7 @@ export class BlackHoleRenderer {
     if (now - this.lastAmbientSpawn > spawnRate * 1000 && this.worldToScreen) {
       this.lastAmbientSpawn = now
 
-      const packages = Array.from(gameState.packages.values())
+      const packages = Array.from(graph.nodes.values()).map((n) => n.data)
       if (packages.length > 0) {
         // Pick a random package
         const pkg = packages[Math.floor(Math.random() * packages.length)]!
