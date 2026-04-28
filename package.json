@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "simulate": "vite-node scripts/simulate.ts",
     "prebuild": "node scripts/copy-devicons.js",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
@@ -47,7 +46,6 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.58.1",
     "vite": "^7.3.0",
-    "vite-node": "^5.3.0",
     "vue-tsc": "^3.2.6"
   }
 }
