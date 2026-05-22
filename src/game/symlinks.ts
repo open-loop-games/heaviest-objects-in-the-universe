@@ -19,7 +19,7 @@ import {
   COMBO_WEIGHT_RETENTION_MAX,
 } from './config'
 import { recordSymlink, checkAchievements } from './achievements'
-import type { SpatialGraph } from 'open-loop-engine'
+import type { SpatialGraph } from '@open-loop/engine'
 
 export interface DuplicateGroup {
   identityName: string

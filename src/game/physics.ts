@@ -7,7 +7,7 @@ import type { Package, Wire } from './types'
 import { getAllDuplicateGroups } from './symlinks'
 import { getGraphAtPath } from './scope'
 import { on } from './events'
-import type { GraphEdge, SpatialGraph } from 'open-loop-engine'
+import type { GraphEdge, SpatialGraph } from '@open-loop/engine'
 
 const RADIAL_CONFIG = {
   baseRadius: 120,

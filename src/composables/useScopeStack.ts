@@ -10,7 +10,7 @@ import type {
   ScopeStack,
   ScopeState,
   SpatialGraph,
-} from 'open-loop-engine'
+} from '@open-loop/engine'
 
 export interface UseScopeStackReturn<N, E> {
   path: ComputedRef<readonly string[]>

@@ -40,7 +40,7 @@ import { getGraphAtPath, getPackageAtPath } from './scope'
 import { getIdentitySize } from './formulas'
 import { consumeSurge, isSurgeUnlocked } from './surge'
 import { emit } from './events'
-import type { SpatialGraph } from 'open-loop-engine'
+import type { SpatialGraph } from '@open-loop/engine'
 
 // Constants for cascade behavior
 const BASE_SPAWN_INTERVAL = 120

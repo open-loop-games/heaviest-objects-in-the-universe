@@ -15,7 +15,7 @@ import type {
   ScopeStackSnapshot,
   SpatialGraph,
   SpatialGraphSnapshot,
-} from 'open-loop-engine'
+} from '@open-loop/engine'
 import type { Package, Wire } from './types'
 import { SAVE_VERSION } from './config'
 import {

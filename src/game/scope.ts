@@ -9,7 +9,7 @@
 import type { Package, Wire } from './types'
 import { graph, rootIdRef, stack } from './state'
 import { emit } from './events'
-import type { SpatialGraph } from 'open-loop-engine'
+import type { SpatialGraph } from '@open-loop/engine'
 
 // ============================================
 // SCOPE DEPTH HELPERS

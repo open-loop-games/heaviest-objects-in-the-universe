@@ -12,7 +12,7 @@ import {
   COMPRESSION_HARDCAP,
   DEPTH_COMPRESSION_MULT,
 } from './config'
-import type { SpatialGraph } from 'open-loop-engine'
+import type { SpatialGraph } from '@open-loop/engine'
 
 // ============================================
 // PRESTIGE THRESHOLD

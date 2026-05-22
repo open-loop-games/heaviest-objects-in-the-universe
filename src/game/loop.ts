@@ -16,7 +16,7 @@ import { applySafetyRegen, onPackageResolved } from './mutations'
 import { COMBO_DECAY_MS } from './config'
 import { checkAchievements, updatePatienceTimer } from './achievements'
 import { isTopLevelPackage } from './scope'
-import type { SpatialGraph } from 'open-loop-engine'
+import type { SpatialGraph } from '@open-loop/engine'
 import type { Package, Wire } from './types'
 
 // ============================================

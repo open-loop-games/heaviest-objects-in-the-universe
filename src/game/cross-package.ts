@@ -6,7 +6,7 @@ import { gameState, graph, rootIdRef, stack } from './state'
 import type { Package, Wire } from './types'
 import { areIncompatible } from './registry'
 import { HALO_COLORS } from './config'
-import type { GraphNode, SpatialGraph } from 'open-loop-engine'
+import type { GraphNode, SpatialGraph } from '@open-loop/engine'
 
 // ============================================
 // CROSS-PACKAGE CONFLICTS

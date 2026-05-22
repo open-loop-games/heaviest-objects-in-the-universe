@@ -23,7 +23,7 @@ import {
 import { gameState, generateWireId, graph, rootIdRef, stack } from './state'
 import { getEcosystemTier } from './formulas'
 import type { Package, Wire } from './types'
-import type { SpatialGraph } from 'open-loop-engine'
+import type { SpatialGraph } from '@open-loop/engine'
 import {
   getCurrentScopePackages,
   getCurrentScopeWires,

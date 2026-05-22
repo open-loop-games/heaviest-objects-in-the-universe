@@ -24,7 +24,7 @@ import {
   type ScopeStack,
   type ScopeState,
   type SpatialGraph,
-} from 'open-loop-engine'
+} from '@open-loop/engine'
 import {
   type GameState,
   type GameConfig,

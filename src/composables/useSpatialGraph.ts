@@ -5,7 +5,7 @@ import {
   triggerRef,
   type ComputedRef,
 } from 'vue'
-import type { GraphEdge, GraphNode, SpatialGraph } from 'open-loop-engine'
+import type { GraphEdge, GraphNode, SpatialGraph } from '@open-loop/engine'
 
 export interface UseSpatialGraphReturn<N, E> {
   nodes: ComputedRef<readonly GraphNode<N>[]>
