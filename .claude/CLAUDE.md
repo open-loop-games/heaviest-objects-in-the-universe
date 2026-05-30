@@ -175,3 +175,6 @@ src/
 
 **Not Started:**
 - Particle effects (beyond basic ripples)
+
+<!-- Private, gitignored per-repo notes (replaces auto-memory). Resolves to .claude/CLAUDE.local.md. -->
+@CLAUDE.local.md

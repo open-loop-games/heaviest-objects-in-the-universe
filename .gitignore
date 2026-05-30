@@ -24,3 +24,9 @@ itch_assets
 *.njsproj
 *.sln
 *.sw?
+
+# Claude: commit .claude/CLAUDE.md and rules/, keep the rest private
+.claude/*
+!.claude/CLAUDE.md
+!.claude/rules/
+.claude/CLAUDE.local.md
