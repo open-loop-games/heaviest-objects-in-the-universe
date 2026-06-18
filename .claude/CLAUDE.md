@@ -21,6 +21,7 @@ Core fantasy: Taming chaos through optimization. Watch a messy dependency tree s
 - **No backwards compat:** Break things freely, no migration code
 - **Prefer editing:** Modify existing files over creating new ones
 - **Keep rendering pure:** Game logic in `game/`, visuals in `rendering/`
+- **Direct cutover for ports:** delete the old shape, write the new, fix call sites — no staged dual-write or mirror fields. When porting to engine primitives, the engine wrapper (`GraphNode<T>`/`GraphEdge<T>`) carries id/topology; don't denormalize `id`/`parentId`/`children` onto the payload — readers unwrap.
 
 ## Development Commands
 
