@@ -31,7 +31,7 @@ Core fantasy: Taming chaos through optimization. Watch a messy dependency tree s
 pnpm dev          # Start dev server (Vite + HMR)
 pnpm build        # Production build
 pnpm typecheck    # Vue + TypeScript checking
-pnpm lint         # ESLint
+pnpm lint         # oxlint
 pnpm circular     # dpdm circular
 ```
 

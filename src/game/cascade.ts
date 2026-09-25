@@ -300,7 +300,7 @@ function startCascadeImmediate(
     )
   }
 
-  // Touch the graph reference so eslint/usage analysis sees it. Tracking
+  // Touch the graph reference so lint/usage analysis sees it. Tracking
   // node count to spawn into the graph is owned by `addInnerPackage`.
   void scopeGraph
 }

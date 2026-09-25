@@ -43,7 +43,7 @@ You are a dependency resolver. Your job: tame the chaos of nested node_modules.
 pnpm dev          # Start dev server
 pnpm build        # Production build
 pnpm typecheck    # Type checking
-pnpm lint         # ESLint
+pnpm lint         # oxlint
 ```
 
 ## Docs
