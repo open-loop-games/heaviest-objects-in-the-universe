@@ -121,7 +121,7 @@ function resetTransientState(): void {
 export function saveGame(): string {
   const saveData: SaveData = {
     version: SAVE_VERSION,
-    state: structuredClone(gameState) as typeof gameState,
+    state: gameState,
     rootId: rootIdRef.value,
     graph: graph.serialize(),
     scope: stack.serialize(),
