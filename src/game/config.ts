@@ -210,9 +210,6 @@ export const DEFAULT_CONFIG: GameConfig = {
 const STARTING_MAX_BANDWIDTH = 1000
 const STARTING_BANDWIDTH = STARTING_MAX_BANDWIDTH / 2 // Start half full
 
-// Save version - increment to force reset on incompatible changes
-export const SAVE_VERSION = 3
-
 /**
  * Create a fresh game state for new game or prestige reset
  * @param seed - Optional RNG seed. Defaults to Date.now() for unique runs.

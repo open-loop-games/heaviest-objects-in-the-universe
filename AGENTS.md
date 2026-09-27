@@ -43,7 +43,7 @@ src/
 │   ├── GameCanvas.vue    # Pixi.js canvas + input handling
 │   └── hud/              # HUD components (resource bars, navigation, automation)
 ├── game/
-│   ├── state.ts          # Reactive game state (Vue refs)
+│   ├── state.ts          # Reactive game state, graph, and the engine instance
 │   ├── types.ts          # Core interfaces (Package, Wire, GameState)
 │   ├── events.ts         # Typed event bus (emit/on/once)
 │   ├── ui-state.ts       # UI-specific state (drag, collapse, wiggle)
@@ -56,7 +56,7 @@ src/
 │   ├── registry.ts       # Real npm package identities + archetypes
 │   ├── upgrades.ts       # Bandwidth-bought upgrades + tier system
 │   ├── config.ts         # Game constants, initial state factory
-│   └── persistence.ts    # Save/load (localStorage)
+│   └── persistence.ts    # Save/load through the engine save manager
 ├── rendering/
 │   ├── renderer.ts       # Pixi.js setup, camera, world container
 │   ├── nodes.ts          # Package node visuals (shapes, states, effects)
@@ -163,7 +163,7 @@ src/
 - Ship to npm (soft prestige, cache tokens)
 - Collapse finale (Tier 5 black hole ending, end screen)
 - Depth rewards (golden packages, cache fragments)
-- Save/load (localStorage)
+- Save/load (engine save manager: versioned, compressed, protects a save that fails to load)
 - Package icons (Devicon integration)
 - HUD with integrated upgrades
 - Resource bars, scope navigation, automation toggles

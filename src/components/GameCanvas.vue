@@ -17,6 +17,7 @@ import {
   setCameraTarget,
 } from '../game/loop'
 import {
+  engine,
   gameState,
   graph,
   graphRevision,
@@ -48,12 +49,7 @@ import {
   canAffordConflictResolve,
   collectCacheFragment,
 } from '../game/mutations'
-import {
-  loadFromLocalStorage,
-  saveToLocalStorage,
-  startAutoSave,
-  stopAutoSave,
-} from '../game/persistence'
+import { bootSave, saveToLocalStorage } from '../game/persistence'
 import {
   createRootPackage,
   installPackage,
@@ -212,7 +208,7 @@ onMounted(async () => {
     updatePrestigeTarget()
 
     // Try to load saved game
-    const loaded = loadFromLocalStorage()
+    const loaded = bootSave()
 
     if (!loaded || !rootIdRef.value) {
       // Fresh game - play intro animation before creating root
@@ -227,9 +223,8 @@ onMounted(async () => {
       gameState.onboarding.introAnimationComplete = true
     }
 
-    // Start game loop and auto-save
+    // The engine autosaves; the loop drives its ticks
     startGameLoop()
-    startAutoSave()
 
     // Subscribe to ship complete event (soft prestige)
     const unsubShipComplete = on('ship:complete', () => {
@@ -425,8 +420,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopGameLoop()
-  stopAutoSave()
   saveToLocalStorage() // Final save on unmount
+  engine.stop()
   destroyRenderer()
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('beforeunload', handleBeforeUnload)

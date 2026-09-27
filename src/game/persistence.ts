@@ -1,25 +1,24 @@
 // Save/Load persistence layer
 //
-// Save shape (v3, post-spatial cutover):
-// {
-//   version: 3,
-//   ...gameState fields...
-//   rootId: string | null,
-//   graph: SpatialGraphSnapshot<Package, Wire>,
-//   scope: ScopeStackSnapshot,
-// }
-//
-// No legacy load — older saves are dropped on version mismatch.
+// The engine's save manager owns the save slot: its version and migrations,
+// compression, and protecting a slot whose load failed. Game state rides it
+// as one opaque blob in a single persistent ref, flushed before every save
+// and restored after every load. Settings and achievements keep their own
+// localStorage keys, so a hard reset leaves them, and are written with every
+// save.
 
+import { toRaw } from 'vue'
 import {
+  persistent,
   seedRNG,
   type ScopeStackSnapshot,
   type SpatialGraph,
   type SpatialGraphSnapshot,
+  type State,
 } from '@open-loop/engine'
 import type { Package, Wire } from './types'
-import { SAVE_VERSION } from './config'
 import {
+  engine,
   gameState,
   graph,
   rootIdRef,
@@ -35,20 +34,46 @@ import { clearCascadeQueue } from './cascade'
 import { resetCrossPackageState } from './cross-package'
 import { resetPhysicsState } from './physics'
 
-const STORAGE_KEY = 'heaviest-objects-save'
 const SETTINGS_KEY = 'heaviest-objects-settings'
 const ACHIEVEMENTS_KEY = 'heaviest-objects-achievements'
-const AUTO_SAVE_INTERVAL = 30000
 
-let autoSaveIntervalId: ReturnType<typeof setInterval> | null = null
+// The save as it stood before the engine owned it: raw JSON of a SaveBlob
+// plus this version, imported into the engine slot once.
+const LEGACY_SAVE_KEY = 'heaviest-objects-save'
+const LEGACY_SAVE_VERSION = 3
 
-interface SaveData {
-  version: number
+interface SaveBlob {
   state: typeof gameState
   rootId: string | null
   graph: SpatialGraphSnapshot<Package, Wire>
-  scope: ScopeStackSnapshot
+  scope?: ScopeStackSnapshot
 }
+
+// Set when a stored blob fails to restore. Saves then leave the blob ref as
+// loaded, so every write puts the player's save back rather than the fresh
+// game standing in for it.
+let restoreFailed = false
+
+engine.use({
+  id: 'save',
+  install(ctx) {
+    // Typed as State: the game's interfaces lack the index signatures State
+    // requires, though the blob is plain JSON. Opaque, so the NaN walk over
+    // the whole graph buys nothing.
+    const blob = persistent<State>(null, { name: 'blob', checkNaN: false })
+    ctx.onSave(() => {
+      if (!restoreFailed) blob.value = snapshotGame() as unknown as State
+      saveSettings()
+      saveAchievements()
+    })
+    ctx.onLoad(() => {
+      if (blob.value === null) return
+      // A copy, so the live graph never aliases what a failed restore keeps.
+      const data = structuredClone(toRaw(blob.value)) as unknown as SaveBlob
+      if (!restoreGame(data)) restoreFailed = true
+    })
+  },
+})
 
 function relinkShadowData(g: SpatialGraph<Package, Wire>): void {
   for (const [nodeId, parentNode] of g.nodes) {
@@ -118,31 +143,18 @@ function resetTransientState(): void {
   gameState.automation.processStartTime = 0
 }
 
-export function saveGame(): string {
-  const saveData: SaveData = {
-    version: SAVE_VERSION,
-    state: gameState,
+function snapshotGame(): SaveBlob {
+  return {
+    state: toRaw(gameState),
     rootId: rootIdRef.value,
     graph: graph.serialize(),
     scope: stack.serialize(),
   }
-  return JSON.stringify(saveData)
 }
 
-export function loadGame(saveString: string): boolean {
+/** Rebuild the live game from a blob. False, with the graph cleared, if it doesn't restore. */
+function restoreGame(data: SaveBlob): boolean {
   try {
-    const data = JSON.parse(saveString) as Partial<SaveData>
-
-    if (data.version !== SAVE_VERSION) {
-      console.warn(
-        `Save version ${data.version ?? 'unknown'} is incompatible with current version ${SAVE_VERSION}. Resetting.`
-      )
-      return false
-    }
-
-    if (!data.graph) return false
-
-    // Reset existing state and rebuild from snapshot.
     resetGraphAndStack()
     clearCascadeQueue()
     resetCrossPackageState()
@@ -164,9 +176,7 @@ export function loadGame(saveString: string): boolean {
 
     rootIdRef.value = data.rootId ?? null
 
-    if (data.state) {
-      Object.assign(gameState, data.state)
-    }
+    Object.assign(gameState, data.state)
 
     if (!gameState.seed) {
       gameState.seed = Date.now()
@@ -184,47 +194,69 @@ export function loadGame(saveString: string): boolean {
 
     return true
   } catch (e) {
-    console.warn('Failed to parse save data:', e)
+    console.warn('Failed to restore save data:', e)
+    resetGraphAndStack()
     return false
   }
 }
 
+/** Move a pre-engine save into the engine slot, once. True if it restored. */
+function importLegacySave(): boolean {
+  const raw = localStorage.getItem(LEGACY_SAVE_KEY)
+  if (!raw || engine.saveManager?.hasSave()) return false
+  try {
+    const data = JSON.parse(raw) as Partial<SaveBlob> & { version?: number }
+    if (data.version !== LEGACY_SAVE_VERSION || !data.graph || !data.state) {
+      return false
+    }
+    if (!restoreGame(data as SaveBlob)) return false
+  } catch (e) {
+    console.warn('Failed to parse legacy save:', e)
+    return false
+  }
+  engine.save()
+  localStorage.removeItem(LEGACY_SAVE_KEY)
+  return true
+}
+
 // ============================================
-// LOCALSTORAGE WRAPPERS
+// ENGINE LIFECYCLE
 // ============================================
 
+/**
+ * Install the engine's modules and load the save, importing a pre-engine
+ * save the first time. Returns whether a game was restored.
+ */
+export function bootSave(): boolean {
+  engine.start()
+  // TODO(expansion): EngineConfig has no external-clock mode; the game loop
+  // feeds tickRaw from requestAnimationFrame, so the driver's timer stops.
+  engine.tickDriver.stop()
+  loadSettings()
+  loadAchievements()
+  const result = engine.load()
+  if (result.success) return !restoreFailed
+  return importLegacySave()
+}
+
+/** Save now. False if the write was refused or the loaded save is being kept. */
 export function saveToLocalStorage(): boolean {
+  const manager = engine.saveManager
+  if (!manager) return false
   try {
-    const saveString = saveGame()
-    localStorage.setItem(STORAGE_KEY, saveString)
-    saveSettings()
-    saveAchievements()
-    return true
+    engine.save()
   } catch (e) {
     console.warn('Failed to save game:', e)
     return false
   }
+  return !restoreFailed && !manager.isSlotProtected(manager.activeSlotId)
 }
 
-export function loadFromLocalStorage(): boolean {
-  try {
-    loadSettings()
-    loadAchievements()
-    const saveString = localStorage.getItem(STORAGE_KEY)
-    if (!saveString) return false
-    return loadGame(saveString)
-  } catch (e) {
-    console.warn('Failed to load game:', e)
-    return false
-  }
-}
-
-export function hasSavedGame(): boolean {
-  return localStorage.getItem(STORAGE_KEY) !== null
-}
-
+/** Delete the save, lifting any protection a failed load put on it. */
 export function clearSavedGame(): void {
-  localStorage.removeItem(STORAGE_KEY)
+  engine.saveManager?.deleteSave()
+  localStorage.removeItem(LEGACY_SAVE_KEY)
+  restoreFailed = false
 }
 
 // ============================================
@@ -273,19 +305,5 @@ export function loadAchievements(): void {
     }
   } catch {
     // Ignore invalid achievements data
-  }
-}
-
-export function startAutoSave(): void {
-  if (autoSaveIntervalId) return
-  autoSaveIntervalId = setInterval(() => {
-    saveToLocalStorage()
-  }, AUTO_SAVE_INTERVAL)
-}
-
-export function stopAutoSave(): void {
-  if (autoSaveIntervalId) {
-    clearInterval(autoSaveIntervalId)
-    autoSaveIntervalId = null
   }
 }

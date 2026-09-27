@@ -1,6 +1,6 @@
 // Main game loop
 
-import { gameState, graph, stack } from './state'
+import { engine, gameState, graph, stack } from './state'
 import { isInPackageScope } from './scope'
 import { updateEfficiency, updateStability } from './mutations'
 import { spawnDependencies } from './packages'
@@ -16,7 +16,7 @@ import { applySafetyRegen, onPackageResolved } from './mutations'
 import { COMBO_DECAY_MS } from './config'
 import { checkAchievements } from './achievements'
 import { isTopLevelPackage } from './scope'
-import { createTickDriver, type SpatialGraph } from '@open-loop/engine'
+import type { SpatialGraph } from '@open-loop/engine'
 import type { Package, Wire } from './types'
 
 // ============================================
@@ -74,11 +74,11 @@ function updateScopeGraph(
   }
 }
 
-// The driver's own timer is never started: each animation frame feeds it the
-// frame's elapsed time, so the game ticks (and renders) in step with the
-// display. The driver caps a tick at 1s, so a tab returning from the
+// The engine's tick driver, with its own timer stopped: each animation frame
+// feeds it the frame's elapsed time, so the game ticks (and renders) in step
+// with the display. The driver caps a tick at 1s, so a tab returning from the
 // background doesn't push minutes of dt through physics at once.
-const driver = createTickDriver()
+const driver = engine.tickDriver
 let animationFrameId: number | null = null
 let isRunning = false
 

@@ -19,6 +19,7 @@
 
 import { reactive, ref, computed, type ComputedRef, type Ref } from 'vue'
 import {
+  createEngine,
   createSpatialGraph,
   createScopeStack,
   seedRNG,
@@ -40,6 +41,21 @@ import {
   getEcosystemTier,
   getMaxCompressedDepth,
 } from './formulas'
+
+// ============================================
+// ENGINE
+// ============================================
+//
+// Owns the save slot and the tick driver. persistence.ts registers the save
+// module and boots it. The gameId is the storage key prefix, and the save
+// manager moves any `${gameId}-save` key into its first slot as an engine
+// envelope, so it must not be `heaviest-objects`: that key holds the
+// pre-engine save, which persistence.ts imports itself.
+export const engine = createEngine({
+  gameId: 'heaviest-objects-in-the-universe',
+  saveVersion: 1,
+  autoSaveInterval: 30_000,
+})
 
 // Global reactive game state (resources, meta, stats, cascade, automation —
 // everything except graph topology, which lives on `graph` + `stack` below).
