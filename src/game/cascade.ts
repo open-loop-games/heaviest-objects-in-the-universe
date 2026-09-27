@@ -29,7 +29,7 @@ import {
   onFragmentCollected,
 } from './mutations'
 import { type Package, type Wire, type PendingSpawn } from './types'
-import { recordCascadeSize, recordConflictAppear } from './achievements'
+import { recordCascadeSize } from './achievements'
 import {
   pickRandomIdentity,
   areIncompatible,
@@ -613,8 +613,6 @@ function revealDeferredConflicts(): void {
         edge.data.conflictTime = now
         pkg.state = 'conflict'
         dirty = true
-
-        recordConflictAppear(edge.id)
 
         if (!gameState.onboarding.firstConflictSeen) {
           gameState.onboarding.firstConflictSeen = true

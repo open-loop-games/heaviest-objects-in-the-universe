@@ -1,14 +1,8 @@
 // Achievement System
-// 28 achievements across 7 categories
 
 import { reactive, computed } from 'vue'
 import { gameState, stack } from './state'
-import { emit, on } from './events'
-
-// Listen for player actions to reset patience timer
-on('player:action', () => {
-  recordPlayerAction()
-})
+import { emit } from './events'
 
 // ============================================
 // TYPES
@@ -63,28 +57,20 @@ export const CATEGORY_COLORS: Record<AchievementCategory, string> = {
 export interface AchievementTracking {
   // Speed/timing
   runStartTime: number // For speedrun achievement
-  symlinkTimestamps: number[] // For speed linker (5 in 3s)
-  conflictAppearTimes: Map<string, number> // wireId -> appear time
   maxSymlinksInScope: number // For symlink surgeon (10 in one scope)
   currentScopeSymlinks: number
   maxCascadeSize: number // For chain reaction
   autoResolveCount: number // For automation achievement
   teachingBookTabsViewed: number // Count unique tabs viewed
-  lastActionTime: number // For patience achievement
-  noClickTimer: number // Tracks time since last click after cascade
 }
 
 export const tracking = reactive<AchievementTracking>({
   runStartTime: Date.now(),
-  symlinkTimestamps: [],
-  conflictAppearTimes: new Map(),
   maxSymlinksInScope: 0,
   currentScopeSymlinks: 0,
   maxCascadeSize: 0,
   autoResolveCount: 0,
   teachingBookTabsViewed: 0,
-  lastActionTime: Date.now(),
-  noClickTimer: 0,
 })
 
 // ============================================
@@ -443,22 +429,15 @@ export const completionPercent = computed(
 // ============================================
 
 /**
- * Record a symlink creation for speed tracking
+ * Record a symlink creation
  */
 export function recordSymlink(): void {
-  const now = Date.now()
-  tracking.symlinkTimestamps.push(now)
   tracking.currentScopeSymlinks++
 
   // Update max symlinks in scope
   if (tracking.currentScopeSymlinks > tracking.maxSymlinksInScope) {
     tracking.maxSymlinksInScope = tracking.currentScopeSymlinks
   }
-
-  // Clean old timestamps (older than 10 seconds)
-  tracking.symlinkTimestamps = tracking.symlinkTimestamps.filter(
-    (t) => now - t < 10000
-  )
 
   checkAchievements()
 }
@@ -468,20 +447,6 @@ export function recordSymlink(): void {
  */
 export function resetScopeSymlinks(): void {
   tracking.currentScopeSymlinks = 0
-}
-
-/**
- * Record conflict appearance time
- */
-export function recordConflictAppear(wireId: string): void {
-  tracking.conflictAppearTimes.set(wireId, Date.now())
-}
-
-/**
- * Clean up conflict tracking when resolved
- */
-export function cleanupConflictTracking(wireId: string): void {
-  tracking.conflictAppearTimes.delete(wireId)
 }
 
 /**
@@ -513,35 +478,12 @@ export function recordTabView(uniqueCount: number): void {
 }
 
 /**
- * Record player action (resets patience timer)
- */
-export function recordPlayerAction(): void {
-  tracking.lastActionTime = Date.now()
-  tracking.noClickTimer = 0
-}
-
-/**
- * Update patience timer (call from game loop)
- */
-export function updatePatienceTimer(deltaMs: number): void {
-  // Only count after a cascade has started
-  if (gameState.cascade.active || tracking.maxCascadeSize > 0) {
-    tracking.noClickTimer += deltaMs
-    checkAchievements()
-  }
-}
-
-/**
  * Reset run tracking (on prestige/restart)
  */
 export function resetRunTracking(): void {
   tracking.runStartTime = Date.now()
-  tracking.symlinkTimestamps = []
-  tracking.conflictAppearTimes.clear()
   tracking.currentScopeSymlinks = 0
   // Note: maxSymlinksInScope and maxCascadeSize persist for achievement checks
-  tracking.lastActionTime = Date.now()
-  tracking.noClickTimer = 0
 }
 
 // ============================================

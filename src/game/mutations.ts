@@ -33,7 +33,7 @@ import {
 import { emit, on } from './events'
 import { getCompressionMultiplier, getStabilizationBonus } from './upgrades'
 import { getEfficiencyTierRank, updateEfficiencyTracking } from './formulas'
-import { cleanupConflictTracking, checkAchievements } from './achievements'
+import { checkAchievements } from './achievements'
 
 // Quality event types are now in the main event bus (src/game/events.ts)
 // Use emit('quality:efficiency-improved', ...) etc.
@@ -491,7 +491,6 @@ export function resolveWireConflict(wireId: string): boolean {
   if (!wire || !wire.conflicted) return false
 
   emit('player:action')
-  cleanupConflictTracking(wireId)
   onConflictResolved()
 
   wire.conflicted = false

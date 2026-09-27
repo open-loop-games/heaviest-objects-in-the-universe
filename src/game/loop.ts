@@ -14,7 +14,7 @@ import {
 import { updateAutomation } from './automation'
 import { applySafetyRegen, onPackageResolved } from './mutations'
 import { COMBO_DECAY_MS } from './config'
-import { checkAchievements, updatePatienceTimer } from './achievements'
+import { checkAchievements } from './achievements'
 import { isTopLevelPackage } from './scope'
 import { createTickDriver, type SpatialGraph } from '@open-loop/engine'
 import type { Package, Wire } from './types'
@@ -159,8 +159,6 @@ function tick(deltaTime: number): void {
     updateStability()
     checkAchievements()
   }
-
-  updatePatienceTimer(deltaTime)
 
   updateAutomation(now, deltaTime)
 
