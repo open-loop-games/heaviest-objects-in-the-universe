@@ -16,7 +16,7 @@ import { applySafetyRegen, onPackageResolved } from './mutations'
 import { COMBO_DECAY_MS } from './config'
 import { checkAchievements, updatePatienceTimer } from './achievements'
 import { isTopLevelPackage } from './scope'
-import type { SpatialGraph } from '@open-loop/engine'
+import { createTickDriver, type SpatialGraph } from '@open-loop/engine'
 import type { Package, Wire } from './types'
 
 // ============================================
@@ -36,8 +36,6 @@ const CAMERA_ZOOM_SPEED = 8
 const CAMERA_EASING_BASE = 0.01
 const CAMERA_SNAP_THRESHOLD = 0.5
 const CAMERA_ZOOM_SNAP_THRESHOLD = 0.01
-
-type TickCallback = (deltaTime: number) => void
 
 /**
  * Recursively walk all populated child graphs and update inner-package
@@ -77,11 +75,15 @@ function updateScopeGraph(
   }
 }
 
-const tickCallbacks: TickCallback[] = []
+// The driver's own timer is never started: each animation frame feeds it the
+// frame's elapsed time, so the game ticks (and renders) in step with the
+// display. The driver caps a tick at 1s, so a tab returning from the
+// background doesn't push minutes of dt through physics at once.
+const driver = createTickDriver()
 let animationFrameId: number | null = null
 let isRunning = false
 
-let lastTick = 0
+let lastFrame = 0
 let tickCount = 0
 
 let cameraTargetX = 0
@@ -132,22 +134,8 @@ function updateCameraTransition(deltaTime: number): void {
   }
 }
 
-export function onTick(callback: TickCallback): () => void {
-  tickCallbacks.push(callback)
-  return () => {
-    const index = tickCallbacks.indexOf(callback)
-    if (index > -1) {
-      tickCallbacks.splice(index, 1)
-    }
-  }
-}
-
-function tick(): void {
-  if (!isRunning) return
-
+function tick(deltaTime: number): void {
   const now = Date.now()
-  const deltaTime = (now - lastTick) / 1000
-  lastTick = now
   tickCount++
 
   updateCameraTransition(deltaTime)
@@ -182,12 +170,21 @@ function tick(): void {
       gameState.stats.comboCount = 0
     }
   }
+}
 
-  for (const callback of tickCallbacks) {
-    callback(deltaTime)
-  }
+// Registered first, so the game tick runs before every onTick subscriber
+// (the renderers) within a frame.
+driver.onTick(tick)
 
-  animationFrameId = requestAnimationFrame(tick)
+/** Subscribe to each game tick, after the game has advanced. */
+export const onTick = driver.onTick
+
+function frame(): void {
+  if (!isRunning) return
+  const now = performance.now()
+  driver.tickRaw((now - lastFrame) / 1000)
+  lastFrame = now
+  animationFrameId = requestAnimationFrame(frame)
 }
 
 function updateResources(deltaTime: number): void {
@@ -245,8 +242,8 @@ export function startGameLoop(): void {
   if (isRunning) return
 
   isRunning = true
-  lastTick = Date.now()
-  animationFrameId = requestAnimationFrame(tick)
+  lastFrame = performance.now()
+  animationFrameId = requestAnimationFrame(frame)
 }
 
 export function stopGameLoop(): void {
