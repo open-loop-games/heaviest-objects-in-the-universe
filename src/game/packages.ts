@@ -1,6 +1,6 @@
 // Package creation and management logic
 
-import { random, randomInt } from './random'
+import { random, randomInt } from '@open-loop/engine'
 import {
   gameState,
   gameConfig,

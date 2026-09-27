@@ -1,7 +1,7 @@
 // Real-world npm package registry for authentic game feel
 // Icon keys map to Devicon identifiers (https://devicon.dev/)
 
-import { random, randomInt, randomItem, chance } from './random'
+import { random, randomInt, randomItem, chance } from '@open-loop/engine'
 
 export type PackageArchetype =
   | 'utility'
@@ -1738,7 +1738,7 @@ export function pickRandomIdentity(): PackageIdentity {
     pool = LEGACY_PACKAGES
   }
 
-  return randomItem(pool)
+  return randomItem(pool)!
 }
 
 /**
@@ -1788,7 +1788,7 @@ export function pickDirectInstallIdentity(
       ? TIER3_DIRECT_INSTALL.filter((p) => !exclude.has(p.name))
       : TIER3_DIRECT_INSTALL
     if (tier3Available.length > 0) {
-      return randomItem(tier3Available)
+      return randomItem(tier3Available)!
     }
   }
 
@@ -1797,12 +1797,12 @@ export function pickDirectInstallIdentity(
       ? TIER2_DIRECT_INSTALL.filter((p) => !exclude.has(p.name))
       : TIER2_DIRECT_INSTALL
     if (tier2Available.length > 0) {
-      return randomItem(tier2Available)
+      return randomItem(tier2Available)!
     }
   }
 
   // Otherwise pick from full available pool
-  return randomItem(pool)
+  return randomItem(pool)!
 }
 
 /**
@@ -1960,7 +1960,7 @@ export function pickDistinctDuplicateIdentities(
       )
 
       if (candidates.length > 0) {
-        const pick = randomItem(candidates)
+        const pick = randomItem(candidates)!
         result.push(pick)
         usedArchetypes.add(pick.archetype)
         usedIconKeys.add(pick.iconKey)

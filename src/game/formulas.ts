@@ -1,6 +1,6 @@
 // Cost and production formulas based on design doc
 
-import { random, chance } from './random'
+import { random, chance, type SpatialGraph } from '@open-loop/engine'
 import type { GameState, GameConfig, Package, Wire } from './types'
 import {
   DEFAULT_CONFIG,
@@ -12,7 +12,6 @@ import {
   COMPRESSION_HARDCAP,
   DEPTH_COMPRESSION_MULT,
 } from './config'
-import type { SpatialGraph } from '@open-loop/engine'
 
 // ============================================
 // PRESTIGE THRESHOLD

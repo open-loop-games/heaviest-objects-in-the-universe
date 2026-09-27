@@ -65,6 +65,9 @@ function getDependencyChildren(
   return result
 }
 
+// TODO(expansion): SpatialGraph.bfs walks edges both ways and allowEdge can't
+// see the expanding node, so it can't follow dependency edges downward once a
+// symlink merge gives a node two parents. Adopt it when allowEdge gains that.
 function getSubtreeSize(g: SpatialGraph<Package, Wire>, pkgId: string): number {
   const node = g.getNode(pkgId)
   if (!node) return 0

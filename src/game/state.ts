@@ -21,6 +21,7 @@ import { reactive, ref, computed, type ComputedRef, type Ref } from 'vue'
 import {
   createSpatialGraph,
   createScopeStack,
+  seedRNG,
   type ScopeStack,
   type ScopeState,
   type SpatialGraph,
@@ -39,7 +40,6 @@ import {
   getEcosystemTier,
   getMaxCompressedDepth,
 } from './formulas'
-import { seedRNG } from './random'
 
 // Global reactive game state (resources, meta, stats, cascade, automation —
 // everything except graph topology, which lives on `graph` + `stack` below).

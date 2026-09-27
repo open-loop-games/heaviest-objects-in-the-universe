@@ -3,7 +3,13 @@
 // Supports arbitrary depth using scope paths
 
 import { gameState, generateId, stack } from './state'
-import { random, randomInt, shuffle, chance } from './random'
+import {
+  random,
+  randomInt,
+  shuffle,
+  chance,
+  type SpatialGraph,
+} from '@open-loop/engine'
 import { getCompressionChance, getMaxCompressedDepth } from './formulas'
 import { setCascadeStarved } from './ui-state'
 import {
@@ -40,7 +46,6 @@ import { getGraphAtPath, getPackageAtPath } from './scope'
 import { getIdentitySize } from './formulas'
 import { consumeSurge, isSurgeUnlocked } from './surge'
 import { emit } from './events'
-import type { SpatialGraph } from '@open-loop/engine'
 
 // Constants for cascade behavior
 const BASE_SPAWN_INTERVAL = 120

@@ -11,10 +11,11 @@
 //
 // No legacy load — older saves are dropped on version mismatch.
 
-import type {
-  ScopeStackSnapshot,
-  SpatialGraph,
-  SpatialGraphSnapshot,
+import {
+  seedRNG,
+  type ScopeStackSnapshot,
+  type SpatialGraph,
+  type SpatialGraphSnapshot,
 } from '@open-loop/engine'
 import type { Package, Wire } from './types'
 import { SAVE_VERSION } from './config'
@@ -29,7 +30,6 @@ import {
   userSettings,
 } from './state'
 import { serializeAchievements, deserializeAchievements } from './achievements'
-import { seedRNG } from './random'
 import { resetMomentumState } from './mutations'
 import { clearCascadeQueue } from './cascade'
 import { resetCrossPackageState } from './cross-package'
