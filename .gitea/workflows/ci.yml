@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: git.gamebois.lol
+  HUSKY: 0
+  # pnpm 12 fails an install on any unapproved build script. esbuild's only
+  # checks its platform binary, which ships as an optional dep; nothing needs it.
+  # A pnpm-workspace.yaml of the repo's own would take it out of the studio
+  # workspace, so the approval lives here.
+  pnpm_config_allow_builds: '{"esbuild":false}'
+
+jobs:
+  deploy:
+    runs-on: linux
+    container:
+      image: node:24-alpine
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        run: corepack enable
+
+      # The engine installs from the studio registry, which needs auth.
+      - name: Registry auth
+        run: |
+          cat <<EOF > ~/.npmrc
+          @open-loop:registry=https://${{ env.REGISTRY }}/api/packages/studio/npm/
+          //${{ env.REGISTRY }}/api/packages/studio/npm/:_authToken=${{ secrets.REGISTRY_TOKEN_STUDIO }}
+          EOF
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint:check
+
+      - name: Format
+        run: pnpm format:check
+
+      - name: Circular imports
+        run: pnpm circular
+
+      - name: Build
+        run: pnpm build
+        env:
+          BASE_URL: /
+
+      - name: Deploy to Pages
+        run: |
+          # MinIO's community mc download returns 410; the AIStor build still serves.
+          wget -q https://dl.min.io/aistor/mc/release/linux-amd64/mc -O /usr/local/bin/mc
+          chmod +x /usr/local/bin/mc
+
+          REPO_NAME=$(echo "${{ gitea.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          BUCKET="pages-${REPO_NAME}"
+
+          mc alias set pages http://192.168.50.192:9000 "${{ secrets.MINIO_PAGES_ACCESS_KEY }}" "${{ secrets.MINIO_PAGES_SECRET_KEY }}"
+          mc mb --ignore-existing "pages/${BUCKET}"
+          mc anonymous set download "pages/${BUCKET}"
+          mc mirror --overwrite --remove dist/ "pages/${BUCKET}/"
+
+          echo "Deployed to https://${REPO_NAME}.pages.gamebois.lol"
