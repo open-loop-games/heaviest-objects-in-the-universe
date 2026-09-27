@@ -56,6 +56,14 @@ export function softReset(): void {
  */
 export function hardReset(): void {
   clearSavedGame()
+  wipeGame()
+}
+
+/**
+ * Replace all game state, graph and transient systems with a fresh game.
+ * Achievements and settings live outside it and survive.
+ */
+export function wipeGame(): void {
   Object.assign(gameState, createInitialState())
   resetGraphAndStack()
   clearCascadeQueue()

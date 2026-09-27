@@ -7,13 +7,13 @@ import {
   COLLAPSE_LOCK_THRESHOLD,
   COLLAPSE_MIN_TIER,
   calculateCollapseDrainProgress,
-  createInitialState,
 } from './config'
 import { createRootPackage } from './packages'
 import { gameState, computed_ecosystemTier } from './state'
 import { emit, on } from './events'
 import type { EndScreenStats } from './events'
 import { saveToLocalStorage } from './persistence'
+import { wipeGame } from './prestige'
 import { triggerAchievement, resetRunTracking } from './achievements'
 
 // ============================================
@@ -251,22 +251,11 @@ export function hasCollapsed(): boolean {
 export function restartGame(): void {
   // Preserve permanent unlocks
   const preservedHasCollapsed = gameState.meta.hasCollapsed
-  // Achievements are stored separately and not reset
 
-  // Reset to initial state
-  const freshState = createInitialState()
-
-  // Apply fresh state
-  Object.assign(gameState, freshState)
-
-  // Restore permanent unlocks
+  wipeGame()
   gameState.meta.hasCollapsed = preservedHasCollapsed
-
-  // Save the reset state (achievements persist via separate storage key)
-  saveToLocalStorage()
-
-  // Create fresh root package
   createRootPackage()
+  saveToLocalStorage()
 
   // Trigger "New Game Plus" achievement
   triggerAchievement('cumulative-2') // New Game Plus
