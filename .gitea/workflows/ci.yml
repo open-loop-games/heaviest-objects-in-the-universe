@@ -12,6 +12,10 @@ env:
   # A pnpm-workspace.yaml of the repo's own would take it out of the studio
   # workspace, so the approval lives here.
   pnpm_config_allow_builds: '{"esbuild":false}'
+  # The studio exempts its own registry from the one-day release-age gate, so a
+  # fresh engine patch installs at once; a standalone install never reads that
+  # root setting, so it's restated here.
+  pnpm_config_minimum_release_age_exclude: '["@open-loop/*"]'
 
 jobs:
   deploy:
