@@ -193,7 +193,6 @@ export const DEFAULT_CONFIG: GameConfig = {
   costMultiplier: 1.15,
 
   // Production rates
-  baseBandwidthRegen: 1,
   cacheTokenMultiplier: 1.1,
 
   // Dependencies
@@ -224,7 +223,6 @@ export function createInitialState(seed?: number): GameState {
     resources: {
       bandwidth: STARTING_BANDWIDTH,
       maxBandwidth: STARTING_MAX_BANDWIDTH,
-      bandwidthRegen: DEFAULT_CONFIG.baseBandwidthRegen,
       weight: 0,
       cacheFragments: 0,
     },
@@ -237,7 +235,6 @@ export function createInitialState(seed?: number): GameState {
     },
     upgrades: {
       bandwidthLevel: 0,
-      efficiencyLevel: 0,
       compressionLevel: 0,
       resolveSpeedLevel: 0,
       surgeLevel: 0,

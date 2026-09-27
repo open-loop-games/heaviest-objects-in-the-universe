@@ -150,32 +150,11 @@ export function applyUpgradeEffects(): void {
   gameState.surge.unlockedSegments = 1 + surgeLevel
 }
 
-// Get effective values with upgrades applied
-export function getEffectiveBandwidthRegen(): number {
-  // Safety regen by tier: [2, 2.5, 3, 3.5, 4] BW/sec
-  // This is minimal - momentum loop generates most BW from activity
-  const tier = gameState.meta.ecosystemTier
-  const safetyRegen = SAFETY_REGEN_BY_TIER[tier] ?? 2
-
-  // Low bandwidth catch-up: 100% boost when below 20 bandwidth
-  const lowBandwidthBoost = gameState.resources.bandwidth < 20 ? 2 : 1
-
-  return safetyRegen * lowBandwidthBoost
-}
-
-export function getEffectiveInstallSpeed(): number {
-  return 1 // Base install speed (no upgrade)
-}
-
 // Get stabilization burst bonus from bandwidth upgrade
 // Used when a scope stabilizes to reward activity
 export function getStabilizationBonus(): number {
   const bwLevel = getUpgradeLevel('bandwidth')
   return effects.stabilizationBonus(bwLevel)
-}
-
-export function getEffectiveCostMultiplier(): number {
-  return 1 // Base cost multiplier (no upgrade)
 }
 
 // ============================================
@@ -203,8 +182,6 @@ export function getResolveSpeedMultiplier(): number {
   const level = getUpgradeLevel('resolveSpeed')
   return effects.speedBoost(level)
 }
-
-import { SAFETY_REGEN_BY_TIER } from './config'
 
 // Check if an upgrade is unlocked based on package count, prestige, and tier
 export function isUpgradeUnlocked(upgradeId: string): boolean {
@@ -268,10 +245,7 @@ export function getEffectiveInstallCost(): number {
   // Active scope multiplier: 1.15^activeScopes
   const scopeMultiplier = Math.pow(1.15, activeScopes)
 
-  // Apply efficiency upgrade discount
-  const costMultiplier = getEffectiveCostMultiplier()
-
-  return Math.floor(baseCost * scopeMultiplier * costMultiplier)
+  return Math.floor(baseCost * scopeMultiplier)
 }
 
 /**

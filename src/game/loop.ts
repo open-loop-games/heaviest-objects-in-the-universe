@@ -5,7 +5,7 @@ import { isInPackageScope } from './scope'
 import { updateEfficiency, updateStability } from './mutations'
 import { spawnDependencies } from './packages'
 import { updateCascade } from './cascade'
-import { getEffectiveInstallSpeed, applyUpgradeEffects } from './upgrades'
+import { applyUpgradeEffects } from './upgrades'
 import {
   updatePhysics,
   updateInternalPhysics,
@@ -44,8 +44,7 @@ const CAMERA_ZOOM_SNAP_THRESHOLD = 0.01
 function updateScopeGraph(
   scopeGraph: SpatialGraph<Package, Wire>,
   ownerId: string | null,
-  deltaTime: number,
-  installSpeed: number
+  deltaTime: number
 ): void {
   for (const [id, node] of scopeGraph.nodes) {
     // Skip the shadow scope-owner — it shares data with the parent-graph
@@ -53,7 +52,7 @@ function updateScopeGraph(
     if (id === ownerId) continue
     const pkg = node.data
     if (pkg.state === 'installing') {
-      pkg.installProgress += deltaTime * INSTALL_PROGRESS_RATE * installSpeed
+      pkg.installProgress += deltaTime * INSTALL_PROGRESS_RATE
       if (pkg.installProgress >= 1) {
         pkg.installProgress = 1
         pkg.state = 'ready'
@@ -64,7 +63,7 @@ function updateScopeGraph(
     // Recurse into compressed inner deps.
     const child = scopeGraph.getChildGraph(id)
     if (child) {
-      updateScopeGraph(child, id, deltaTime, installSpeed)
+      updateScopeGraph(child, id, deltaTime)
     }
   }
 
@@ -191,14 +190,12 @@ function updateResources(deltaTime: number): void {
 }
 
 function updatePackages(deltaTime: number): void {
-  const installSpeed = getEffectiveInstallSpeed()
-
   // Root scope: walk top-level packages + root.
   const packagesToSpawn: string[] = []
   for (const [id, node] of graph.nodes) {
     const pkg = node.data
     if (pkg.state === 'installing') {
-      pkg.installProgress += deltaTime * INSTALL_PROGRESS_RATE * installSpeed
+      pkg.installProgress += deltaTime * INSTALL_PROGRESS_RATE
       if (pkg.installProgress >= 1) {
         pkg.installProgress = 1
         pkg.state = 'ready'
@@ -225,7 +222,7 @@ function updatePackages(deltaTime: number): void {
   for (const [id] of graph.nodes) {
     const child = graph.getChildGraph(id)
     if (child) {
-      updateScopeGraph(child, id, deltaTime, installSpeed)
+      updateScopeGraph(child, id, deltaTime)
     }
   }
 

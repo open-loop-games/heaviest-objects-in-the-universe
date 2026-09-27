@@ -53,7 +53,6 @@ export interface Wire {
 export interface GameResources {
   bandwidth: number
   maxBandwidth: number
-  bandwidthRegen: number
   weight: number
   cacheFragments: number // Collected this run, converted to tokens on prestige
 }
@@ -68,7 +67,6 @@ export interface MetaResources {
 
 export interface Upgrades {
   bandwidthLevel: number // Combined: regen + capacity
-  efficiencyLevel: number // Combined: speed + cost reduction
   compressionLevel: number // Weight reduction (P3+)
   resolveSpeedLevel: number // Auto-resolve speed (Tier 2+)
   surgeLevel: number // Unlocks more surge segments (P2+)
@@ -229,7 +227,6 @@ export interface GameConfig {
   costMultiplier: number
 
   // Production rates
-  baseBandwidthRegen: number
   cacheTokenMultiplier: number
 
   // Dependencies

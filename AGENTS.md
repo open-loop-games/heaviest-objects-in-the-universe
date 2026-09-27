@@ -54,7 +54,7 @@ src/
 │   ├── automation.ts     # Auto-resolve (tier-gated)
 │   ├── symlinks.ts       # Duplicate detection + merge logic
 │   ├── registry.ts       # Real npm package identities + archetypes
-│   ├── upgrades.ts       # Cache token upgrades + tier system
+│   ├── upgrades.ts       # Bandwidth-bought upgrades + tier system
 │   ├── config.ts         # Game constants, initial state factory
 │   └── persistence.ts    # Save/load (localStorage)
 ├── rendering/
