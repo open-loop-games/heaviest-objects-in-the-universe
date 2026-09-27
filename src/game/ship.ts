@@ -15,6 +15,7 @@ import { resetMomentumState } from './mutations'
 import { clearCascadeQueue } from './cascade'
 import { resetCrossPackageState } from './cross-package'
 import { resetPhysicsState } from './physics'
+import { recordShip } from './achievements'
 
 // ============================================
 // SHIP TO NPM (Soft Prestige)
@@ -49,6 +50,7 @@ export function performShip(): void {
 
   gameState.meta.cacheTokens += reward + fragmentBonus
   gameState.meta.timesShipped++
+  recordShip()
 
   syncEcosystemTier()
 

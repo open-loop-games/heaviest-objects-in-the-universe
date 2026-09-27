@@ -54,11 +54,14 @@ export const CATEGORY_COLORS: Record<AchievementCategory, string> = {
 // TRACKING STATE (for advanced achievements)
 // ============================================
 
+const SPEEDRUN_MS = 3 * 60 * 1000
+
 export interface AchievementTracking {
   // Speed/timing
   runStartTime: number // For speedrun achievement
   maxSymlinksInScope: number // For symlink surgeon (10 in one scope)
   currentScopeSymlinks: number
+  symlinkScope: string // Scope path the current count belongs to
   maxCascadeSize: number // For chain reaction
   autoResolveCount: number // For automation achievement
   teachingBookTabsViewed: number // Count unique tabs viewed
@@ -68,6 +71,7 @@ export const tracking = reactive<AchievementTracking>({
   runStartTime: Date.now(),
   maxSymlinksInScope: 0,
   currentScopeSymlinks: 0,
+  symlinkScope: '',
   maxCascadeSize: 0,
   autoResolveCount: 0,
   teachingBookTabsViewed: 0,
@@ -263,12 +267,8 @@ export const ACHIEVEMENTS: Achievement[] = [
     icon: '⟲⏱',
     name: 'Speedrun Any%',
     category: 'style',
-    check: () => {
-      // Check if prestige happened within 3 minutes of run start
-      if (gameState.meta.timesShipped === 0) return false
-      const runDuration = Date.now() - tracking.runStartTime
-      return runDuration < 180000 // 3 minutes
-    },
+    // Ship within 3 minutes of the run starting - triggered by recordShip
+    check: () => false,
     rare: true,
   },
   {
@@ -432,6 +432,11 @@ export const completionPercent = computed(
  * Record a symlink creation
  */
 export function recordSymlink(): void {
+  const scope = stack.path.join('/')
+  if (scope !== tracking.symlinkScope) {
+    tracking.symlinkScope = scope
+    tracking.currentScopeSymlinks = 0
+  }
   tracking.currentScopeSymlinks++
 
   // Update max symlinks in scope
@@ -443,10 +448,14 @@ export function recordSymlink(): void {
 }
 
 /**
- * Reset scope symlink counter (when entering new scope)
+ * Record a ship: a run shipped within 3 minutes earns Speedrun, and the
+ * next run's clock starts
  */
-export function resetScopeSymlinks(): void {
-  tracking.currentScopeSymlinks = 0
+export function recordShip(): void {
+  if (Date.now() - tracking.runStartTime < SPEEDRUN_MS) {
+    earnAchievement('style-1')
+  }
+  tracking.runStartTime = Date.now()
 }
 
 /**
