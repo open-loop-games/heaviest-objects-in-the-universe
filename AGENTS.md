@@ -31,7 +31,8 @@ Core fantasy: Taming chaos through optimization. Watch a messy dependency tree s
 pnpm dev          # Start dev server (Vite + HMR)
 pnpm build        # Production build
 pnpm typecheck    # Vue + TypeScript checking
-pnpm lint         # oxlint
+pnpm lint         # oxlint --fix (rewrites files)
+pnpm lint:check   # oxlint, read-only
 pnpm circular     # dpdm circular
 ```
 
@@ -83,8 +84,6 @@ src/
 ## Design Documents
 
 - `docs/GAME_DESIGN.md` - Full mechanics, progression, balance
-- `docs/PRESTIGE_PROGRESSION.md` - Tier system, cache tokens, unlocks
-- `docs/CONCEPT.md` - Original concept
 - `docs/archived/` - Legacy design docs (may be outdated)
 - `TODO.md` - Incomplete work tracking
 
