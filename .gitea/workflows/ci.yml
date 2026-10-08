@@ -57,18 +57,23 @@ jobs:
         env:
           BASE_URL: /
 
+      # aws-cli, not mc: MinIO no longer publishes a community mc build.
+      # The bucket policy grants anonymous GetObject only — no listing.
       - name: Deploy to Pages
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_PAGES_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_PAGES_SECRET_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ENDPOINT_URL: http://192.168.50.192:9000
         run: |
-          # MinIO's community mc download returns 410; the AIStor build still serves.
-          wget -q https://dl.min.io/aistor/mc/release/linux-amd64/mc -O /usr/local/bin/mc
-          chmod +x /usr/local/bin/mc
+          apk add --no-cache aws-cli
+          aws configure set default.s3.addressing_style path
 
           REPO_NAME=$(echo "${{ gitea.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
           BUCKET="pages-${REPO_NAME}"
 
-          mc alias set pages http://192.168.50.192:9000 "${{ secrets.MINIO_PAGES_ACCESS_KEY }}" "${{ secrets.MINIO_PAGES_SECRET_KEY }}"
-          mc mb --ignore-existing "pages/${BUCKET}"
-          mc anonymous set download "pages/${BUCKET}"
-          mc mirror --overwrite --remove dist/ "pages/${BUCKET}/"
+          aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null || aws s3api create-bucket --bucket "$BUCKET"
+          aws s3api put-bucket-policy --bucket "$BUCKET" --policy "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"*\"]},\"Action\":[\"s3:GetObject\"],\"Resource\":[\"arn:aws:s3:::${BUCKET}/*\"]}]}"
+          aws s3 sync --delete --no-progress dist/ "s3://${BUCKET}/"
 
           echo "Deployed to https://${REPO_NAME}.pages.gamebois.lol"
