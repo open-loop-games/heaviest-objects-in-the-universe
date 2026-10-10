@@ -1,0 +1,12 @@
+# The engine's registry. Auth is per machine, in ~/.npmrc.
+registries:
+  '@open-loop': https://git.gamebois.lol/api/packages/studio/npm/
+
+# A fresh engine release installs at once, so an engine fix and the consumer
+# change that needs it can land together.
+minimumReleaseAgeExclude:
+  - '@open-loop/*'
+
+allowBuilds:
+  # The script only checks the platform binary, which ships as an optional dep.
+  esbuild: false

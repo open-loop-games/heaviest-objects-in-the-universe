@@ -429,7 +429,7 @@ packages:
     engines: {node: '>= 8'}
 
   '@open-loop/engine@0.3.1':
-    resolution: {integrity: sha512-HC6qlCYcqtgLNiNHcUekcOI4INb2Gho2YQbW/FqBsxX7jbaduei1zB8uUGPxRiGisnoQbdS/qVw4PSyMe29ToA==, tarball: https://git.gamebois.lol/api/packages/studio/npm/%40open-loop%2Fengine/-/0.3.1/engine-0.3.1.tgz}
+    resolution: {integrity: sha512-HC6qlCYcqtgLNiNHcUekcOI4INb2Gho2YQbW/FqBsxX7jbaduei1zB8uUGPxRiGisnoQbdS/qVw4PSyMe29ToA==, tarball: https://git.gamebois.lol/api/packages/studio/npm/@open-loop/engine/-/engine-0.3.1.tgz}
     hasBin: true
     peerDependencies:
       break_eternity.js: ^2.1.0
