@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Repo conventions, harness-neutral — read this whether you are Claude Code, Codex, opencode
+Repo conventions — read this whether you are Claude Code, Codex, opencode
 or anything else. `.claude/CLAUDE.md` imports this file rather than restating it, so this is
 the one home for the content; edit here.
 
