@@ -1,6 +1,12 @@
 // Cost and production formulas based on design doc
 
-import { random, chance, type SpatialGraph } from '@open-loop/engine'
+import {
+  random,
+  chance,
+  weightedPick,
+  type SpatialGraph,
+  type WeightedItem,
+} from '@open-loop/engine'
 import type { GameState, GameConfig, Package, Wire } from './types'
 import {
   DEFAULT_CONFIG,
@@ -229,35 +235,21 @@ export function calculatePrestigeReward(
 // DEPENDENCY COUNT ROLLER
 // ============================================
 
-const DEPENDENCY_DISTRIBUTION = [
-  { count: 0, weight: 50 },
-  { count: 1, weight: 15 },
-  { count: 2, weight: 15 },
-  { count: 3, weight: 10 },
-  { count: 4, weight: 5 },
-  { count: 5, weight: 3 },
-  { count: 8, weight: 1.5 },
-  { count: 12, weight: 0.5 },
+const DEPENDENCY_DISTRIBUTION: WeightedItem<number>[] = [
+  { item: 0, weight: 50 },
+  { item: 1, weight: 15 },
+  { item: 2, weight: 15 },
+  { item: 3, weight: 10 },
+  { item: 4, weight: 5 },
+  { item: 5, weight: 3 },
+  { item: 8, weight: 1.5 },
+  { item: 12, weight: 0.5 },
 ]
-
-const TOTAL_DEP_WEIGHT = DEPENDENCY_DISTRIBUTION.reduce(
-  (sum, t) => sum + t.weight,
-  0
-)
 
 export function rollDependencyCount(
   _config: GameConfig = DEFAULT_CONFIG
 ): number {
-  let roll = random() * TOTAL_DEP_WEIGHT
-
-  for (const tier of DEPENDENCY_DISTRIBUTION) {
-    roll -= tier.weight
-    if (roll <= 0) {
-      return tier.count
-    }
-  }
-
-  return 0
+  return weightedPick(DEPENDENCY_DISTRIBUTION) ?? 0
 }
 
 export function rollPackageSize(): number {
