@@ -11,10 +11,10 @@ import { toRaw } from 'vue'
 import {
   persistent,
   seedRNG,
-  type ScopeStackSnapshot,
-  type SpatialGraph,
-  type SpatialGraphSnapshot,
-  type State,
+  type SerializedScopeStack,
+  type Graph,
+  type SerializedGraph,
+  type Serializable,
 } from '@open-loop/engine'
 import type { Package, Wire } from './types'
 import {
@@ -45,8 +45,8 @@ const LEGACY_SAVE_VERSION = 3
 interface SaveBlob {
   state: typeof gameState
   rootId: string | null
-  graph: SpatialGraphSnapshot<Package, Wire>
-  scope?: ScopeStackSnapshot
+  graph: SerializedGraph<Package, Wire>
+  scope?: SerializedScopeStack
 }
 
 // Set when a stored blob fails to restore. Saves then leave the blob ref as
@@ -57,12 +57,12 @@ let restoreFailed = false
 engine.use({
   id: 'save',
   install(ctx) {
-    // Typed as State: the game's interfaces lack the index signatures State
-    // requires, though the blob is plain JSON. Opaque, so the NaN walk over
-    // the whole graph buys nothing.
-    const blob = persistent<State>(null, { name: 'blob', checkNaN: false })
+    // Typed as Serializable: the game's interfaces lack the index signatures
+    // Serializable requires, though the blob is plain JSON. Opaque, so the NaN
+    // walk over the whole graph buys nothing.
+    const blob = persistent<Serializable>(null, { id: 'blob', checkNaN: false })
     ctx.onSave(() => {
-      if (!restoreFailed) blob.value = snapshotGame() as unknown as State
+      if (!restoreFailed) blob.value = snapshotGame() as unknown as Serializable
       saveSettings()
       saveAchievements()
     })
@@ -75,7 +75,7 @@ engine.use({
   },
 })
 
-function relinkShadowData(g: SpatialGraph<Package, Wire>): void {
+function relinkShadowData(g: Graph<Package, Wire>): void {
   for (const [nodeId, parentNode] of g.nodes) {
     const child = g.getChildGraph(nodeId)
     if (!child) continue
@@ -95,7 +95,7 @@ function relinkShadowData(g: SpatialGraph<Package, Wire>): void {
  *  load, so this rebuilds it for every populated scope. */
 function rebuildScopeStateCache(): void {
   function walk(path: string[]): void {
-    let g: SpatialGraph<Package, Wire> = graph
+    let g: Graph<Package, Wire> = graph
     for (const id of path) {
       const child = g.getChildGraph(id)
       if (!child) return
@@ -229,8 +229,8 @@ function importLegacySave(): boolean {
  */
 export function bootSave(): boolean {
   engine.start()
-  // TODO(expansion): EngineConfig has no external-clock mode; the game loop
-  // feeds tickRaw from requestAnimationFrame, so the driver's timer stops.
+  // TODO(expansion): EngineOptions has no external-clock mode; the game loop
+  // feeds processInterval from requestAnimationFrame, so the driver's timer stops.
   engine.tickDriver.stop()
   loadSettings()
   loadAchievements()

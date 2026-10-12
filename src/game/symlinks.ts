@@ -19,7 +19,7 @@ import {
   COMBO_WEIGHT_RETENTION_MAX,
 } from './config'
 import { recordSymlink, checkAchievements } from './achievements'
-import type { SpatialGraph } from '@open-loop/engine'
+import type { Graph } from '@open-loop/engine'
 
 export interface DuplicateGroup {
   identityName: string
@@ -54,7 +54,7 @@ function getComboWeightRetention(): number {
 // HELPERS
 // ============================================
 
-function currentScopeGraph(): SpatialGraph<Package, Wire> {
+function currentScopeGraph(): Graph<Package, Wire> {
   return stack.current
 }
 
@@ -189,15 +189,11 @@ export interface MergeResult {
   bandwidthRefund: number
 }
 
-function isCompressed(g: SpatialGraph<Package, Wire>, pkgId: string): boolean {
+function isCompressed(g: Graph<Package, Wire>, pkgId: string): boolean {
   return g.getChildGraph(pkgId) !== null
 }
 
-function shouldKeep(
-  g: SpatialGraph<Package, Wire>,
-  a: Package,
-  b: Package
-): boolean {
+function shouldKeep(g: Graph<Package, Wire>, a: Package, b: Package): boolean {
   const aCompressed = isCompressed(g, a.id)
   const bCompressed = isCompressed(g, b.id)
   if (aCompressed !== bCompressed) {
@@ -351,7 +347,7 @@ export function performSymlinkMerge(
 }
 
 function hasEdgeBetween(
-  g: SpatialGraph<Package, Wire>,
+  g: Graph<Package, Wire>,
   fromId: string,
   toId: string
 ): boolean {
@@ -366,6 +362,6 @@ function hasEdgeBetween(
 // Lazy access to scope path graph for the cross-scope helpers below.
 export function getScopeGraph(
   path: readonly string[]
-): SpatialGraph<Package, Wire> | null {
+): Graph<Package, Wire> | null {
   return getGraphAtPath(path)
 }

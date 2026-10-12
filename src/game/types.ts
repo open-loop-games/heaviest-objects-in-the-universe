@@ -16,7 +16,7 @@ export interface Velocity {
   vy: number
 }
 
-// Package data lives on a SpatialGraph node. Tree topology (parent/children),
+// Package data lives on a Graph node. Tree topology (parent/children),
 // nested scopes, and per-scope state labels are owned by the graph and
 // scope stack — not stored on the package.
 export interface Package {
@@ -178,7 +178,7 @@ export interface AutomationState {
 }
 
 // GameState holds run-level state. Graph topology (packages, wires, scope
-// hierarchy) lives on the SpatialGraph + ScopeStack exported from state.ts.
+// hierarchy) lives on the Graph + ScopeStack exported from state.ts.
 export interface GameState {
   // RNG seed for deterministic runs (resets per prestige)
   seed: number

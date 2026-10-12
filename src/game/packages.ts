@@ -103,7 +103,7 @@ export function installPackage(parentId: string): Package | null {
   if (gameState.meta.timesShipped === 0) {
     for (const id of graph.nodes.keys()) {
       if (id === rootId) continue
-      const state = stack.stateAt([id])
+      const state = stack.statusAt([id])
       if (state !== undefined && state !== 'stable') {
         return null
       }

@@ -4,7 +4,7 @@ import {
   random,
   chance,
   weightedPick,
-  type SpatialGraph,
+  type Graph,
   type WeightedItem,
 } from '@open-loop/engine'
 import type { GameState, GameConfig, Package, Wire } from './types'
@@ -93,7 +93,7 @@ export function getBaseCompressionChance(cacheTokens: number): number {
  * scope-owner if `excludeId` is provided.
  */
 export function countScopeDuplicates(
-  scopeGraph: SpatialGraph<Package, Wire>,
+  scopeGraph: Graph<Package, Wire>,
   excludeId?: string
 ): { duplicates: number; total: number } {
   const identityCounts = new Map<string, number>()

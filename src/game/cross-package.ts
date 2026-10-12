@@ -6,7 +6,7 @@ import { gameState, graph, rootIdRef, stack } from './state'
 import type { Package, Wire } from './types'
 import { areIncompatible } from './registry'
 import { HALO_COLORS } from './config'
-import type { GraphNode, SpatialGraph } from '@open-loop/engine'
+import type { GraphNode, Graph } from '@open-loop/engine'
 
 // ============================================
 // CROSS-PACKAGE CONFLICTS
@@ -25,7 +25,7 @@ const siblingWires: Map<string, Wire> = new Map()
 const previouslyConflictedPackages: Set<string> = new Set()
 
 function* iterateInnerNodes(
-  child: SpatialGraph<Package, Wire>,
+  child: Graph<Package, Wire>,
   ownerId: string
 ): Generator<GraphNode<Package>> {
   for (const [id, node] of child.nodes) {
@@ -74,7 +74,7 @@ export function updateCrossPackageConflicts(): void {
   const topLevelEntries: Array<{
     id: string
     pkg: Package
-    child: SpatialGraph<Package, Wire>
+    child: Graph<Package, Wire>
   }> = []
 
   for (const [id, node] of graph.nodes) {
@@ -370,7 +370,7 @@ export function performCrossPackageSymlink(
   let ghostPkgId: string
   let realPkg: Package
   let ghostOwner: Package
-  let ghostOwnerChild: SpatialGraph<Package, Wire>
+  let ghostOwnerChild: Graph<Package, Wire>
   let realOwner: Package
 
   if (source.size <= target.size) {

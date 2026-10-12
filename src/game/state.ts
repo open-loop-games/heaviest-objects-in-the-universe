@@ -1,4 +1,4 @@
-// Reactive game state management using Vue + SpatialGraph + ScopeStack
+// Reactive game state management using Vue + Graph + ScopeStack
 //
 // Pattern rationale:
 // - reactive() for large nested objects mutated in-place (gameState, gameConfig)
@@ -20,12 +20,12 @@
 import { reactive, ref, computed, type ComputedRef, type Ref } from 'vue'
 import {
   createEngine,
-  createSpatialGraph,
+  createGraph,
   createScopeStack,
   seedRNG,
   type ScopeStack,
-  type ScopeState,
-  type SpatialGraph,
+  type ScopeStatus,
+  type Graph,
 } from '@open-loop/engine'
 import {
   type GameState,
@@ -73,7 +73,7 @@ seedRNG(gameState.seed)
 // internal scope. Wires from a package to its first-level deps live in
 // that package's child graph alongside a *shadow* node carrying the same
 // id and Package data reference as the parent-graph node — needed because
-// SpatialGraph requires both edge endpoints to live in the same graph.
+// Graph requires both edge endpoints to live in the same graph.
 //
 // Stack owns scope navigation; its `recalculate` callback derives the
 // per-scope state label from the graph state.
@@ -106,7 +106,7 @@ export function resetIdCounters(): void {
 export function syncIdCountersFromGraph(): void {
   let maxNode = 0
   let maxEdge = 0
-  function walk(g: SpatialGraph<Package, Wire>) {
+  function walk(g: Graph<Package, Wire>) {
     for (const id of g.nodes.keys()) {
       const m = id.match(/^pkg_(\d+)$/)
       if (m) maxNode = Math.max(maxNode, parseInt(m[1]!, 10) + 1)
@@ -132,14 +132,13 @@ function bumpRevision(): void {
   graphRevision.value++
 }
 
-export const graph: SpatialGraph<Package, Wire> = createSpatialGraph<
-  Package,
-  Wire
->({ idGenerator: nextNodeId })
+export const graph: Graph<Package, Wire> = createGraph<Package, Wire>({
+  idGenerator: nextNodeId,
+})
 
 // Recursively wire a graph and all its (current and future) child graphs to
 // bump the revision tick. Called once on construction and on any new child.
-function attachReactivity(g: SpatialGraph<Package, Wire>): void {
+function attachReactivity(g: Graph<Package, Wire>): void {
   g.on('nodeAdded', bumpRevision)
   g.on('nodeRemoved', bumpRevision)
   g.on('edgeAdded', bumpRevision)
@@ -157,9 +156,9 @@ attachReactivity(graph)
 export const rootIdRef: Ref<string | null> = ref(null)
 
 function recalculate(
-  g: SpatialGraph<Package, Wire>,
+  g: Graph<Package, Wire>,
   path: readonly string[]
-): ScopeState {
+): ScopeStatus {
   // Root scope (path = []) is never gated; treat as stable.
   if (path.length === 0) return 'stable'
 
@@ -189,7 +188,7 @@ function recalculate(
   for (const [nodeId] of g.nodes) {
     if (nodeId === ownerId) continue
     if (g.getChildGraph(nodeId) === null) continue
-    const childState = stack.stateAt([...path, nodeId])
+    const childState = stack.statusAt([...path, nodeId])
     if (childState === 'unstable') return 'unstable'
   }
 

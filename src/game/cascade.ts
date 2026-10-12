@@ -8,7 +8,7 @@ import {
   randomInt,
   shuffle,
   chance,
-  type SpatialGraph,
+  type Graph,
 } from '@open-loop/engine'
 import { getCompressionChance, getMaxCompressedDepth } from './formulas'
 import { setCascadeStarved } from './ui-state'
@@ -99,7 +99,7 @@ export function startCascade(scopePath: string[]): void {
 function startCascadeImmediate(
   scopePath: string[],
   pkg: Package,
-  scopeGraph: SpatialGraph<Package, Wire>,
+  scopeGraph: Graph<Package, Wire>,
   scopePackageId: string
 ): void {
   const depth = scopePath.length
@@ -568,7 +568,7 @@ export function isViewingCascadeScope(): boolean {
 
 function checkInternalIncompatibility(
   identity: PackageIdentity | undefined,
-  scopeGraph: SpatialGraph<Package, Wire>,
+  scopeGraph: Graph<Package, Wire>,
   ownerId: string
 ): boolean {
   if (!identity) return false

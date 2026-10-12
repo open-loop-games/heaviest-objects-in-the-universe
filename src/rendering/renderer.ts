@@ -487,7 +487,7 @@ export class GameRenderer {
       const dimAmount = conflictPackageIds.has(pkg.id) ? 0 : firstConflictDim
 
       // Internal state glow for packages with internal scope
-      // - At root: top-level packages — read state from stack.stateAt([id])
+      // - At root: top-level packages — read state from stack.statusAt([id])
       // - Inside scope: compressed internal deps — read state at scope path + id
       const isCompressed = inScope
         ? stack.current.getChildGraph(pkg.id) !== null

@@ -256,7 +256,7 @@ function countActiveScopes(): number {
   let count = 0
   for (const id of graph.nodes.keys()) {
     if (!isTopLevelPackage(id)) continue
-    const state = stack.stateAt([id])
+    const state = stack.statusAt([id])
     if (state !== 'stable') {
       count++
     }

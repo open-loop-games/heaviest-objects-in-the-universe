@@ -7,7 +7,7 @@ import type { Package, Wire } from './types'
 import { getAllDuplicateGroups } from './symlinks'
 import { getGraphAtPath } from './scope'
 import { on } from './events'
-import type { GraphEdge, SpatialGraph } from '@open-loop/engine'
+import type { GraphEdge, Graph } from '@open-loop/engine'
 
 const RADIAL_CONFIG = {
   baseRadius: 120,
@@ -46,7 +46,7 @@ export function resetPhysicsState(): void {
 
 /** Children of `pkgId` in `g` via outgoing dependency edges. */
 function getDependencyChildren(
-  g: SpatialGraph<Package, Wire>,
+  g: Graph<Package, Wire>,
   pkgId: string
 ): string[] {
   if (!g.getNode(pkgId)) return []
@@ -65,10 +65,10 @@ function getDependencyChildren(
   return result
 }
 
-// TODO(expansion): SpatialGraph.bfs walks edges both ways and allowEdge can't
+// TODO(expansion): Graph.bfs walks edges both ways and allowEdge can't
 // see the expanding node, so it can't follow dependency edges downward once a
 // symlink merge gives a node two parents. Adopt it when allowEdge gains that.
-function getSubtreeSize(g: SpatialGraph<Package, Wire>, pkgId: string): number {
+function getSubtreeSize(g: Graph<Package, Wire>, pkgId: string): number {
   const node = g.getNode(pkgId)
   if (!node) return 0
   let size = 1
@@ -446,7 +446,7 @@ const INTERNAL_CONFIG = {
 }
 
 function computeInternalAnchors(
-  scopeGraph: SpatialGraph<Package, Wire>,
+  scopeGraph: Graph<Package, Wire>,
   scopeRootId: string
 ): void {
   internalAnchorPositions.clear()
@@ -498,7 +498,7 @@ function computeInternalAnchors(
 }
 
 function assignInternalChildAnchors(
-  scopeGraph: SpatialGraph<Package, Wire>,
+  scopeGraph: Graph<Package, Wire>,
   parentId: string,
   parentAngle: number,
   angleSpan: number,

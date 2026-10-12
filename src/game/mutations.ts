@@ -23,7 +23,7 @@ import {
 import { gameState, generateWireId, graph, rootIdRef, stack } from './state'
 import { getEcosystemTier } from './formulas'
 import type { Package, Wire } from './types'
-import type { SpatialGraph } from '@open-loop/engine'
+import type { Graph } from '@open-loop/engine'
 import {
   getCurrentScopePackages,
   getCurrentScopeWires,
@@ -44,15 +44,15 @@ import { checkAchievements } from './achievements'
 
 function* iterateEnteredScopes(): Generator<{
   path: string[]
-  graph: SpatialGraph<Package, Wire>
+  graph: Graph<Package, Wire>
   ownerId: string
 }> {
   function* walk(
-    parent: SpatialGraph<Package, Wire>,
+    parent: Graph<Package, Wire>,
     parentPath: string[]
   ): Generator<{
     path: string[]
-    graph: SpatialGraph<Package, Wire>
+    graph: Graph<Package, Wire>
     ownerId: string
   }> {
     for (const [nodeId] of parent.nodes) {
@@ -106,7 +106,7 @@ export function calculateStabilityRatio(): number {
   let stable = 0
   for (const { path } of iterateEnteredScopes()) {
     entered++
-    if (stack.stateAt(path) === 'stable') stable++
+    if (stack.statusAt(path) === 'stable') stable++
   }
   if (entered === 0) return 1
   return stable / entered
@@ -351,7 +351,7 @@ export function attachNodeToScope(
   parentInScopeId: string,
   isCompressed: boolean,
   conflicted: boolean
-): { wireId: string; scopeGraph: SpatialGraph<Package, Wire> } {
+): { wireId: string; scopeGraph: Graph<Package, Wire> } {
   const scopeGraph = getGraphAtPath(scopePath)
   if (!scopeGraph) {
     throw new Error(
@@ -396,9 +396,9 @@ export function addInnerPackage(
 
 /** Create a child graph for `pkg` and add a shadow node mirroring its data. */
 export function ensureChildGraphWithShadow(
-  parent: SpatialGraph<Package, Wire>,
+  parent: Graph<Package, Wire>,
   pkg: Package
-): SpatialGraph<Package, Wire> {
+): Graph<Package, Wire> {
   let child = parent.getChildGraph(pkg.id)
   if (!child) child = parent.createChildGraph(pkg.id)
   if (!child.getNode(pkg.id)) {

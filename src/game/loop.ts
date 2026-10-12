@@ -16,7 +16,7 @@ import { applySafetyRegen, onPackageResolved } from './mutations'
 import { COMBO_DECAY_MS } from './config'
 import { checkAchievements } from './achievements'
 import { isTopLevelPackage } from './scope'
-import type { SpatialGraph } from '@open-loop/engine'
+import type { Graph } from '@open-loop/engine'
 import type { Package, Wire } from './types'
 
 // ============================================
@@ -42,7 +42,7 @@ const CAMERA_ZOOM_SNAP_THRESHOLD = 0.01
  * install progress + inner wire flow.
  */
 function updateScopeGraph(
-  scopeGraph: SpatialGraph<Package, Wire>,
+  scopeGraph: Graph<Package, Wire>,
   ownerId: string | null,
   deltaTime: number
 ): void {
@@ -179,7 +179,7 @@ export const onTick = driver.onTick
 function frame(): void {
   if (!isRunning) return
   const now = performance.now()
-  driver.tickRaw((now - lastFrame) / 1000)
+  driver.processInterval((now - lastFrame) / 1000)
   lastFrame = now
   animationFrameId = requestAnimationFrame(frame)
 }

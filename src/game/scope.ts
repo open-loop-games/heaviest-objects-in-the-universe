@@ -3,13 +3,13 @@
 // HOITU-specific contract: each populated child graph contains a *shadow*
 // node carrying the scope owner's id and Package data reference, so that
 // wires from the owner to first-level deps can live as edges within the
-// child graph (SpatialGraph requires both endpoints in the same graph).
+// child graph (Graph requires both endpoints in the same graph).
 // Iteration helpers strip the shadow when returning user-facing collections.
 
 import type { Package, Wire } from './types'
 import { graph, rootIdRef, stack } from './state'
 import { emit } from './events'
-import type { SpatialGraph } from '@open-loop/engine'
+import type { Graph } from '@open-loop/engine'
 
 // ============================================
 // SCOPE DEPTH HELPERS
@@ -47,11 +47,11 @@ export function isTopLevelPackage(pkgId: string): boolean {
   return graph.getNode(pkgId) !== undefined
 }
 
-/** Resolve the SpatialGraph at a path (root for empty path), or null. */
+/** Resolve the Graph at a path (root for empty path), or null. */
 export function getGraphAtPath(
   path: readonly string[]
-): SpatialGraph<Package, Wire> | null {
-  let g: SpatialGraph<Package, Wire> = graph
+): Graph<Package, Wire> | null {
+  let g: Graph<Package, Wire> = graph
   for (const id of path) {
     const child = g.getChildGraph(id)
     if (!child) return null
@@ -63,7 +63,7 @@ export function getGraphAtPath(
 /** Build a Map<id, Package> from a graph's nodes, optionally excluding the
  *  shadow scope-owner node when iterating a child graph. */
 function nodesAsPackageMap(
-  g: SpatialGraph<Package, Wire>,
+  g: Graph<Package, Wire>,
   excludeId?: string
 ): Map<string, Package> {
   const result = new Map<string, Package>()
@@ -75,7 +75,7 @@ function nodesAsPackageMap(
 }
 
 /** Build a Map<id, Wire> from a graph's edges. */
-function edgesAsWireMap(g: SpatialGraph<Package, Wire>): Map<string, Wire> {
+function edgesAsWireMap(g: Graph<Package, Wire>): Map<string, Wire> {
   const result = new Map<string, Wire>()
   for (const [id, edge] of g.edges) {
     result.set(id, edge.data)
@@ -203,7 +203,7 @@ export function getPackageAtPath(path: readonly string[]): Package | null {
   if (!topId) return null
   let current = graph.getNode(topId)?.data ?? null
   if (!current) return null
-  let parentGraph: SpatialGraph<Package, Wire> = graph
+  let parentGraph: Graph<Package, Wire> = graph
   for (let i = 1; i < path.length; i++) {
     const child = parentGraph.getChildGraph(path[i - 1]!)
     if (!child) return null
@@ -282,7 +282,7 @@ export function enterPackageScope(packageId: string): boolean {
 
   // Pristine check via the stack's cached state (recalculate on demand).
   stack.recalculateAt(stack.path)
-  if (stack.stateAt(stack.path) === 'pristine') {
+  if (stack.statusAt(stack.path) === 'pristine') {
     _startCascade?.([...stack.path])
   }
   return true
@@ -294,7 +294,7 @@ export function exitPackageScope(): void {
   if (stack.depth > 0) {
     stack.recalculateAt(stack.path)
     if (
-      stack.stateAt(stack.path) === 'stable' &&
+      stack.statusAt(stack.path) === 'stable' &&
       !gameStateOnboardingFirstScopeExited()
     ) {
       setOnboardingFirstScopeExitedSeen()
@@ -308,9 +308,9 @@ export function exitPackageScope(): void {
  *  stable (used by mutations.ts to spawn momentum bursts). */
 export function recalculateStateAtPath(scopePath: readonly string[]): void {
   if (scopePath.length === 0) return
-  const before = stack.stateAt(scopePath)
+  const before = stack.statusAt(scopePath)
   stack.recalculateAt(scopePath)
-  const after = stack.stateAt(scopePath)
+  const after = stack.statusAt(scopePath)
   if (before !== 'stable' && after === 'stable') {
     const g = getGraphAtPath(scopePath)
     const ownerId = scopePath[scopePath.length - 1]
@@ -328,7 +328,7 @@ export function recalculateStateAtPath(scopePath: readonly string[]): void {
 export function getScopeState(
   path: readonly string[]
 ): 'pristine' | 'unstable' | 'stable' | null {
-  const s = stack.stateAt(path)
+  const s = stack.statusAt(path)
   if (s === undefined) return null
   if (s === 'pristine' || s === 'unstable' || s === 'stable') return s
   return null
