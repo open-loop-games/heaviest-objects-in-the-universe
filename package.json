@@ -19,10 +19,8 @@
     "prepare": "husky"
   },
   "lint-staged": {
-    "*.{ts,vue}": [
-      "oxfmt --no-error-on-unmatched-pattern",
-      "oxlint --fix"
-    ]
+    "*.{ts,vue,css,html,json}": "oxfmt --no-error-on-unmatched-pattern",
+    "*.{ts,vue}": "oxlint --fix"
   },
   "dependencies": {
     "@open-loop/engine": "^0.5.1",
