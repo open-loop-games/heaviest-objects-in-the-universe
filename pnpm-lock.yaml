@@ -167,8 +167,8 @@ importers:
   .:
     dependencies:
       '@open-loop/engine':
-        specifier: ^0.5.1
-        version: 0.5.1(break_eternity.js@2.1.3)(eternal_notations@1.1.1)(vue@3.5.43(typescript@6.0.3))
+        specifier: ^0.7.1
+        version: 0.7.1(break_eternity.js@2.1.3)(eternal_notations@1.1.1)(vue@3.5.43(typescript@6.0.3))
       break_eternity.js:
         specifier: ^2.1.3
         version: 2.1.3
@@ -428,8 +428,8 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@open-loop/engine@0.5.1':
-    resolution: {integrity: sha512-I5gOIMtZzuIfp8STafKzBM4p0kbVVN5l349K38JoMmyKqyDEL2Pk9QLEgnFqi8Vu4J2SDCnOO3zbm8C/bTTMVg==, tarball: https://git.gamebois.lol/api/packages/studio/npm/@open-loop/engine/-/engine-0.5.1.tgz}
+  '@open-loop/engine@0.7.1':
+    resolution: {integrity: sha512-sC+S1WKJTCndmqwH8wUDLZc3hjU67x6TG8aNxKOFN0C3XsbuwlbXnY2Z4OTh8koockzXjVJbH0ykJxEMnZqbSg==, tarball: https://git.gamebois.lol/api/packages/studio/npm/@open-loop/engine/-/engine-0.7.1.tgz}
     engines: {node: '>=24'}
     hasBin: true
     peerDependencies:
@@ -1819,7 +1819,7 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
-  '@open-loop/engine@0.5.1(break_eternity.js@2.1.3)(eternal_notations@1.1.1)(vue@3.5.43(typescript@6.0.3))':
+  '@open-loop/engine@0.7.1(break_eternity.js@2.1.3)(eternal_notations@1.1.1)(vue@3.5.43(typescript@6.0.3))':
     dependencies:
       break_eternity.js: 2.1.3
       eternal_notations: 1.1.1
