@@ -15,6 +15,7 @@ import {
   rateOf,
   referencePersona,
   takeHome,
+  timedLimit,
   trackPrice,
   type Anchors,
   type Persona,
@@ -22,14 +23,10 @@ import {
   type Spine,
   type TrackId,
   type Upgrades,
+  type WalkSolved,
 } from '../game/spine'
 
-const TRACK_IDS: TrackId[] = [
-  'comboPayout',
-  'flat',
-  'comboWindow',
-  'autoResolve',
-]
+const TRACK_IDS: TrackId[] = ['comboPayout', 'comboWindow', 'autoResolve']
 const MAX_RUNS = 3000
 
 export interface WalkResult {
@@ -39,6 +36,8 @@ export interface WalkResult {
   finaleMinutes: number
   runs: number
   upgrades: Upgrades
+  /** Upgrades owned the moment each tier unlocked, index = tier. */
+  unlockUpgrades: Upgrades[]
   /** Purchases in order, for reading a walk. */
   log: string[]
 }
@@ -84,6 +83,7 @@ export function walk(
 ): WalkResult {
   const unlockMinutes = [NaN, 0, NaN, NaN, NaN, NaN]
   const upgrades: Upgrades = { ...NO_UPGRADES }
+  const unlockUpgrades: Upgrades[] = [NO_UPGRADES, NO_UPGRADES]
   const cleared = new Set<number>()
   const log: string[] = []
   const q = persona.shipQuality
@@ -93,7 +93,14 @@ export function walk(
 
   for (let runs = 0; runs < MAX_RUNS; runs++) {
     if (unlocked >= stopAtTier) {
-      return { unlockMinutes, finaleMinutes: NaN, runs, upgrades, log }
+      return {
+        unlockMinutes,
+        finaleMinutes: NaN,
+        runs,
+        upgrades,
+        unlockUpgrades,
+        log,
+      }
     }
     if (unlocked === 5) {
       const finale = takeHome(spine, {
@@ -108,6 +115,7 @@ export function walk(
         finaleMinutes: seconds / 60,
         runs: runs + 1,
         upgrades,
+        unlockUpgrades,
         log,
       }
     }
@@ -162,6 +170,7 @@ export function walk(
       if (choice.id === 'tier') {
         unlocked++
         unlockMinutes[unlocked] = seconds / 60
+        unlockUpgrades[unlocked] = { ...upgrades }
       } else {
         upgrades[choice.id]++
       }
@@ -170,7 +179,14 @@ export function walk(
       )
     }
   }
-  return { unlockMinutes, finaleMinutes: NaN, runs: MAX_RUNS, upgrades, log }
+  return {
+    unlockMinutes,
+    finaleMinutes: NaN,
+    runs: MAX_RUNS,
+    upgrades,
+    unlockUpgrades,
+    log,
+  }
 }
 
 /**
@@ -210,57 +226,102 @@ export function finaleRatio(
   return slow / fast
 }
 
-export interface Solved {
-  comboExponentStep: number
+export interface Solved extends WalkSolved {
   tierPrices: number[]
 }
 
+const FIXED_POINT_ROUNDS = 20
+
 /**
- * The values only the walk solves: Δe, so the reference persona's finale ratio lands on
- * capTarget, with the tier prices re-solved at each candidate. The ratio is not monotone in
- * Δe: a large step saturates the tracks and the price solve. So a scan finds the first
- * crossing and bisection refines it, so the landed ratio can overshoot the target by one
- * step of the walk. Throws when overhead alone is over the cap (board pacing reopens), or
- * when the ratio never crosses before the fastest walker owns every combo level (combo growth
- * lacks the leverage to reach the cap).
+ * The tier prices and timed limits at one Δe. T_L is the slowest pace's clean run on tier L
+ * with the upgrades the reference persona owns at that pace when it unlocks tier L+1, or at
+ * the finale for tier 5. Those upgrades depend on the timed rewards the walker earned, so the
+ * limits are a fixed point, iterated from the limits with no upgrades.
  */
-export function solveSpine(anchors: Anchors): Solved {
+export function solveAtStep(
+  anchors: Anchors,
+  comboExponentStep: number
+): Solved {
+  const persona = referencePersona(anchors)
+  const slow = 60 / anchors.pace.slowestGap
+  const tiers = anchors.tiers.length
+  let timedLimits: number[] = []
+  const base = deriveSpine(anchors, { comboExponentStep, timedLimits })
+  timedLimits = anchors.tiers.map((_, i) =>
+    timedLimit(base, i + 1, NO_UPGRADES)
+  )
+  for (let round = 0; round < FIXED_POINT_ROUNDS; round++) {
+    const spine = deriveSpine(anchors, { comboExponentStep, timedLimits })
+    const tierPrices = solveTierPrices(spine)
+    const run = walk(spine, tierPrices, persona, slow)
+    if (Number.isNaN(run.finaleMinutes))
+      throw new Error('the slowest pace never reaches the finale')
+    const next = anchors.tiers.map((_, i) =>
+      timedLimit(
+        spine,
+        i + 1,
+        i + 1 < tiers ? run.unlockUpgrades[i + 2]! : run.upgrades
+      )
+    )
+    if (next.every((t, i) => Math.abs(t - timedLimits[i]!) < 1e-9))
+      return { comboExponentStep, tierPrices, timedLimits }
+    timedLimits = next
+  }
+  throw new Error(
+    `the timed limits do not settle in ${FIXED_POINT_ROUNDS} rounds at Δe = ${comboExponentStep}`
+  )
+}
+
+/**
+ * The values only the walk solves. Δe puts the reference persona's finale ratio at or below
+ * capTarget, the cap being a ceiling, with the tier prices and timed limits re-solved at each
+ * candidate. The ratio is a step function of Δe (whole runs, whole purchases) and not
+ * monotone: a large step sells out the tracks and the price solve. So a scan finds the first
+ * crossing, bisection refines its edge, and the solve keeps the largest Δe below it. Throws
+ * when overhead alone is over the cap (board pacing reopens), or when the ratio never crosses
+ * before the fastest walker owns every combo level (combo growth lacks the leverage).
+ */
+export function solveSpine(anchors: Anchors): Solved & { ratio: number } {
   const persona = referencePersona(anchors)
   const target = anchors.capTarget
   const at = (step: number) => {
-    const spine = deriveSpine(anchors, step)
-    const tierPrices = solveTierPrices(spine)
+    const solved = solveAtStep(anchors, step)
+    const spine = deriveSpine(anchors, solved)
     return {
-      tierPrices,
-      ratio: finaleRatio(spine, tierPrices, persona),
+      solved,
+      ratio: finaleRatio(spine, solved.tierPrices, persona),
       saturated:
-        walk(spine, tierPrices, persona, 60 / anchors.pace.fastestGap).upgrades
-          .comboPayout >= anchors.tracks.comboPayout.levels,
+        walk(spine, solved.tierPrices, persona, 60 / anchors.pace.fastestGap)
+          .upgrades.comboPayout >= anchors.tracks.comboPayout.levels,
     }
   }
   const scan = 0.005
   let lo = 0
-  let probe = at(lo)
-  if (!(probe.ratio < target)) {
+  let below = at(lo)
+  if (!(below.ratio < target)) {
     throw new Error(
-      `finale ratio is ${probe.ratio.toFixed(2)}x with no combo growth, over the ${target}x cap: reopen board pacing`
+      `finale ratio is ${below.ratio.toFixed(2)}x with no combo growth, over the ${target}x cap: reopen board pacing`
     )
   }
   for (;;) {
-    probe = at(lo + scan)
-    if (probe.ratio >= target) break
-    if (probe.saturated) {
+    const next = at(lo + scan)
+    if (next.ratio >= target) break
+    if (next.saturated) {
       throw new Error(
         `no combo exponent step puts the finale ratio on ${target}x before the combo track saturates: combo growth lacks the leverage`
       )
     }
     lo += scan
+    below = next
   }
   let hi = lo + scan
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 16; i++) {
     const mid = (lo + hi) / 2
-    if (at(mid).ratio < target) lo = mid
-    else hi = mid
+    const probe = at(mid)
+    if (probe.ratio < target) {
+      lo = mid
+      below = probe
+    } else hi = mid
   }
-  return { comboExponentStep: hi, tierPrices: at(hi).tierPrices }
+  return { ...below.solved, ratio: below.ratio }
 }

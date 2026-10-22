@@ -5,7 +5,7 @@
 // the event-stream recordings refit it. Everything else is solved here or read from code.
 //
 // Buckets, per subsystem:
-//   one run's take-home → pure closed form per fixed input: κ · W · q · (1 + d̄)^e · flat · timed
+//   one run's take-home → pure closed form per fixed input: κ · W · q · (1 + d̄)^e · floor · timed
 //   combo depth d̄       → stochastic load-bearing: each gap G continues the counter with
 //                         s = P(G ≤ w), G ~ Erlang(k, 60/pace), so d̄ reads the spread of the
 //                         gaps and not only their mean
@@ -18,8 +18,14 @@
 // skilled-to-casual ratio per run compounds with levels. Pace also shortens a run, a constant
 // ratio: a parallel offset that the 2-3x cap pays for before combo adds anything.
 //
-// Values solved only through the walk are in `spine-solved.ts`, which `pnpm spine --write`
-// generates. The closed-form solves are in deriveSpine.
+// Values solved only through the walk (Δe, tier prices, timed limits) are in
+// `spine-solved.ts`, which `pnpm spine --write` generates. The closed-form solves are in
+// deriveSpine.
+//
+// No flat take-home track: priced at a crossover with combo, it is a full substitute for
+// combo at the crossover pace, so slow players grow as fast as that pace and combo growth
+// separates only the fastest pace from it. On geometric price ladders every walker buys both
+// tracks in turn anyway, so it never sorted players by pace.
 
 import { COMBO_MAX, SURGE_CASCADE_BOOST, SURGE_PACKAGE_BOOST } from './config'
 import { SPINE_SOLVED } from './spine-solved'
@@ -47,7 +53,7 @@ export interface TrackAnchor {
   growth: number
 }
 
-export type TrackId = 'comboPayout' | 'comboWindow' | 'flat' | 'autoResolve'
+export type TrackId = 'comboPayout' | 'comboWindow' | 'autoResolve'
 
 export interface Anchors {
   /** Seconds per act, endpoints of the supported range. */
@@ -86,7 +92,7 @@ export interface Anchors {
   lowerTierFloor: number
   /** Permanent take-home multiplier per timed challenge cleared. Feel. */
   timedReward: number
-  /** A timed limit's margin over the slowest pace's time with every auto-resolve level. Feel. */
+  /** A timed limit's margin over the slowest pace's own clean run. Feel. */
   timedSlack: number
   /** Minute the reference walker unlocks each tier, index = tier; tier 1 is free. Feel. */
   unlockMinutes: number[]
@@ -119,10 +125,8 @@ export const ANCHORS: Anchors = {
   conflictShare: 0.5,
   tierRateStep: 1.6,
   tokensPerReferenceRun: 10,
-  // comboPayout and flat share one ladder, so value alone decides the crossover.
   tracks: {
     comboPayout: { levels: 12, baseInRuns: 1.5, growth: 1.55 },
-    flat: { levels: 12, baseInRuns: 1.5, growth: 1.55 },
     comboWindow: { levels: 4, baseInRuns: 3, growth: 2.2 },
     autoResolve: { levels: 4, baseInRuns: 4, growth: 2.5 },
   },
@@ -157,22 +161,26 @@ export interface Spine {
   baseWindow: number
   /** Δe: combo exponent added per comboPayout level, solved onto capTarget through the walk. */
   comboExponentStep: number
-  /** Flat track's multiplier per level, solved for the crossover at the reference pace. */
-  flatStep: number
   /** Seconds per auto-resolve, index = autoResolve level. Level 0 has none. */
   autoResolveIntervals: number[]
   /** Index = tier − 1. */
   boards: Board[]
   /** κ: tokens per unit of weight at q = 1, before combo and multipliers. */
   tokensPerWeight: number
-  /** Index = tier − 1. Seconds a timed run allows. */
+  /** Index = tier − 1. Seconds a timed run allows; solved through the walk. */
+  timedLimits: number[]
+}
+
+/** The values only the walk solves, as `spine-solved.ts` commits them. */
+export interface WalkSolved {
+  comboExponentStep: number
+  /** Index = tier − 1. */
   timedLimits: number[]
 }
 
 export interface Upgrades {
   comboPayout: number
   comboWindow: number
-  flat: number
   autoResolve: number
   /** Timed challenges cleared. */
   timed: number
@@ -181,7 +189,6 @@ export interface Upgrades {
 export const NO_UPGRADES: Upgrades = {
   comboPayout: 0,
   comboWindow: 0,
-  flat: 0,
   autoResolve: 0,
   timed: 0,
 }
@@ -313,7 +320,7 @@ export function rateOf(run: RunResult): number {
  *
  * Combo pays (1 + d̄)^e, so a player who never chains gets 1 and one more level pays
  * (1 + d̄)^Δe at every level. The additive 1 + c·d̄ is declined: its per-level gain
- * Δc·d̄/(1 + c·d̄) shrinks as c grows, so the flat track overtakes combo at every pace.
+ * Δc·d̄/(1 + c·d̄) shrinks as c grows, so later levels separate paces less.
  *
  * A lower tier's take-home is lifted to lowerTierFloor × the unlocked tier's rate. Tier rates
  * step by tierRateStep at the reference pace by construction, so the lift is
@@ -351,7 +358,6 @@ export function takeHome(spine: Spine, input: RunInput): RunResult {
     scale *
     input.shipQuality *
     floor *
-    (1 + spine.flatStep) ** input.upgrades.flat *
     (1 + a.timedReward) ** input.upgrades.timed
 
   const settle = (
@@ -448,13 +454,34 @@ export function trackPrice(
 }
 
 /**
- * Every closed-form solved value from the anchors. `comboExponentStep` is solved through the
- * walk (`solveSpine` in src/balance/spine-walk.ts); the game reads the committed solve.
+ * A tier's timed limit for a set of upgrades: the slowest pace's fully stable run with them,
+ * plus slack. The walk solves which upgrades (timed-run-opt-in).
+ */
+export function timedLimit(
+  spine: Spine,
+  tier: number,
+  upgrades: Upgrades
+): number {
+  return (
+    (1 + spine.anchors.timedSlack) *
+    takeHome(spine, {
+      pace: 60 / spine.anchors.pace.slowestGap,
+      shipQuality: 1,
+      tier,
+      upgrades,
+    }).duration
+  )
+}
+
+/**
+ * Every closed-form solved value from the anchors, plus the walk-solved values `solved`
+ * (`solveSpine` in src/balance/spine-walk.ts). The game reads the committed solve.
  */
 export function deriveSpine(
   anchors: Anchors = ANCHORS,
-  comboExponentStep: number = SPINE_SOLVED.comboExponentStep
+  solved: WalkSolved = SPINE_SOLVED
 ): Spine {
+  const { comboExponentStep } = solved
   const a = anchors
   const referenceGap = Math.sqrt(a.pace.slowestGap * a.pace.fastestGap)
   const q = referencePersona(a).shipQuality
@@ -502,7 +529,6 @@ export function deriveSpine(
     referenceGap,
     baseWindow,
     comboExponentStep,
-    flatStep: 0,
     autoResolveIntervals: [Infinity],
     boards: a.tiers.map((t, i) => ({
       scopes: scopes[i]!,
@@ -569,30 +595,11 @@ export function deriveSpine(
   )
   const tokensPerWeight = a.tokensPerReferenceRun / firstRun.currency
 
-  // Crossover at the reference pace: one flat level pays what one combo level pays there,
-  // φ = (1 + d̄_ref)^Δe − 1, at every level. Both ladders cost the same.
-  const flatStep = (1 + firstRun.comboDepth) ** comboExponentStep - 1
-
-  const spine: Spine = {
+  return {
     ...probe,
-    flatStep,
     autoResolveIntervals,
     boards,
     tokensPerWeight,
+    timedLimits: solved.timedLimits,
   }
-
-  // A timed limit is the slowest pace's fully stable run with every auto-resolve level
-  // (timed-run-opt-in), plus slack.
-  const lateAuto = { ...NO_UPGRADES, autoResolve: levels }
-  spine.timedLimits = a.tiers.map(
-    (_, i) =>
-      (1 + a.timedSlack) *
-      takeHome(spine, {
-        pace: slowPace,
-        shipQuality: 1,
-        tier: i + 1,
-        upgrades: lateAuto,
-      }).duration
-  )
-  return spine
 }

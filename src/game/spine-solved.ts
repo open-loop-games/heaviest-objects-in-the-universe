@@ -2,6 +2,10 @@
 // guards it. Do not edit.
 
 export const SPINE_SOLVED = {
-  comboExponentStep: 0.0330363,
-  tierPrices: [0, 0, 32.7519, 79.1104, 208.518, 509.101],
+  // Reference persona's finale time, slowest pace over fastest: 2.93x.
+  comboExponentStep: 0.0967768,
+  // Index = tier; tier 1 is free.
+  tierPrices: [0, 0, 32.7519, 64.6103, 322.47, 1257.21],
+  // Seconds, index = tier − 1.
+  timedLimits: [306.6, 441, 426.952, 486.302, 557.146],
 }
