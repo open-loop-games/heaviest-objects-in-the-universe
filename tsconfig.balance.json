@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.balance.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["src/balance"],
+  "exclude": []
+}

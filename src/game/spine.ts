@@ -5,7 +5,7 @@
 // the event-stream recordings refit it. Everything else is solved here or read from code.
 //
 // Buckets, per subsystem:
-//   one run's take-home → pure closed form per fixed input: κ · W · q · (1 + c·d̄) · flat · timed
+//   one run's take-home → pure closed form per fixed input: κ · W · q · (1 + d̄)^e · flat · timed
 //   combo depth d̄       → stochastic load-bearing: each gap G continues the counter with
 //                         s = P(G ≤ w), G ~ Erlang(k, 60/pace), so d̄ reads the spread of the
 //                         gaps and not only their mean
@@ -14,10 +14,15 @@
 //
 // Growth shape: with take-home s·a^L and a level cost c·r^L, a = r gives parallel
 // time-to-milestone curves, a > r spread and a < r convergence. Skill reaches the growth rate
-// only through c(L)·d̄. Pace also shortens a run, a constant ratio: a parallel offset that
-// the 2-3x cap pays for before combo adds anything.
+// only through the combo exponent: each level multiplies take-home by (1 + d̄)^Δe, so the
+// skilled-to-casual ratio per run compounds with levels. Pace also shortens a run, a constant
+// ratio: a parallel offset that the 2-3x cap pays for before combo adds anything.
+//
+// Values solved only through the walk are in `spine-solved.ts`, which `pnpm spine --write`
+// generates. The closed-form solves are in deriveSpine.
 
 import { COMBO_MAX, SURGE_CASCADE_BOOST, SURGE_PACKAGE_BOOST } from './config'
+import { SPINE_SOLVED } from './spine-solved'
 
 export interface TierAnchor {
   id: string
@@ -55,12 +60,12 @@ export interface Anchors {
   runFixedSeconds: number
   /** Overhead ∝ gap^β. 0 holds overhead equal across paces, the case kindest to the cap. Feel. */
   overheadPaceExponent: number
-  /** Stationary d̄ at the slowest gap inside a scope; solves the base window. Feel. */
-  slowestStationaryDepth: number
-  /** c(0): combo payout per unit of d̄ before any upgrade. Feel. */
-  comboBase: number
-  /** Payout added per comboPayout level. Feel. */
-  comboStep: number
+  /** d̄ the slowest pace realizes on a tier-1 board, scope changes included; solves the base window. */
+  slowestRealizedDepth: number
+  /** e(0): the combo exponent before any upgrade. Feel. */
+  comboBaseExponent: number
+  /** Reference persona's finale time, slowest pace over fastest; solves Δe. Authored, starting at the cap's top. */
+  capTarget: number
   /** Seconds of window added per comboWindow level. Feel. */
   windowStep: number
   tiers: TierAnchor[]
@@ -75,8 +80,10 @@ export interface Anchors {
   /** Scale: tokens one tier-1 reference run takes home. Arbitrary unit. */
   tokensPerReferenceRun: number
   tracks: Record<TrackId, TrackAnchor>
-  /** Seconds per auto-resolve, per autoResolve level. Level 0 has none. automation.ts RESOLVE_INTERVALS, tiers 2-5. */
-  autoResolveIntervals: number[]
+  /** Share of a tier-1 board's left-behind conflicts that auto-resolve level 1 clears at the slowest pace. Feel. */
+  autoResolveFirstShare: number
+  /** A lower tier pays at least this share of the best unlocked tier's take-home per minute. Feel. */
+  lowerTierFloor: number
   /** Permanent take-home multiplier per timed challenge cleared. Feel. */
   timedReward: number
   /** A timed limit's margin over the slowest pace's time with every auto-resolve level. Feel. */
@@ -95,9 +102,10 @@ export const ANCHORS: Anchors = {
   transitionSeconds: 4,
   runFixedSeconds: 20,
   overheadPaceExponent: 0,
-  slowestStationaryDepth: 2.5,
-  comboBase: 0.05,
-  comboStep: 0.04,
+  // 2 reads as chains of about 3 acts when chains break at random.
+  slowestRealizedDepth: 2,
+  comboBaseExponent: 0.1,
+  capTarget: 3,
   windowStep: 1,
   tiers: [
     { id: 'utility-lib', depth: 1, runMinutes: 3, actsPerScope: 5 },
@@ -118,7 +126,8 @@ export const ANCHORS: Anchors = {
     comboWindow: { levels: 4, baseInRuns: 3, growth: 2.2 },
     autoResolve: { levels: 4, baseInRuns: 4, growth: 2.5 },
   },
-  autoResolveIntervals: [Infinity, 3, 2, 1, 0.5],
+  autoResolveFirstShare: 0.5,
+  lowerTierFloor: 0.75,
   timedReward: 0.08,
   timedSlack: 0.05,
   unlockMinutes: [0, 0, 10, 25, 45, 70],
@@ -146,8 +155,12 @@ export interface Spine {
   referenceGap: number
   /** Combo decay window in seconds before upgrades. Today's COMBO_DECAY_MS is 3 s. */
   baseWindow: number
+  /** Δe: combo exponent added per comboPayout level, solved onto capTarget through the walk. */
+  comboExponentStep: number
   /** Flat track's multiplier per level, solved for the crossover at the reference pace. */
   flatStep: number
+  /** Seconds per auto-resolve, index = autoResolve level. Level 0 has none. */
+  autoResolveIntervals: number[]
   /** Index = tier − 1. */
   boards: Board[]
   /** κ: tokens per unit of weight at q = 1, before combo and multipliers. */
@@ -181,6 +194,8 @@ export interface RunInput {
   upgrades: Upgrades
   /** Surge segments charged before the run. */
   surge?: number
+  /** Highest unlocked tier, which sets the lower-tier floor. Defaults to `tier`. */
+  unlockedTier?: number
 }
 
 export interface RunResult {
@@ -208,21 +223,13 @@ export function erlangCdf(t: number, mean: number, shape: number): number {
   return 1 - Math.exp(-x) * sum
 }
 
-/**
- * Mean depth of an endless chain whose gaps each continue with s: E[min(Geom, C)] =
- * s(1 − s^C)/(1 − s). Depth is the counter an act finds, 0 for a chain's first act.
- */
-export function stationaryDepth(s: number): number {
-  if (s >= 1) return COMBO_MAX
-  return (s * (1 - s ** COMBO_MAX)) / (1 - s)
-}
-
 const depthMemo = new Map<string, number>()
 
 /**
  * Mean depth over one run's acts: `scopes` bursts of `actsPerScope`, a gap inside a burst
- * continuing with P(G ≤ w) and a scope change with P(G ≤ w − transition). A fractional burst
- * interpolates its two whole neighbours.
+ * continuing with P(G ≤ w) and a scope change with P(G ≤ w − transition). Depth is the
+ * counter an act finds, 0 for a chain's first act. A fractional burst interpolates its two
+ * whole neighbours.
  */
 export function meanComboDepth(
   scopes: number,
@@ -287,8 +294,9 @@ export function surgeScale(segments: number): number {
   )
 }
 
-export function comboPayout(spine: Spine, level: number): number {
-  return spine.anchors.comboBase + spine.anchors.comboStep * level
+/** The exponent e on (1 + d̄) at a comboPayout level. */
+export function comboExponent(spine: Spine, level: number): number {
+  return spine.anchors.comboBaseExponent + spine.comboExponentStep * level
 }
 
 export function comboWindow(spine: Spine, level: number): number {
@@ -302,6 +310,14 @@ export function rateOf(run: RunResult): number {
 /**
  * One run's take-home and length. q is the share of the board's problems resolved at
  * ship, and take-home is linear in it, so cleaning always pays.
+ *
+ * Combo pays (1 + d̄)^e, so a player who never chains gets 1 and one more level pays
+ * (1 + d̄)^Δe at every level. The additive 1 + c·d̄ is declined: its per-level gain
+ * Δc·d̄/(1 + c·d̄) shrinks as c grows, so the flat track overtakes combo at every pace.
+ *
+ * A lower tier's take-home is lifted to lowerTierFloor × the unlocked tier's rate. Tier rates
+ * step by tierRateStep at the reference pace by construction, so the lift is
+ * max(1, f · step^(unlocked − tier)) and needs no second run priced.
  *
  * Retired: the jam's efficiency, 0.92^(unresolved / scale) with scale = log10(n + 10) /
  * log10(60) (mutations.ts calculateEfficiency). It counts unresolved problems absolutely:
@@ -320,20 +336,21 @@ export function takeHome(spine: Spine, input: RunInput): RunResult {
   const board = spine.boards[input.tier - 1]!
   const scale = surgeScale(input.surge ?? 0)
   const problems = board.problems * scale
-  const conflicts = problems * a.conflictShare
   const target = input.shipQuality * problems
-  const overhead =
-    a.runFixedSeconds +
-    board.scopes *
-      a.transitionSeconds *
-      (gap / spine.referenceGap) ** a.overheadPaceExponent
+  const overhead = overheadSeconds(spine, input.tier, input.pace)
   const window = comboWindow(spine, input.upgrades.comboWindow)
-  const c = comboPayout(spine, input.upgrades.comboPayout)
+  const e = comboExponent(spine, input.upgrades.comboPayout)
+  const floor = Math.max(
+    1,
+    a.lowerTierFloor *
+      a.tierRateStep ** ((input.unlockedTier ?? input.tier) - input.tier)
+  )
   const value =
     spine.tokensPerWeight *
     board.weight *
     scale *
     input.shipQuality *
+    floor *
     (1 + spine.flatStep) ** input.upgrades.flat *
     (1 + a.timedReward) ** input.upgrades.timed
 
@@ -352,7 +369,7 @@ export function takeHome(spine: Spine, input: RunInput): RunResult {
       a.gapShape
     )
     return {
-      currency: value * (1 + c * depth),
+      currency: value * (1 + depth) ** e,
       duration,
       comboDepth: depth,
       playerActs,
@@ -363,12 +380,10 @@ export function takeHome(spine: Spine, input: RunInput): RunResult {
 
   const clean = settle(target, 0, overhead + target * gap, false)
   const interval =
-    a.autoResolveIntervals[input.upgrades.autoResolve] ?? Infinity
+    spine.autoResolveIntervals[input.upgrades.autoResolve] ?? Infinity
   if (!Number.isFinite(interval)) return clean
 
-  const behindShare = 1 - 1 / board.scopes
-  const merges = Math.min(problems - conflicts, target)
-  const reachable = Math.min(target - merges, conflicts * behindShare)
+  const { reachable, behindShare } = leftBehind(spine, input)
   // Capacity binds: D = O + (Q − D·share/τ)·g, so D = (O + Q·g) / (1 + g·share/τ).
   let duration =
     (overhead + target * gap) / (1 + (gap * behindShare) / interval)
@@ -379,6 +394,38 @@ export function takeHome(spine: Spine, input: RunInput): RunResult {
   }
   const behind = settle(target - auto, auto, duration, true)
   return rateOf(behind) > rateOf(clean) ? behind : clean
+}
+
+/**
+ * Conflicts a run can leave for auto-resolve: those of the target outside the merges, in
+ * scopes already left. Auto-resolve starts once the first scope is left, so it works for
+ * behindShare = 1 − 1/S of the run.
+ */
+function leftBehind(
+  spine: Spine,
+  input: RunInput
+): { reachable: number; behindShare: number } {
+  const board = spine.boards[input.tier - 1]!
+  const problems = board.problems * surgeScale(input.surge ?? 0)
+  const conflicts = problems * spine.anchors.conflictShare
+  const target = input.shipQuality * problems
+  const merges = Math.min(problems - conflicts, target)
+  const behindShare = 1 - 1 / board.scopes
+  return {
+    reachable: Math.min(target - merges, conflicts * behindShare),
+    behindShare,
+  }
+}
+
+/** Run overhead at a pace: fixed time plus one transition per scope. */
+function overheadSeconds(spine: Spine, tier: number, pace: number): number {
+  const a = spine.anchors
+  return (
+    a.runFixedSeconds +
+    spine.boards[tier - 1]!.scopes *
+      a.transitionSeconds *
+      (60 / pace / spine.referenceGap) ** a.overheadPaceExponent
+  )
 }
 
 // ─── Derivation ───
@@ -400,22 +447,17 @@ export function trackPrice(
   return spine.anchors.tokensPerReferenceRun * t.baseInRuns * t.growth ** level
 }
 
-export function deriveSpine(anchors: Anchors = ANCHORS): Spine {
+/**
+ * Every closed-form solved value from the anchors. `comboExponentStep` is solved through the
+ * walk (`solveSpine` in src/balance/spine-walk.ts); the game reads the committed solve.
+ */
+export function deriveSpine(
+  anchors: Anchors = ANCHORS,
+  comboExponentStep: number = SPINE_SOLVED.comboExponentStep
+): Spine {
   const a = anchors
   const referenceGap = Math.sqrt(a.pace.slowestGap * a.pace.fastestGap)
   const q = referencePersona(a).shipQuality
-
-  // The base window is the w at which the slowest pace holds slowestStationaryDepth inside a
-  // scope. stationaryDepth(P(G ≤ w)) rises in w, so bisect.
-  let lo = 0
-  let hi = 60
-  for (let i = 0; i < 60; i++) {
-    const w = (lo + hi) / 2
-    const depth = stationaryDepth(erlangCdf(w, a.pace.slowestGap, a.gapShape))
-    if (depth < a.slowestStationaryDepth) lo = w
-    else hi = w
-  }
-  const baseWindow = (lo + hi) / 2
 
   // Scopes per board from the run length: T = fixed + S·(transition + m·q·g_ref).
   const scopes = a.tiers.map((t) =>
@@ -431,13 +473,37 @@ export function deriveSpine(anchors: Anchors = ANCHORS): Spine {
     (s) => s * a.packagesPerScope * a.meanPackageWeight
   )
 
-  // Weight per package is the solved quantity: each tier pays tierRateStep more per minute
-  // than the last at the reference pace, so ρ_L = step^(L−1) · rate₁ / rawRate_L.
+  // The base window is the w at which the slowest pace realizes slowestRealizedDepth on a
+  // clean tier-1 run: its bursts and its scope changes, not an endless chain. d̄ rises in w.
+  const realized = (w: number) =>
+    meanComboDepth(
+      scopes[0]!,
+      q * a.tiers[0]!.actsPerScope,
+      a.pace.slowestGap,
+      w,
+      a.transitionSeconds,
+      a.gapShape
+    )
+  let lo = 0
+  let hi = 60
+  if (realized(hi) < a.slowestRealizedDepth)
+    throw new Error(
+      `no window under ${hi} s realizes d̄ = ${a.slowestRealizedDepth} at the slowest pace`
+    )
+  for (let i = 0; i < 60; i++) {
+    const w = (lo + hi) / 2
+    if (realized(w) < a.slowestRealizedDepth) lo = w
+    else hi = w
+  }
+  const baseWindow = (lo + hi) / 2
+
   const probe: Spine = {
     anchors: a,
     referenceGap,
     baseWindow,
+    comboExponentStep,
     flatStep: 0,
+    autoResolveIntervals: [Infinity],
     boards: a.tiers.map((t, i) => ({
       scopes: scopes[i]!,
       problems: scopes[i]! * t.actsPerScope,
@@ -447,6 +513,39 @@ export function deriveSpine(anchors: Anchors = ANCHORS): Spine {
     tokensPerWeight: 1,
     timedLimits: [],
   }
+
+  // The auto-resolve ladder sells capacity, priced at the slowest pace on a fully stable
+  // board: level 1 clears autoResolveFirstShare of tier 1's left-behind conflicts, the top
+  // level all of tier 5's, and the levels between step geometrically. With capacity binding,
+  // A = D·share/τ and D = O + (Q − A)·g, so τ = (O + (Q − A)·g)·share / A.
+  const slowPace = 60 / a.pace.slowestGap
+  const intervalFor = (tier: number, share: number) => {
+    const input = {
+      pace: slowPace,
+      shipQuality: 1,
+      tier,
+      upgrades: NO_UPGRADES,
+    }
+    const { reachable, behindShare } = leftBehind(probe, input)
+    const cleared = share * reachable
+    const duration =
+      overheadSeconds(probe, tier, slowPace) +
+      (probe.boards[tier - 1]!.problems - cleared) * a.pace.slowestGap
+    return (duration * behindShare) / cleared
+  }
+  const levels = a.tracks.autoResolve.levels
+  const first = intervalFor(1, a.autoResolveFirstShare)
+  const top = intervalFor(a.tiers.length, 1)
+  const autoResolveIntervals = [
+    Infinity,
+    ...Array.from(
+      { length: levels },
+      (_, i) => first * (top / first) ** (levels > 1 ? i / (levels - 1) : 1)
+    ),
+  ]
+
+  // Weight per package is the solved quantity: each tier pays tierRateStep more per minute
+  // than the last at the reference pace, so ρ_L = step^(L−1) · rate₁ / rawRate_L.
   const referencePace = 60 / referenceGap
   const rawRates = a.tiers.map((_, i) =>
     rateOf(
@@ -464,35 +563,32 @@ export function deriveSpine(anchors: Anchors = ANCHORS): Spine {
   })
 
   // κ sets the unit: the tier-1 reference run takes home tokensPerReferenceRun.
-  const first = takeHome(
+  const firstRun = takeHome(
     { ...probe, boards },
     { pace: referencePace, shipQuality: q, tier: 1, upgrades: NO_UPGRADES }
   )
-  const tokensPerWeight = a.tokensPerReferenceRun / first.currency
+  const tokensPerWeight = a.tokensPerReferenceRun / firstRun.currency
 
-  // Crossover at the reference pace: the flat track's first level is worth the combo track's
-  // first level, φ = Δc·d̄ / (1 + c₀·d̄). Both ladders cost the same.
-  const flatStep =
-    (a.comboStep * first.comboDepth) / (1 + a.comboBase * first.comboDepth)
+  // Crossover at the reference pace: one flat level pays what one combo level pays there,
+  // φ = (1 + d̄_ref)^Δe − 1, at every level. Both ladders cost the same.
+  const flatStep = (1 + firstRun.comboDepth) ** comboExponentStep - 1
 
   const spine: Spine = {
-    anchors: a,
-    referenceGap,
-    baseWindow,
+    ...probe,
     flatStep,
+    autoResolveIntervals,
     boards,
     tokensPerWeight,
-    timedLimits: [],
   }
 
   // A timed limit is the slowest pace's fully stable run with every auto-resolve level
   // (timed-run-opt-in), plus slack.
-  const lateAuto = { ...NO_UPGRADES, autoResolve: a.tracks.autoResolve.levels }
+  const lateAuto = { ...NO_UPGRADES, autoResolve: levels }
   spine.timedLimits = a.tiers.map(
     (_, i) =>
       (1 + a.timedSlack) *
       takeHome(spine, {
-        pace: 60 / a.pace.slowestGap,
+        pace: slowPace,
         shipQuality: 1,
         tier: i + 1,
         upgrades: lateAuto,

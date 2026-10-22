@@ -11,10 +11,12 @@
 
 import {
   NO_UPGRADES,
+  deriveSpine,
   rateOf,
   referencePersona,
   takeHome,
   trackPrice,
+  type Anchors,
   type Persona,
   type RunResult,
   type Spine,
@@ -55,7 +57,13 @@ function bestRun(
   let best: BestRun | null = null
   for (let tier = 1; tier <= unlocked; tier++) {
     const run = {
-      ...takeHome(spine, { pace, shipQuality, tier, upgrades }),
+      ...takeHome(spine, {
+        pace,
+        shipQuality,
+        tier,
+        upgrades,
+        unlockedTier: unlocked,
+      }),
       tier,
     }
     if (!best || rateOf(run) > rateOf(best)) best = run
@@ -107,7 +115,13 @@ export function walk(
     let run: RunResult = bestRun(spine, unlocked, pace, q, upgrades)
     for (let tier = 1; tier <= unlocked; tier++) {
       if (cleared.has(tier)) continue
-      const timed = takeHome(spine, { pace, shipQuality: 1, tier, upgrades })
+      const timed = takeHome(spine, {
+        pace,
+        shipQuality: 1,
+        tier,
+        upgrades,
+        unlockedTier: unlocked,
+      })
       if (timed.duration <= spine.timedLimits[tier - 1]!) {
         run = timed
         cleared.add(tier)
@@ -182,4 +196,71 @@ export function solveTierPrices(spine: Spine): number[] {
     prices[tier] = 10 ** lo
   }
   return prices
+}
+
+/** Slowest over fastest time to the finale, for one persona. */
+export function finaleRatio(
+  spine: Spine,
+  tierPrices: number[],
+  persona: Persona
+): number {
+  const { slowestGap, fastestGap } = spine.anchors.pace
+  const slow = walk(spine, tierPrices, persona, 60 / slowestGap).finaleMinutes
+  const fast = walk(spine, tierPrices, persona, 60 / fastestGap).finaleMinutes
+  return slow / fast
+}
+
+export interface Solved {
+  comboExponentStep: number
+  tierPrices: number[]
+}
+
+/**
+ * The values only the walk solves: Δe, so the reference persona's finale ratio lands on
+ * capTarget, with the tier prices re-solved at each candidate. The ratio is not monotone in
+ * Δe: a large step saturates the tracks and the price solve. So a scan finds the first
+ * crossing and bisection refines it, so the landed ratio can overshoot the target by one
+ * step of the walk. Throws when overhead alone is over the cap (board pacing reopens), or
+ * when the ratio never crosses before the fastest walker owns every combo level (combo growth
+ * lacks the leverage to reach the cap).
+ */
+export function solveSpine(anchors: Anchors): Solved {
+  const persona = referencePersona(anchors)
+  const target = anchors.capTarget
+  const at = (step: number) => {
+    const spine = deriveSpine(anchors, step)
+    const tierPrices = solveTierPrices(spine)
+    return {
+      tierPrices,
+      ratio: finaleRatio(spine, tierPrices, persona),
+      saturated:
+        walk(spine, tierPrices, persona, 60 / anchors.pace.fastestGap).upgrades
+          .comboPayout >= anchors.tracks.comboPayout.levels,
+    }
+  }
+  const scan = 0.005
+  let lo = 0
+  let probe = at(lo)
+  if (!(probe.ratio < target)) {
+    throw new Error(
+      `finale ratio is ${probe.ratio.toFixed(2)}x with no combo growth, over the ${target}x cap: reopen board pacing`
+    )
+  }
+  for (;;) {
+    probe = at(lo + scan)
+    if (probe.ratio >= target) break
+    if (probe.saturated) {
+      throw new Error(
+        `no combo exponent step puts the finale ratio on ${target}x before the combo track saturates: combo growth lacks the leverage`
+      )
+    }
+    lo += scan
+  }
+  let hi = lo + scan
+  for (let i = 0; i < 30; i++) {
+    const mid = (lo + hi) / 2
+    if (at(mid).ratio < target) lo = mid
+    else hi = mid
+  }
+  return { comboExponentStep: hi, tierPrices: at(hi).tierPrices }
 }
