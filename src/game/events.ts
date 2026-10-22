@@ -48,7 +48,6 @@ export interface GameEvents {
   'ship:complete': void
   'ship:reward': {
     tokensEarned: number
-    fragmentBonus: number
     tierBefore: number
     tierAfter: number
     efficiency: number

@@ -6,6 +6,7 @@ import { gameState, graph, rootIdRef, stack } from './state'
 import type { Package, Wire } from './types'
 import { areIncompatible } from './registry'
 import { HALO_COLORS } from './config'
+import { countResolved } from './mutations'
 import type { GraphNode, Graph } from '@open-loop/engine'
 
 // ============================================
@@ -400,6 +401,7 @@ export function performCrossPackageSymlink(
 
   for (const edge of ghostOwnerChild.edges.values()) {
     if (edge.toId === ghostPkgId) {
+      if (edge.data.conflicted) countResolved()
       edge.data.conflicted = false
       edge.data.conflictTime = 0
     }

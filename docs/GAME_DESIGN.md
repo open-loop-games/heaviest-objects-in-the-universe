@@ -25,20 +25,21 @@ You are a dependency resolver. Packages arrive. Each package contains its own `n
 |----------|--------|-------------|------------|
 | **Bandwidth** | ↓ | Installation currency | Passive regen + momentum from actions |
 | **Weight** | ◆ | Total node_modules size | Sum of all package sizes |
-| **Cache Fragments** | ✦ | Depth rewards (depth 2+) | Collected during runs, convert on prestige |
+| **Cache Fragments** | ✦ | Depth rewards (depth 2+) | Collected during runs; each adds weight |
 
 ### Meta-Currencies (Persist through prestige)
 
 | Currency | Symbol | Description | Source |
 |----------|--------|-------------|--------|
-| **Cache Tokens** | ⟲ | Permanent progression currency | Prestige reward + fragments (5:1) |
+| **Cache Tokens** | ⟲ | Permanent progression currency | Ship reward |
 
 ### Derived Stats
 
 | Stat | Formula | Effect |
 |------|---------|--------|
-| **Efficiency** | `optimized_weight / total_weight` | 0.5x-1.5x prestige reward multiplier |
-| **Stability** | Ratio of stable scopes | 0.7x-1.0x prestige bonus |
+| **Efficiency** | `0.92^(unresolved / scale)` | HUD quality bar and efficiency-tier feedback; not in the reward |
+| **Stability** | Ratio of stable scopes | HUD quality bar; not in the reward |
+| **Resolved share (q)** | resolved / (resolved + open) problems this run | Ship reward multiplier |
 | **Gravity** | `weight / threshold` | Progress toward prestige (100% = ready) |
 | **Tier** | Derived from cache tokens | Unlocks depth, automation, upgrades |
 
@@ -255,14 +256,19 @@ Available from Tier 1 to give early "reserve vs spend" bandwidth choice.
 
 ### Cache Token Reward Formula
 
-```
-baseReward = sqrt(weight / threshold) × 3
-efficiencyMultiplier = 0.5 + (efficiency × 1.0)  // 0.5x at 0%, 1.5x at 100%
-stabilityBonus = 0.7 + (stability × 0.3)         // 0.7x to 1.0x
-fragmentBonus = floor(cacheFragments / 5)        // 5 fragments = 1 token
+The ship reward is `shipReward` in `src/game/spine.ts`, the one formula the balance spine
+and the game share:
 
-finalReward = floor(baseReward × efficiencyMultiplier × stabilityBonus) + fragmentBonus
 ```
+reward = κ × grossWeight × q × floor × (1 + d̄)^e × (1 + timedReward)^timedCleared
+```
+
+- **grossWeight**: everything the run spawned, plus fragment weight. Merges and prunes
+  never subtract from it, so cleaning costs no take-home.
+- **q**: the share of the run's problems (conflicts, duplicates) resolved at ship.
+- **d̄**: the mean combo counter the run's player acts found. A player who never chains
+  gets 1.
+- **κ, e, floor, timedReward**: solved or anchored in the spine (`pnpm spine` prints them).
 
 ### What Persists
 
@@ -276,7 +282,7 @@ finalReward = floor(baseReward × efficiencyMultiplier × stabilityBonus) + frag
 - All packages and wires
 - Bandwidth (reset to 100 × tier)
 - Weight (reset to 0)
-- Cache fragments (converted to tokens)
+- Cache fragments
 - Automation toggles (must re-enable)
 
 ### Black Hole Animation

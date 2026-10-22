@@ -36,11 +36,11 @@ import {
 } from './types'
 import { DEFAULT_CONFIG, createInitialState, TIER_THRESHOLDS } from './config'
 import {
-  calculatePrestigeReward,
   getPrestigeThreshold,
   getEcosystemTier,
   getMaxCompressedDepth,
 } from './formulas'
+import { GAME_SPINE, shipReward } from './spine'
 
 // ============================================
 // ENGINE
@@ -239,8 +239,18 @@ export const computed_gravity: ComputedRef<number> = computed(() => {
   return gameState.resources.weight / threshold
 })
 
+// What a ship would take home now, from this run's counters. No meta upgrades exist yet,
+// so the combo level and timed clears are 0, and the board is the current tier.
 export const computed_prestigeReward: ComputedRef<number> = computed(() => {
-  return calculatePrestigeReward(gameState, computed_prestigeThreshold.value)
+  const stats = gameState.stats
+  return shipReward(GAME_SPINE, {
+    grossWeight: stats.runGrossWeight,
+    resolvedShare: stats.resolvedShare,
+    comboDepth: stats.runActs > 0 ? stats.runComboSum / stats.runActs : 0,
+    comboLevel: 0,
+    timedCleared: 0,
+    tier: gameState.meta.ecosystemTier,
+  })
 })
 
 // Prestige unlocks when max weight ever reached >= threshold

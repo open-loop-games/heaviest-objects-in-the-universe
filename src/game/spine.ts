@@ -157,7 +157,7 @@ export interface Spine {
   anchors: Anchors
   /** Geometric mean of the gap endpoints. */
   referenceGap: number
-  /** Combo decay window in seconds before upgrades. Today's COMBO_DECAY_MS is 3 s. */
+  /** Combo decay window in seconds before upgrades. The game's combo decays after it. */
   baseWindow: number
   /** Δe: combo exponent added per comboPayout level, solved onto capTarget through the walk. */
   comboExponentStep: number
@@ -314,9 +314,26 @@ export function rateOf(run: RunResult): number {
   return run.currency / run.duration
 }
 
+/** What a ship reads off its run. The spine models each one; performShip measures it. */
+export interface ShipInput {
+  /** Everything the board spawned, merges included (take-home-gross-weight). */
+  grossWeight: number
+  /** q: the share of the board's problems resolved at ship. */
+  resolvedShare: number
+  /** d̄: the mean combo counter the run's player acts found, 0 for a chain's first act. */
+  comboDepth: number
+  comboLevel: number
+  timedCleared: number
+  tier: number
+  /** Highest unlocked tier, which sets the lower-tier floor. Defaults to `tier`. */
+  unlockedTier?: number
+}
+
 /**
- * One run's take-home and length. q is the share of the board's problems resolved at
- * ship, and take-home is linear in it, so cleaning always pays.
+ * Tokens one ship takes home: κ · W · q · floor · (1 + d̄)^e · (1 + timedReward)^timed.
+ * The one reward formula, shared by the spine's takeHome and the game's performShip.
+ *
+ * Take-home is linear in q, so cleaning always pays.
  *
  * Combo pays (1 + d̄)^e, so a player who never chains gets 1 and one more level pays
  * (1 + d̄)^Δe at every level. The additive 1 + c·d̄ is declined: its per-level gain
@@ -330,6 +347,26 @@ export function rateOf(run: RunResult): number {
  * log10(60) (mutations.ts calculateEfficiency). It counts unresolved problems absolutely:
  * q = 0.7 leaves about 5 unresolved at 120 packages and about 7 at 600. On a finite board
  * every q* persona then does nearly every act, and q* stops being a choice.
+ */
+export function shipReward(spine: Spine, input: ShipInput): number {
+  const a = spine.anchors
+  const floor = Math.max(
+    1,
+    a.lowerTierFloor *
+      a.tierRateStep ** ((input.unlockedTier ?? input.tier) - input.tier)
+  )
+  return (
+    spine.tokensPerWeight *
+    input.grossWeight *
+    input.resolvedShare *
+    floor *
+    (1 + input.comboDepth) ** comboExponent(spine, input.comboLevel) *
+    (1 + a.timedReward) ** input.timedCleared
+  )
+}
+
+/**
+ * One run's take-home and length, with the take-home priced by shipReward.
  *
  * Auto-resolve works only outside the current scope (auto-resolve-outside-current-scope).
  * A clean player leaves nothing behind for it, so with a level bought the run is priced both
@@ -346,19 +383,6 @@ export function takeHome(spine: Spine, input: RunInput): RunResult {
   const target = input.shipQuality * problems
   const overhead = overheadSeconds(spine, input.tier, input.pace)
   const window = comboWindow(spine, input.upgrades.comboWindow)
-  const e = comboExponent(spine, input.upgrades.comboPayout)
-  const floor = Math.max(
-    1,
-    a.lowerTierFloor *
-      a.tierRateStep ** ((input.unlockedTier ?? input.tier) - input.tier)
-  )
-  const value =
-    spine.tokensPerWeight *
-    board.weight *
-    scale *
-    input.shipQuality *
-    floor *
-    (1 + a.timedReward) ** input.upgrades.timed
 
   const settle = (
     playerActs: number,
@@ -375,7 +399,15 @@ export function takeHome(spine: Spine, input: RunInput): RunResult {
       a.gapShape
     )
     return {
-      currency: value * (1 + depth) ** e,
+      currency: shipReward(spine, {
+        grossWeight: board.weight * scale,
+        resolvedShare: input.shipQuality,
+        comboDepth: depth,
+        comboLevel: input.upgrades.comboPayout,
+        timedCleared: input.upgrades.timed,
+        tier: input.tier,
+        unlockedTier: input.unlockedTier,
+      }),
       duration,
       comboDepth: depth,
       playerActs,
@@ -603,3 +635,6 @@ export function deriveSpine(
     timedLimits: solved.timedLimits,
   }
 }
+
+/** The spine the game reads: the committed anchors and the committed walk solve. */
+export const GAME_SPINE: Spine = deriveSpine()

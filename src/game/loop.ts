@@ -2,7 +2,12 @@
 
 import { engine, gameState, graph, stack } from './state'
 import { isInPackageScope } from './scope'
-import { updateEfficiency, updateStability } from './mutations'
+import {
+  comboWindowMs,
+  updateEfficiency,
+  updateResolvedShare,
+  updateStability,
+} from './mutations'
 import { spawnDependencies } from './packages'
 import { updateCascade } from './cascade'
 import { applyUpgradeEffects } from './upgrades'
@@ -13,7 +18,6 @@ import {
 } from './physics'
 import { updateAutomation } from './automation'
 import { applySafetyRegen, onPackageResolved } from './mutations'
-import { COMBO_DECAY_MS } from './config'
 import { checkAchievements } from './achievements'
 import { isTopLevelPackage } from './scope'
 import type { Graph } from '@open-loop/engine'
@@ -156,6 +160,7 @@ function tick(deltaTime: number): void {
   if (tickCount % STATS_UPDATE_INTERVAL === 0) {
     updateEfficiency()
     updateStability()
+    updateResolvedShare()
     checkAchievements()
   }
 
@@ -163,7 +168,7 @@ function tick(deltaTime: number): void {
 
   if (gameState.stats.comboCount > 0) {
     const elapsed = now - gameState.stats.comboLastActionTime
-    if (elapsed >= COMBO_DECAY_MS) {
+    if (elapsed >= comboWindowMs()) {
       gameState.stats.comboCount = 0
     }
   }

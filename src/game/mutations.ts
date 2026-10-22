@@ -14,6 +14,7 @@ import {
   MOMENTUM_DAMPENING_THRESHOLD,
   MOMENTUM_DAMPENING_FLOOR,
   COMBO_MAX,
+  FRAGMENT_WEIGHT,
 } from './config'
 import {
   EFFICIENCY_BASE,
@@ -34,6 +35,7 @@ import { emit, on } from './events'
 import { getCompressionMultiplier, getStabilizationBonus } from './upgrades'
 import { getEfficiencyTierRank, updateEfficiencyTracking } from './formulas'
 import { checkAchievements } from './achievements'
+import { GAME_SPINE, comboWindow } from './spine'
 
 // Quality event types are now in the main event bus (src/game/events.ts)
 // Use emit('quality:efficiency-improved', ...) etc.
@@ -76,29 +78,57 @@ function* iterateEnteredScopes(): Generator<{
   yield* walk(graph, [])
 }
 
-export function calculateEfficiency(): number {
-  let totalDuplicates = 0
-  let totalConflicts = 0
-  let totalPackages = 0
+/** Duplicates and conflicted wires still open across the entered scopes, and their packages. */
+function countOpenProblems(): { open: number; packages: number } {
+  let open = 0
+  let packages = 0
 
   for (const { graph: scopeGraph, ownerId } of iterateEnteredScopes()) {
     const { duplicates, total } = countScopeDuplicates(scopeGraph, ownerId)
-    totalDuplicates += duplicates
-    totalPackages += total
+    open += duplicates
+    packages += total
 
     for (const edge of scopeGraph.edges.values()) {
-      if (edge.data.conflicted) totalConflicts++
+      if (edge.data.conflicted) open++
     }
   }
+  return { open, packages }
+}
 
-  if (totalPackages === 0) return 1
+export function calculateEfficiency(): number {
+  const { open, packages } = countOpenProblems()
+  if (packages === 0) return 1
 
-  const scale =
-    Math.log10(totalPackages + 10) / Math.log10(EFFICIENCY_SCALE_ANCHOR)
-  const problems = totalDuplicates + totalConflicts
-  const efficiency = Math.pow(EFFICIENCY_BASE, problems / scale)
+  const scale = Math.log10(packages + 10) / Math.log10(EFFICIENCY_SCALE_ANCHOR)
+  const efficiency = Math.pow(EFFICIENCY_BASE, open / scale)
 
   return Math.max(0, Math.min(1, efficiency))
+}
+
+/**
+ * q for the ship reward: problems resolved this run over those resolved plus those still
+ * open. A problem a prune deletes unresolved leaves both counts.
+ */
+export function updateResolvedShare(): void {
+  const { runResolved } = gameState.stats
+  const { open } = countOpenProblems()
+  gameState.stats.resolvedShare =
+    runResolved + open === 0 ? 1 : runResolved / (runResolved + open)
+}
+
+/** Clear this run's ship-reward inputs. Call on ship and on a run restart. */
+export function resetRunCounters(): void {
+  const stats = gameState.stats
+  stats.runGrossWeight = 0
+  stats.runResolved = 0
+  stats.runActs = 0
+  stats.runComboSum = 0
+  stats.resolvedShare = 1
+}
+
+/** Count problems resolved this run, by the player or by auto-resolve. */
+export function countResolved(count: number = 1): void {
+  gameState.stats.runResolved += count
 }
 
 export function calculateStabilityRatio(): number {
@@ -140,7 +170,21 @@ function checkEfficiencyChange(newEfficiency: number): void {
 // COMBO SYSTEM
 // ============================================
 
+/** The combo decay window, from the spine's solved base window. */
+export function comboWindowMs(): number {
+  return comboWindow(GAME_SPINE, 0) * 1000
+}
+
+/**
+ * One player act. It records the counter it found (0 once the window has lapsed, even
+ * before the loop decays it) for the run's mean combo depth, then builds the chain.
+ */
 export function incrementCombo(): void {
+  const stats = gameState.stats
+  const lapsed = Date.now() - stats.comboLastActionTime >= comboWindowMs()
+  stats.runComboSum += lapsed ? 0 : stats.comboCount
+  stats.runActs++
+
   gameState.stats.comboCount = Math.min(
     gameState.stats.comboCount + 1,
     COMBO_MAX
@@ -229,12 +273,16 @@ export function onPackageResolved(): number {
   return amount
 }
 
-export function onConflictResolved(position?: {
-  x: number
-  y: number
-}): number {
+export function onConflictResolved(
+  position?: {
+    x: number
+    y: number
+  },
+  momentumScale: number = 1
+): number {
   incrementCombo()
-  const amount = generateBandwidth(MOMENTUM_CONFLICT_RESOLVE)
+  countResolved()
+  const amount = generateBandwidth(MOMENTUM_CONFLICT_RESOLVE * momentumScale)
   emit('game:conflict-resolved', { amount, position })
   return amount
 }
@@ -244,6 +292,7 @@ export function onSymlinkMerged(
   position: { x: number; y: number }
 ): number {
   incrementCombo()
+  countResolved()
   const amount = generateBandwidth(MOMENTUM_SYMLINK_MERGE)
   emit('game:symlink-merged', { amount, weightSaved, position })
   return amount
@@ -294,6 +343,7 @@ export function applySafetyRegen(deltaTime: number): void {
 export function addWeight(baseWeight: number): number {
   const finalWeight = baseWeight * getCompressionMultiplier()
   gameState.resources.weight += finalWeight
+  gameState.stats.runGrossWeight += finalWeight
   gameState.stats.maxWeightReached = Math.max(
     gameState.stats.maxWeightReached,
     gameState.resources.weight
@@ -529,6 +579,7 @@ export function collectCacheFragment(packageId: string): boolean {
   }
 
   pkg.hasCacheFragment = false
+  addWeight(FRAGMENT_WEIGHT)
   gameState.resources.cacheFragments++
   gameState.stats.cacheFragmentsCollected++
 

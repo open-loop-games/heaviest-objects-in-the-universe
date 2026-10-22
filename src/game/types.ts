@@ -103,6 +103,12 @@ export interface GameStats {
   // Combo system (resolution speed → weight retention)
   comboCount: number // Current combo level (0-10)
   comboLastActionTime: number // Timestamp of last combo-building action
+  // This run's ship-reward inputs (spine.ts shipReward)
+  runGrossWeight: number // Weight added this run; merges and prunes never subtract
+  runResolved: number // Conflicts and duplicates resolved this run, by the player or auto-resolve
+  runActs: number // Player acts that build combo
+  runComboSum: number // Sum of the combo counter each act found
+  resolvedShare: number // q: runResolved over runResolved plus the problems still open
 }
 
 // Cascade system for staggered spawning

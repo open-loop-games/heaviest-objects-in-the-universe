@@ -1,9 +1,9 @@
 // Ship to npm - soft prestige (repeatable)
 
-import { FRAGMENT_TO_TOKEN_RATIO, getDefaultZoom } from './config'
-import { calculatePrestigeReward, getPrestigeThreshold } from './formulas'
+import { getDefaultZoom } from './config'
 import {
   computed_canPrestige,
+  computed_prestigeReward,
   gameState,
   resetGraphAndStack,
   syncEcosystemTier,
@@ -11,7 +11,11 @@ import {
 import { saveToLocalStorage } from './persistence'
 import { emit } from './events'
 import { resetEfficiencyTracking } from './formulas'
-import { resetMomentumState } from './mutations'
+import {
+  resetMomentumState,
+  resetRunCounters,
+  updateResolvedShare,
+} from './mutations'
 import { clearCascadeQueue } from './cascade'
 import { resetCrossPackageState } from './cross-package'
 import { resetPhysicsState } from './physics'
@@ -24,8 +28,9 @@ import { recordShip } from './achievements'
 export function performShip(): void {
   emit('player:action')
 
-  const threshold = getPrestigeThreshold(gameState.meta.timesShipped)
-  const reward = calculatePrestigeReward(gameState, threshold)
+  // shipReward (spine.ts) over this run's counters, q measured fresh.
+  updateResolvedShare()
+  const reward = computed_prestigeReward.value
 
   const tierBefore = gameState.meta.ecosystemTier
   const efficiency = gameState.stats.currentEfficiency
@@ -40,15 +45,7 @@ export function performShip(): void {
     gameState.onboarding.firstPrestigeComplete = true
   }
 
-  const avgQuality =
-    (gameState.stats.currentEfficiency + gameState.stats.currentStability) / 2
-  const qualityMultiplier = 0.2 + 0.8 * Math.min(1, avgQuality)
-  const fragmentBonus = Math.floor(
-    (gameState.resources.cacheFragments / FRAGMENT_TO_TOKEN_RATIO) *
-      qualityMultiplier
-  )
-
-  gameState.meta.cacheTokens += reward + fragmentBonus
+  gameState.meta.cacheTokens += reward
   gameState.meta.timesShipped++
   recordShip()
 
@@ -56,7 +53,6 @@ export function performShip(): void {
 
   emit('ship:reward', {
     tokensEarned: reward,
-    fragmentBonus,
     tierBefore,
     tierAfter: gameState.meta.ecosystemTier,
     efficiency,
@@ -91,6 +87,7 @@ export function performShip(): void {
   gameState.stats.currentEfficiency = 1
   gameState.stats.currentStability = 1
   resetEfficiencyTracking()
+  resetRunCounters()
 
   gameState.camera.x = 0
   gameState.camera.y = 0

@@ -7,7 +7,7 @@ import {
   type Graph,
   type WeightedItem,
 } from '@open-loop/engine'
-import type { GameState, GameConfig, Package, Wire } from './types'
+import type { GameConfig, Package, Wire } from './types'
 import {
   DEFAULT_CONFIG,
   TIER_THRESHOLDS,
@@ -201,34 +201,6 @@ export function getEfficiencyTierProgress(efficiency: number): number {
 
   if (high <= low) return 1
   return Math.min(1, (efficiency - low) / (high - low))
-}
-
-/**
- * Cache token reward formula.
- */
-export function calculatePrestigeReward(
-  state: GameState,
-  threshold: number
-): number {
-  const weight = state.resources.weight
-
-  // Base reward scales with sqrt of progress past threshold
-  const progress = Math.max(0, weight / Math.max(1, threshold))
-  const baseReward = Math.sqrt(progress) * 3
-
-  // Efficiency multiplier: 0.5x at 0%, 1.5x at 100%
-  const efficiencyMultiplier = 0.5 + state.stats.currentEfficiency
-
-  // Stability bonus: 0.7x (all unstable) to 1.0x (all stable). Use the
-  // pre-computed ratio from gameState rather than recomputing — the live
-  // calculation lives in mutations.ts (closer to its callers).
-  const stabilityRatio = state.stats.currentStability
-  const stabilityBonus = 0.7 + stabilityRatio * 0.3
-
-  return Math.max(
-    1,
-    Math.floor(baseReward * efficiencyMultiplier * stabilityBonus)
-  )
 }
 
 // ============================================

@@ -8,7 +8,7 @@ import { gameState, resetGraphAndStack } from './state'
 import { saveToLocalStorage, clearSavedGame } from './persistence'
 import { resetEfficiencyTracking } from './formulas'
 import { seedRNG } from '@open-loop/engine'
-import { resetMomentumState } from './mutations'
+import { resetMomentumState, resetRunCounters } from './mutations'
 import { clearCascadeQueue } from './cascade'
 import { resetCrossPackageState } from './cross-package'
 import { resetPhysicsState } from './physics'
@@ -38,6 +38,7 @@ export function softReset(): void {
   gameState.stats.currentEfficiency = 1
   gameState.stats.currentStability = 1
   resetEfficiencyTracking()
+  resetRunCounters()
 
   gameState.surge.chargedSegments = 0
 

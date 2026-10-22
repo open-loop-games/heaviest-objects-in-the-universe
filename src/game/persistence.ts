@@ -17,6 +17,7 @@ import {
   type Serializable,
 } from '@open-loop/engine'
 import type { Package, Wire } from './types'
+import { createInitialState } from './config'
 import {
   engine,
   gameState,
@@ -177,6 +178,9 @@ function restoreGame(data: SaveBlob): boolean {
     rootIdRef.value = data.rootId ?? null
 
     Object.assign(gameState, data.state)
+    // A save can lack a stats field the run now counts; a fresh run's value fills it, so a
+    // missing counter never turns the ship reward into NaN.
+    gameState.stats = { ...createInitialState().stats, ...gameState.stats }
 
     if (!gameState.seed) {
       gameState.seed = Date.now()

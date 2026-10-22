@@ -20,7 +20,6 @@ import {
   isAutomationProcessing,
   getAutomationProcessingType,
 } from '../../game/automation'
-import { FRAGMENT_TO_TOKEN_RATIO } from '../../game/config'
 import { on, emit } from '../../game/events'
 import { setActiveTooltip } from '../../game/ui-state'
 import NpmMass from './NpmMass.vue'
@@ -215,16 +214,10 @@ const rewardQuality = computed(() => {
 // CACHE FRAGMENT DISPLAY
 // ============================================
 
-// Full tokens from fragments (bonus on prestige)
-const fragmentBonusTokens = computed(() => {
-  return Math.floor(
-    gameState.resources.cacheFragments / FRAGMENT_TO_TOKEN_RATIO
-  )
-})
-
-// Number of filled fragment stars (0-4, 5th triggers rollover)
+// Filled fragment stars: one per fragment collected this run, up to the five shown.
+// A fragment pays as weight, so the stars track collection, not a token rollover.
 const filledFragmentStars = computed(() => {
-  return gameState.resources.cacheFragments % FRAGMENT_TO_TOKEN_RATIO
+  return Math.min(5, gameState.resources.cacheFragments)
 })
 
 // Whether to show fragment indicator (has any fragments)
@@ -234,9 +227,9 @@ const hasFragments = computed(() => gameState.resources.cacheFragments > 0)
 // UNIFIED TOKEN DISPLAY
 // ============================================
 
-// Total pending tokens on ship = base reward + fragment bonus
+// Total pending tokens on ship
 const totalPendingTokens = computed(() => {
-  return prestigeRewardDots.value + fragmentBonusTokens.value
+  return prestigeRewardDots.value
 })
 
 // Max tokens per row before overflow
@@ -521,7 +514,7 @@ function handlePrestige() {
         />
       </div>
 
-      <!-- Unified token reward preview (base + fragment bonus combined) -->
+      <!-- Token reward preview -->
       <div
         ref="rewardPreviewRef"
         class="reward-preview tooltip-trigger"

@@ -306,14 +306,14 @@ onMounted(async () => {
     // Subscribe to ship reward for token particles
     const unsubShipReward = on(
       'ship:reward',
-      ({ tokensEarned, fragmentBonus, tierBefore, tierAfter }) => {
+      ({ tokensEarned, tierBefore, tierAfter }) => {
         const screenWidth = window.innerWidth
         const screenHeight = window.innerHeight
         const centerX = screenWidth / 2
         const centerY = screenHeight / 2
 
         // Spawn token particles from center - staggered for visual effect
-        const totalTokens = Math.min(tokensEarned + fragmentBonus, 8) // Cap at 8 particles
+        const totalTokens = Math.min(Math.ceil(tokensEarned), 8) // Cap at 8 particles
         for (let i = 0; i < totalTokens; i++) {
           setTimeout(() => {
             // Slight position variance for each token
@@ -818,8 +818,7 @@ function handleUpgrade() {
   if (!newIdentity) return
 
   // Generate 2x bandwidth (upgrade is better than prune!)
-  onConflictResolved()
-  onConflictResolved()
+  onConflictResolved(undefined, 2)
 
   // Visual feedback
   const effects = renderer.getEffectsRenderer()

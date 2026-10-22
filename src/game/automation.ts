@@ -17,6 +17,7 @@ import { AUTO_RESOLVE_DRAIN } from './config'
 import { emit } from './events'
 import { getCrossPackageConflicts } from './cross-package'
 import { recordAutoResolve } from './achievements'
+import { countResolved } from './mutations'
 
 // ============================================
 // AUTOMATION TIMING CONSTANTS
@@ -134,6 +135,7 @@ function resolveWireAtPath(wireId: string, scopePath: string[]): boolean {
   }
 
   gameState.stats.totalConflictsResolved++
+  countResolved()
 
   if (scopePath.length > 0) {
     recalculateStateAtPath(scopePath)

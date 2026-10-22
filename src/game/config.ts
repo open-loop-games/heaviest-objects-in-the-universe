@@ -128,9 +128,6 @@ export const INSTALL_BASE_COST = 25 // × tier × 1.15^activeScopes
 // Maximum combo level
 export const COMBO_MAX = 10
 
-// Time until combo resets (ms)
-export const COMBO_DECAY_MS = 3000
-
 // Weight retention scaling: at combo 0 remove 50%, at combo 10 remove 0%
 export const COMBO_WEIGHT_RETENTION_MIN = 0.5 // 50% weight removed at combo 0
 export const COMBO_WEIGHT_RETENTION_MAX = 1.0 // 0% weight removed at combo 10
@@ -159,7 +156,9 @@ export const SURGE_PACKAGE_BOOST = 0.05 // +5% package count per segment
 export const GOLDEN_SPAWN_CHANCE = 0.08
 export const GOLDEN_WEIGHT_MULTIPLIER = 4
 export const GOLDEN_MIN_DEPTH = 3
-export const FRAGMENT_TO_TOKEN_RATIO = 5 // 5 fragments = 1 cache token on prestige
+// Gross weight a collected fragment adds, so it pays through the ship reward. About one
+// mean package (spine.ts meanPackageWeight). Feel.
+export const FRAGMENT_WEIGHT = 50
 
 // Depth weight multipliers: [depth 0, depth 1, depth 2, depth 3, depth 4+]
 export const DEPTH_WEIGHT_MULTIPLIERS = [1.0, 1.0, 1.15, 1.25, 1.35] as const
@@ -313,6 +312,11 @@ export function createInitialState(seed?: number): GameState {
       totalWeight: 0,
       comboCount: 0,
       comboLastActionTime: 0,
+      runGrossWeight: 0,
+      runResolved: 0,
+      runActs: 0,
+      runComboSum: 0,
+      resolvedShare: 1,
     },
     camera: {
       x: 0,
