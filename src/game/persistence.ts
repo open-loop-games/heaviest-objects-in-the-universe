@@ -1,26 +1,23 @@
 // Save/Load persistence layer
 //
 // The engine's save manager owns the save slot: its version and migrations,
-// compression, and protecting a slot whose load failed. Game state rides it
-// as one opaque blob in a single persistent ref, flushed before every save
-// and restored after every load. Settings and achievements keep their own
-// localStorage keys, so a hard reset leaves them, and are written with every
-// save.
+// compression, and protecting a slot whose load failed. Game state is persistent
+// refs (state.ts). The board rides beside them as one opaque blob in a persistent
+// ref, flushed before every save and restored after every load. Settings and
+// achievements keep their own localStorage keys, so a hard reset leaves them,
+// and are written with every save.
 
 import { toRaw } from 'vue'
 import {
   persistent,
-  seedRNG,
   type SerializedScopeStack,
   type Graph,
   type SerializedGraph,
   type Serializable,
 } from '@open-loop/engine'
 import type { Package, Wire } from './types'
-import { createInitialState } from './config'
 import {
   engine,
-  gameState,
   graph,
   rootIdRef,
   resetGraphAndStack,
@@ -37,13 +34,7 @@ import { resetPhysicsState } from './physics'
 const SETTINGS_KEY = 'heaviest-objects-settings'
 const ACHIEVEMENTS_KEY = 'heaviest-objects-achievements'
 
-// The save as it stood before the engine owned it: raw JSON of a SaveBlob
-// plus this version, imported into the engine slot once.
-const LEGACY_SAVE_KEY = 'heaviest-objects-save'
-const LEGACY_SAVE_VERSION = 3
-
 interface SaveBlob {
-  state: typeof gameState
   rootId: string | null
   graph: SerializedGraph<Package, Wire>
   scope?: SerializedScopeStack
@@ -60,7 +51,10 @@ engine.use({
     // Typed as Serializable: the game's interfaces lack the index signatures
     // Serializable requires, though the blob is plain JSON. Opaque, so the NaN
     // walk over the whole graph buys nothing.
-    const blob = persistent<Serializable>(null, { id: 'blob', checkNaN: false })
+    const blob = persistent<Serializable>(null, {
+      id: 'board',
+      checkNaN: false,
+    })
     ctx.onSave(() => {
       if (!restoreFailed) blob.value = snapshotGame() as unknown as Serializable
       saveSettings()
@@ -115,35 +109,8 @@ function rebuildScopeStateCache(): void {
   walk([])
 }
 
-function resetTransientState(): void {
-  gameState.cascade = {
-    active: false,
-    scopePackageId: null,
-    pendingSpawns: [],
-    lastSpawnTime: 0,
-    spawnInterval: 100,
-    guaranteedCrits: gameState.cascade.guaranteedCrits ?? 0,
-    scopePath: null,
-    subDepQueue: null,
-    compressedIndices: null,
-    isStarterKit: false,
-    isSecondPackage: false,
-    isThirdPackage: false,
-    isReactDom: false,
-    deferConflicts: false,
-    breathPhase: false,
-    breathStartTime: 0,
-  }
-
-  gameState.automation.resolveActive = false
-  gameState.automation.resolveTargetWireId = null
-  gameState.automation.resolveTargetScope = null
-  gameState.automation.processStartTime = 0
-}
-
 function snapshotGame(): SaveBlob {
   return {
-    state: toRaw(gameState),
     rootId: rootIdRef.value,
     graph: graph.serialize(),
     scope: stack.serialize(),
@@ -173,22 +140,8 @@ function restoreGame(data: SaveBlob): boolean {
 
     rootIdRef.value = data.rootId ?? null
 
-    Object.assign(gameState, data.state)
-    // A save can lack a stats field the run now counts, or an upgrade track; a fresh game's
-    // value fills it, so a missing input never turns the ship reward into NaN.
-    const fresh = createInitialState()
-    gameState.stats = { ...fresh.stats, ...gameState.stats }
-    gameState.upgrades = { ...fresh.upgrades, ...gameState.upgrades }
-
-    if (!gameState.seed) {
-      gameState.seed = Date.now()
-    }
-    seedRNG(gameState.seed)
-
     // Re-seed ID counters past the highest serialized id.
     syncIdCountersFromGraph()
-
-    resetTransientState()
 
     rebuildScopeStateCache()
 
@@ -202,43 +155,29 @@ function restoreGame(data: SaveBlob): boolean {
   }
 }
 
-/** Move a pre-engine save into the engine slot, once. True if it restored. */
-function importLegacySave(): boolean {
-  const raw = localStorage.getItem(LEGACY_SAVE_KEY)
-  if (!raw || engine.saveManager?.hasSave()) return false
-  try {
-    const data = JSON.parse(raw) as Partial<SaveBlob> & { version?: number }
-    if (data.version !== LEGACY_SAVE_VERSION || !data.graph || !data.state) {
-      return false
-    }
-    if (!restoreGame(data as SaveBlob)) return false
-  } catch (e) {
-    console.warn('Failed to parse legacy save:', e)
-    return false
-  }
-  engine.save()
-  localStorage.removeItem(LEGACY_SAVE_KEY)
-  return true
-}
-
 // ============================================
 // ENGINE LIFECYCLE
 // ============================================
 
+let restored = false
+
 /**
- * Install the engine's modules and load the save, importing a pre-engine
- * save the first time. Returns whether a game was restored.
+ * Install the engine's modules and load the save. Runs once, before the UI mounts,
+ * because the modules build the game state's sections.
  */
-export function bootSave(): boolean {
+export function bootSave(): void {
   engine.start()
   // TODO(expansion): EngineOptions has no external-clock mode; the game loop
   // feeds processInterval from requestAnimationFrame, so the driver's timer stops.
   engine.tickDriver.stop()
   loadSettings()
   loadAchievements()
-  const result = engine.load()
-  if (result.success) return !restoreFailed
-  return importLegacySave()
+  restored = engine.load().success && !restoreFailed
+}
+
+/** Whether bootSave restored a saved game. */
+export function wasGameRestored(): boolean {
+  return restored
 }
 
 /** Save now. False if the write was refused or the loaded save is being kept. */
@@ -257,7 +196,6 @@ export function saveToLocalStorage(): boolean {
 /** Delete the save, lifting any protection a failed load put on it. */
 export function clearSavedGame(): void {
   engine.saveManager?.deleteSave()
-  localStorage.removeItem(LEGACY_SAVE_KEY)
   restoreFailed = false
 }
 

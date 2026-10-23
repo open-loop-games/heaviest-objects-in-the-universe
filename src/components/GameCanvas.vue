@@ -40,7 +40,7 @@ import {
   exitToRoot,
 } from '../game/scope'
 import { removeTopLevelPackage, collectCacheFragment } from '../game/mutations'
-import { bootSave, saveToLocalStorage } from '../game/persistence'
+import { wasGameRestored, saveToLocalStorage } from '../game/persistence'
 import {
   createRootPackage,
   installPackage,
@@ -188,8 +188,7 @@ onMounted(async () => {
     // Set initial prestige target position
     updatePrestigeTarget()
 
-    // Try to load saved game
-    const loaded = bootSave()
+    const loaded = wasGameRestored()
 
     if (!loaded || !rootIdRef.value) {
       // Fresh game - play intro animation before creating root
@@ -1074,7 +1073,7 @@ function handleMouseUp(_event?: MouseEvent) {
               y: screenPos.y,
             })
             // Weight saved (scale based on combo - high combo = tiny/no particle)
-            const weightLossScale = 1 - gameState.stats.comboCount / COMBO_MAX
+            const weightLossScale = 1 - gameState.run.comboCount / COMBO_MAX
             if (weightLossScale > 0.1) {
               emit('particles:spawn', {
                 type: 'weight-loss',
@@ -1107,7 +1106,7 @@ function handleMouseUp(_event?: MouseEvent) {
             y: screenPos.y,
           })
           // Weight saved (scale based on combo - high combo = tiny/no particle)
-          const weightLossScale = 1 - gameState.stats.comboCount / COMBO_MAX
+          const weightLossScale = 1 - gameState.run.comboCount / COMBO_MAX
           if (weightLossScale > 0.1) {
             emit('particles:spawn', {
               type: 'weight-loss',
@@ -1679,7 +1678,7 @@ function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
             y: screenPos.y,
           })
           // Weight saved (scale based on combo)
-          const weightLossScale = 1 - gameState.stats.comboCount / COMBO_MAX
+          const weightLossScale = 1 - gameState.run.comboCount / COMBO_MAX
           if (weightLossScale > 0.1) {
             emit('particles:spawn', {
               type: 'weight-loss',
@@ -1706,7 +1705,7 @@ function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
           y: screenPos.y,
         })
         // Weight saved (scale based on combo)
-        const weightLossScale = 1 - gameState.stats.comboCount / COMBO_MAX
+        const weightLossScale = 1 - gameState.run.comboCount / COMBO_MAX
         if (weightLossScale > 0.1) {
           emit('particles:spawn', {
             type: 'weight-loss',

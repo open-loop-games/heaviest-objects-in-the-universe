@@ -137,7 +137,7 @@ const showPrestige = computed(() => {
 // QUALITY METRICS
 // ============================================
 
-const efficiencyValue = computed(() => gameState.stats.currentEfficiency)
+const efficiencyValue = computed(() => gameState.run.currentEfficiency)
 
 const efficiencyIndicator = computed(() => {
   if (efficiencyValue.value < 0.5) return '▼'
@@ -152,7 +152,7 @@ const efficiencyState = computed(() => {
   return 'normal'
 })
 
-const stabilityValue = computed(() => gameState.stats.currentStability)
+const stabilityValue = computed(() => gameState.run.currentStability)
 
 const stabilityState = computed(() => {
   if (stabilityValue.value >= 1.0) return 'stable'

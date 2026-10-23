@@ -161,10 +161,10 @@ function tick(deltaTime: number): void {
 
   updateAutomation(now)
 
-  if (gameState.stats.comboCount > 0) {
-    const elapsed = now - gameState.stats.comboLastActionTime
+  if (gameState.run.comboCount > 0) {
+    const elapsed = now - gameState.run.comboLastActionTime
     if (elapsed >= comboWindowMs()) {
-      gameState.stats.comboCount = 0
+      gameState.run.comboCount = 0
     }
   }
 }

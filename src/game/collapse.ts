@@ -245,15 +245,11 @@ export function hasCollapsed(): boolean {
 
 /**
  * Restart the game after winning (collapse).
- * Preserves: hasCollapsed (text unlock), achievements
+ * Preserves: hasCollapsed (text unlock, a lifetime ref), achievements
  * Resets: Everything else (fresh start)
  */
 export function restartGame(): void {
-  // Preserve permanent unlocks
-  const preservedHasCollapsed = gameState.meta.hasCollapsed
-
   wipeGame()
-  gameState.meta.hasCollapsed = preservedHasCollapsed
   createRootPackage()
   saveToLocalStorage()
 

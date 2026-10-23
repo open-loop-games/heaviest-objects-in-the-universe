@@ -149,12 +149,12 @@ export const DEFAULT_CONFIG: GameConfig = {
 }
 
 /**
- * Create a fresh game state for new game or prestige reset
- * @param seed - Optional RNG seed. Defaults to Date.now() for unique runs.
+ * A fresh game's values: the defaults of the game's persistent refs (state.ts), and the
+ * starting values of its unsaved sections.
  */
-export function createInitialState(seed?: number): GameState {
+export function createInitialState(): GameState {
   return {
-    seed: seed ?? Date.now(),
+    seed: Date.now(),
     resources: {
       weight: 0,
       cacheFragments: 0,
@@ -186,7 +186,6 @@ export function createInitialState(seed?: number): GameState {
       weightSeen: false,
       efficiencySeen: false,
     },
-    tutorialGating: true, // Relaxed after first prestige
     // Cascade system
     cascade: {
       active: false,
@@ -232,13 +231,15 @@ export function createInitialState(seed?: number): GameState {
       totalPackagesInstalled: 0,
       totalConflictsResolved: 0,
       totalSymlinksCreated: 0,
-      maxWeightReached: 0,
-      currentEfficiency: 1,
-      currentStability: 1,
       goldenPackagesFound: 0,
       cacheFragmentsCollected: 0,
       peakEfficiency: 1,
       totalWeight: 0,
+    },
+    run: {
+      maxWeightReached: 0,
+      currentEfficiency: 1,
+      currentStability: 1,
       comboCount: 0,
       comboLastActionTime: 0,
       runGrossWeight: 0,

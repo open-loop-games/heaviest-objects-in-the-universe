@@ -42,7 +42,7 @@ export function markDuplicateGroupsDirty(): void {
 // ============================================
 
 function getComboWeightRetention(): number {
-  const combo = gameState.stats.comboCount
+  const combo = gameState.run.comboCount
   const t = combo / COMBO_MAX
   return (
     COMBO_WEIGHT_RETENTION_MIN +

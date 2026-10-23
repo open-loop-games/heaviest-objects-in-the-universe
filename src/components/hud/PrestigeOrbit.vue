@@ -203,7 +203,7 @@ const prestigeRewardDots = computed(() => {
 
 // Reward quality tier based on efficiency (for token styling)
 const rewardQuality = computed(() => {
-  const eff = gameState.stats.currentEfficiency
+  const eff = gameState.run.currentEfficiency
   if (eff >= 0.8) return 'excellent' // Bright glow
   if (eff >= 0.5) return 'good' // Normal
   if (eff >= 0.3) return 'poor' // Faded

@@ -22,7 +22,9 @@ import {
   createEngine,
   createGraph,
   createScopeStack,
+  persistent,
   seedRNG,
+  type Persistent,
   type ScopeStack,
   type ScopeStatus,
   type Graph,
@@ -49,20 +51,88 @@ import { GAME_SPINE, shipReward } from './spine'
 // Owns the save slot and the tick driver. persistence.ts registers the save
 // module and boots it. The gameId is the storage key prefix, and the save
 // manager moves any `${gameId}-save` key into its first slot as an engine
-// envelope, so it must not be `heaviest-objects`: that key holds the
-// pre-engine save, which persistence.ts imports itself.
+// envelope, so it must not be `heaviest-objects`: that key holds a pre-engine
+// save, which would load as an envelope, fail, and protect the slot.
 export const engine = createEngine({
   gameId: 'heaviest-objects-in-the-universe',
-  saveVersion: 1,
+  saveVersion: 2,
+  // Version 1 is the jam economy's save, one opaque blob; its tokens and tiers mean
+  // nothing to the meta layer, so it loads as a fresh game.
+  saveMigrations: { 1: () => ({}) },
   autoSaveInterval: 30_000,
 })
 
-// Global reactive game state (resources, meta, stats, cascade, automation —
-// everything except graph topology, which lives on `graph` + `stack` below).
-export const gameState = reactive<GameState>(createInitialState())
+// ============================================
+// GAME STATE
+// ============================================
+//
+// One facade over persistent refs, grouped by what resets them. The `run` module's refs
+// reset when a run ends (ship.ts drives it as a Cycle); the `game` module's survive ships
+// and reset on a new game; a lifetime ref survives that too. Each field is its own ref,
+// which reactive() unwraps on read and writes through on assignment, so readers write
+// `gameState.run.comboCount++`. Never assign a whole section: that would replace its refs.
+// The modules fill their sections at engine.start(), which runs before the UI mounts.
+// cascade, automation and collapseHold are within-frame state, never saved.
 
-// Initialize RNG with the game's seed
-seedRNG(gameState.seed)
+export const gameState = reactive({
+  cascade: createInitialState().cascade,
+  automation: createInitialState().automation,
+  collapseHold: createInitialState().collapseHold,
+}) as GameState
+
+/** Persistent refs for a section's fields, saved under `${section}.${key}`. */
+function persistentFields<T extends object>(
+  section: string,
+  defaults: T,
+  lifetime: readonly (keyof T)[] = []
+): T {
+  const fields: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(defaults)) {
+    fields[key] = persistent(value as number | boolean, {
+      id: `${section}.${key}`,
+      lifetime: lifetime.includes(key as keyof T),
+    })
+  }
+  return fields as T
+}
+
+/** The ref behind meta.hasCollapsed: lifetime, so only a hard reset names it. */
+export let hasCollapsedRef: Persistent<boolean> | null = null
+
+engine.use({
+  id: 'game',
+  install() {
+    const fresh = createInitialState()
+    const meta = persistentFields('meta', fresh.meta, ['hasCollapsed'])
+    hasCollapsedRef = (meta as unknown as Record<string, Persistent<boolean>>)
+      .hasCollapsed!
+    Object.assign(gameState, {
+      meta,
+      upgrades: persistentFields('upgrades', fresh.upgrades),
+      stats: persistentFields('stats', fresh.stats),
+      onboarding: persistentFields('onboarding', fresh.onboarding),
+    })
+  },
+})
+
+engine.use({
+  id: 'run',
+  install(ctx) {
+    const fresh = createInitialState()
+    Object.assign(gameState, {
+      seed: persistent(fresh.seed, { id: 'seed' }),
+      resources: persistentFields('resources', fresh.resources),
+      run: persistentFields('run', fresh.run),
+      camera: persistentFields('camera', fresh.camera),
+    })
+    // The toggle is saved with the run; the rest of automation is within-frame.
+    ;(
+      gameState.automation as unknown as Record<string, unknown>
+    ).resolveEnabled = persistent(false, { id: 'automation.resolveEnabled' })
+    seedRNG(gameState.seed)
+    ctx.onLoad(() => seedRNG(gameState.seed))
+  },
+})
 
 // ============================================
 // SPATIAL GRAPH + SCOPE STACK
@@ -242,11 +312,11 @@ export const computed_gravity: ComputedRef<number> = computed(() => {
 // What a ship would take home now, from this run's counters and the meta upgrades owned.
 // The board is the current tier.
 export const computed_prestigeReward: ComputedRef<number> = computed(() => {
-  const stats = gameState.stats
+  const run = gameState.run
   return shipReward(GAME_SPINE, {
-    grossWeight: stats.runGrossWeight,
-    resolvedShare: stats.resolvedShare,
-    comboDepth: stats.runActs > 0 ? stats.runComboSum / stats.runActs : 0,
+    grossWeight: run.runGrossWeight,
+    resolvedShare: run.resolvedShare,
+    comboDepth: run.runActs > 0 ? run.runComboSum / run.runActs : 0,
     comboLevel: gameState.upgrades.comboPayout,
     timedCleared: gameState.upgrades.timed,
     tier: gameState.meta.ecosystemTier,
@@ -257,7 +327,7 @@ export const computed_prestigeReward: ComputedRef<number> = computed(() => {
 // Uses peak weight so optimization (merging) doesn't drop below threshold
 export const computed_canPrestige: ComputedRef<boolean> = computed(() => {
   const threshold = computed_prestigeThreshold.value
-  return gameState.stats.maxWeightReached >= threshold
+  return gameState.run.maxWeightReached >= threshold
 })
 
 // Reactive root-graph package count (for HUD reveal triggers etc.)

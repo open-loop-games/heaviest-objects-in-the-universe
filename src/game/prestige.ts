@@ -1,46 +1,49 @@
-// Prestige system - reset utilities
+// Resets beyond a run's end: abandoning a run, a new game, a hard reset.
 //
-// Note: Ship (soft prestige) logic is in ship.ts
-// Efficiency tracking is in formulas.ts
+// Note: Ship, the run's end, is in ship.ts
 
-import { getDefaultZoom, createInitialState } from './config'
-import { gameState, resetGraphAndStack } from './state'
+import { createReset, type Reset } from '@open-loop/engine'
+import { engine, gameState, hasCollapsedRef } from './state'
 import { saveToLocalStorage, clearSavedGame } from './persistence'
-import { resetEfficiencyTracking } from './formulas'
-import { seedRNG } from '@open-loop/engine'
-import { resetRunCounters } from './mutations'
-import { clearCascadeQueue } from './cascade'
-import { resetCrossPackageState } from './cross-package'
-import { resetPhysicsState } from './physics'
+import { clearRunSystems, getRunCycle } from './ship'
 
-// ============================================
-// RESET UTILITIES
-// ============================================
+let newGameReset: Reset | null = null
+let hardResetAll: Reset | null = null
+
+/** A reset's run cleanup: the run's systems, and the cycle's clock, which no context names. */
+function clearRunAndClock(): void {
+  clearRunSystems()
+  getRunCycle().elapsed.value = 0
+}
+
+engine.use({
+  id: 'resets',
+  install() {
+    // Everything the run and the game hold; a lifetime ref (hasCollapsed, the cycle's
+    // count and best time) survives, so the text reveal carries into New Game+.
+    newGameReset = createReset({
+      resetPersistentContexts: ['run', 'game'],
+      onReset: clearRunAndClock,
+    })
+  },
+  connect() {
+    const cycle = getRunCycle()
+    hardResetAll = createReset({
+      resetPersistentContexts: [newGameReset!],
+      thingsToReset: [hasCollapsedRef, cycle.count, cycle.bestTime],
+      onReset: clearRunAndClock,
+    })
+  },
+})
 
 /**
- * Soft reset: restart current run but keep meta progress
- * (ships, cache tokens, upgrades).
+ * Soft reset: abandon the current run, pay nothing, keep the game (ships, cache tokens,
+ * upgrades).
  */
 export function softReset(): void {
-  gameState.seed = Date.now()
-  seedRNG(gameState.seed)
-
-  resetGraphAndStack()
-  clearCascadeQueue()
-  resetCrossPackageState()
-  resetPhysicsState()
-
-  gameState.resources.weight = 0
-  gameState.resources.cacheFragments = 0
-
-  gameState.stats.currentEfficiency = 1
-  gameState.stats.currentStability = 1
-  resetEfficiencyTracking()
-  resetRunCounters()
-
-  gameState.camera.x = 0
-  gameState.camera.y = 0
-  gameState.camera.zoom = getDefaultZoom()
+  const cycle = getRunCycle()
+  cycle.reset.reset()
+  cycle.elapsed.value = 0
 
   gameState.onboarding.firstClickComplete = false
   gameState.onboarding.firstDivablePackageSeen = false
@@ -48,23 +51,16 @@ export function softReset(): void {
   saveToLocalStorage()
 }
 
-/**
- * Hard reset: wipe everything and start completely fresh.
- */
+/** Hard reset: delete the save and start completely fresh. */
 export function hardReset(): void {
   clearSavedGame()
-  wipeGame()
+  hardResetAll!.reset()
 }
 
 /**
- * Replace all game state, graph and transient systems with a fresh game.
- * Achievements and settings live outside it and survive.
+ * A new game: reset the run and the game, keeping lifetime refs. Achievements and
+ * settings live outside the save's refs and survive.
  */
 export function wipeGame(): void {
-  Object.assign(gameState, createInitialState())
-  resetGraphAndStack()
-  clearCascadeQueue()
-  resetCrossPackageState()
-  resetPhysicsState()
-  seedRNG(gameState.seed)
+  newGameReset!.reset()
 }

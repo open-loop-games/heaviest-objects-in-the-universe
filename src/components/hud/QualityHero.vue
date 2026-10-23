@@ -44,7 +44,7 @@ onUnmounted(() => {
 // EFFICIENCY
 // ============================================
 
-const efficiencyValue = computed(() => gameState.stats.currentEfficiency)
+const efficiencyValue = computed(() => gameState.run.currentEfficiency)
 
 // Efficiency state for styling
 const efficiencyState = computed(() => {
@@ -58,7 +58,7 @@ const efficiencyState = computed(() => {
 // STABILITY
 // ============================================
 
-const stabilityValue = computed(() => gameState.stats.currentStability)
+const stabilityValue = computed(() => gameState.run.currentStability)
 
 // Stability state for styling
 const stabilityState = computed(() => {

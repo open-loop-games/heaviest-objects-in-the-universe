@@ -81,23 +81,25 @@ export interface CollapseHoldState {
   drainedTiers: number // 5→0 visual countdown
 }
 
+/** Lifetime counts, kept through ships. */
 export interface GameStats {
   totalPackagesInstalled: number
   totalConflictsResolved: number
   totalSymlinksCreated: number
+  goldenPackagesFound: number
+  cacheFragmentsCollected: number
+  peakEfficiency: number // Highest efficiency reached across all runs
+  totalWeight: number // Cumulative weight across all runs
+}
+
+/** This run's measures, reset when the run ends. */
+export interface RunStats {
   maxWeightReached: number
   currentEfficiency: number
   currentStability: number
-  // Depth rewards
-  goldenPackagesFound: number
-  cacheFragmentsCollected: number
-  // Lifetime stats
-  peakEfficiency: number // Highest efficiency reached across all runs
-  totalWeight: number // Cumulative weight across all runs
-  // Combo system (resolution speed → weight retention)
   comboCount: number // Current combo level (0-10)
   comboLastActionTime: number // Timestamp of last combo-building action
-  // This run's ship-reward inputs (spine.ts shipReward)
+  // The ship reward's inputs (spine.ts shipReward)
   runGrossWeight: number // Weight added this run; merges and prunes never subtract
   runResolved: number // Conflicts and duplicates resolved this run, by the player or auto-resolve
   runActs: number // Player acts that build combo
@@ -158,10 +160,9 @@ export interface OnboardingState {
 // Automation state for auto-resolve
 // Note: Auto-dedup removed - merging stays manual for gameplay
 export interface AutomationState {
-  // Toggle states (user-controllable)
-  resolveEnabled: boolean // Auto-resolve toggle
+  resolveEnabled: boolean // Auto-resolve toggle; saved with the run
 
-  // Auto-resolve (unlocks at tier 2)
+  // Auto-resolve in progress
   resolveActive: boolean // Currently processing a resolve
   resolveTargetWireId: string | null // Wire being auto-resolved
   resolveTargetScope: string[] | null // Scope path where wire lives
@@ -171,45 +172,29 @@ export interface AutomationState {
   lastResolveTime: number // Last time auto-resolve fired
 }
 
-// GameState holds run-level state. Graph topology (packages, wires, scope
-// hierarchy) lives on the Graph + ScopeStack exported from state.ts.
+// The game's state, by what resets it. Graph topology (packages, wires, scope hierarchy)
+// lives on the Graph + ScopeStack exported from state.ts.
 export interface GameState {
-  // RNG seed for deterministic runs (resets per prestige)
-  seed: number
-
-  // Core resources
+  // ---- The run: reset when it ends (Ship), saved ----
+  seed: number // RNG seed for the run's rolls
   resources: GameResources
-
-  // Meta resources (persist through prestige)
-  meta: MetaResources
-
-  // Meta upgrades, the spine's tracks. None is purchasable before the meta layer, so all stay 0.
-  upgrades: Upgrades
-
-  // Onboarding (for staged HUD reveal)
-  onboarding: OnboardingState
-
-  // Tutorial gating (true until first prestige - gates package installs)
-  tutorialGating: boolean
-
-  // Cascade system (staggered spawning)
-  cascade: CascadeState
-
-  // Automation system (auto-resolve)
-  automation: AutomationState
-
-  // Collapse hold state (Tier 5 finale)
-  collapseHold: CollapseHoldState
-
-  // Stats
-  stats: GameStats
-
-  // View state
+  run: RunStats
   camera: {
     x: number
     y: number
     zoom: number
   }
+
+  // ---- The game: kept through ships, reset by a new game, saved ----
+  meta: MetaResources
+  upgrades: Upgrades
+  stats: GameStats
+  onboarding: OnboardingState // Sticky HUD reveal and teaching state
+
+  // ---- Within a frame or a gesture: never saved ----
+  cascade: CascadeState
+  automation: AutomationState
+  collapseHold: CollapseHoldState
 }
 
 export interface GameConfig {

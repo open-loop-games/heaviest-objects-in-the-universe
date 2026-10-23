@@ -94,25 +94,15 @@ export function calculateEfficiency(): number {
  * open. A problem a prune deletes unresolved leaves both counts.
  */
 export function updateResolvedShare(): void {
-  const { runResolved } = gameState.stats
+  const { runResolved } = gameState.run
   const { open } = countOpenProblems()
-  gameState.stats.resolvedShare =
+  gameState.run.resolvedShare =
     runResolved + open === 0 ? 1 : runResolved / (runResolved + open)
-}
-
-/** Clear this run's ship-reward inputs. Call on ship and on a run restart. */
-export function resetRunCounters(): void {
-  const stats = gameState.stats
-  stats.runGrossWeight = 0
-  stats.runResolved = 0
-  stats.runActs = 0
-  stats.runComboSum = 0
-  stats.resolvedShare = 1
 }
 
 /** Count problems resolved this run, by the player or by auto-resolve. */
 export function countResolved(count: number = 1): void {
-  gameState.stats.runResolved += count
+  gameState.run.runResolved += count
 }
 
 export function calculateStabilityRatio(): number {
@@ -164,19 +154,16 @@ export function comboWindowMs(): number {
  * before the loop decays it) for the run's mean combo depth, then builds the chain.
  */
 export function incrementCombo(): void {
-  const stats = gameState.stats
-  const lapsed = Date.now() - stats.comboLastActionTime >= comboWindowMs()
-  stats.runComboSum += lapsed ? 0 : stats.comboCount
-  stats.runActs++
+  const run = gameState.run
+  const lapsed = Date.now() - run.comboLastActionTime >= comboWindowMs()
+  run.runComboSum += lapsed ? 0 : run.comboCount
+  run.runActs++
 
-  gameState.stats.comboCount = Math.min(
-    gameState.stats.comboCount + 1,
-    COMBO_MAX
-  )
-  gameState.stats.comboLastActionTime = Date.now()
+  gameState.run.comboCount = Math.min(gameState.run.comboCount + 1, COMBO_MAX)
+  gameState.run.comboLastActionTime = Date.now()
 
   if (
-    gameState.stats.comboCount >= 5 &&
+    gameState.run.comboCount >= 5 &&
     !gameState.onboarding.firstHighComboSeen
   ) {
     gameState.onboarding.firstHighComboSeen = true
@@ -213,9 +200,9 @@ function onScopeStabilized(packageCount: number): void {
 
 export function addWeight(weight: number): void {
   gameState.resources.weight += weight
-  gameState.stats.runGrossWeight += weight
-  gameState.stats.maxWeightReached = Math.max(
-    gameState.stats.maxWeightReached,
+  gameState.run.runGrossWeight += weight
+  gameState.run.maxWeightReached = Math.max(
+    gameState.run.maxWeightReached,
     gameState.resources.weight
   )
 }
@@ -370,12 +357,12 @@ export function removeInnerPackage(
 
 export function updateEfficiency(): void {
   const newEfficiency = calculateEfficiency()
-  gameState.stats.currentEfficiency = newEfficiency
+  gameState.run.currentEfficiency = newEfficiency
   checkEfficiencyChange(newEfficiency)
 }
 
 export function updateStability(): void {
-  gameState.stats.currentStability = calculateStabilityRatio()
+  gameState.run.currentStability = calculateStabilityRatio()
 }
 
 export function resolveConflict(packageId: string): void {

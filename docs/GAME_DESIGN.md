@@ -248,17 +248,15 @@ reward = κ × grossWeight × q × floor × (1 + d̄)^e × (1 + timedReward)^tim
 
 ### What Persists
 
-**Keeps:**
-- Cache tokens (accumulated)
-- All upgrade levels
-- Total prestige count
-- Ecosystem tier
+State is grouped by what resets it (`src/game/state.ts`):
 
-**Resets:**
-- All packages and wires
-- Weight (reset to 0)
-- Cache fragments
-- Automation toggles (must re-enable)
+| Scope | Holds | Reset by |
+|-------|-------|----------|
+| **Run** | The board, weight, fragments, this run's counters (combo, q's inputs), camera, the auto-resolve toggle | Ship (the run's Cycle), abandoning the run |
+| **Game** | Cache tokens, ships, tier, meta upgrades, lifetime stats, onboarding | New Game+, hard reset |
+| **Lifetime** | `hasCollapsed` (the text reveal), the cycle's run count and best time | Hard reset only |
+
+Achievements and settings keep their own storage and survive every reset.
 
 ### Black Hole Animation
 
@@ -339,7 +337,7 @@ src/
 │       ├── QualityHero.vue
 │       └── SettingsPanel.vue
 ├── game/
-│   ├── state.ts            # Reactive game state (Vue refs)
+│   ├── state.ts            # Game state over persistent refs, graph, engine
 │   ├── types.ts            # Core interfaces (Package, Wire, GameState)
 │   ├── loop.ts             # Game tick, physics, automation updates
 │   ├── packages.ts         # Package creation, dependency spawning
@@ -351,7 +349,7 @@ src/
 │   ├── mutations.ts        # State mutations, prestige logic
 │   ├── formulas.ts         # Cost scaling, reward calculations
 │   ├── config.ts           # Game constants, initial state
-│   └── persistence.ts      # Save/load (localStorage)
+│   └── persistence.ts      # Save/load through the engine save manager
 └── rendering/
     ├── renderer.ts         # Pixi.js setup, camera, containers
     ├── nodes.ts            # Package visuals (states, icons, effects)

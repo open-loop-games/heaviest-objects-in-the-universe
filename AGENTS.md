@@ -44,7 +44,9 @@ src/
 │   ├── GameCanvas.vue    # Pixi.js canvas + input handling
 │   └── hud/              # HUD components (quality and weight bars, navigation, automation)
 ├── game/
-│   ├── state.ts          # Reactive game state, graph, and the engine instance
+│   ├── state.ts          # Game state over persistent refs, graph, and the engine instance
+│   ├── ship.ts           # Ship: the run's end, an engine Cycle over the run's refs
+│   ├── prestige.ts       # Abandon-run, New Game+ and hard resets
 │   ├── types.ts          # Core interfaces (Package, Wire, GameState)
 │   ├── events.ts         # Typed event bus (emit/on/once)
 │   ├── ui-state.ts       # UI-specific state (drag, collapse, wiggle)
@@ -72,7 +74,7 @@ src/
 
 ### Key Patterns
 
-**State:** Vue reactivity for resources; `Map<string, Package>` for graph
+**State:** one reactive facade over engine persistent refs, grouped by what resets them (run, game, lifetime); never assign a whole section. Topology on the engine Graph + ScopeStack
 **Scopes:** Top-level packages contain their own `internalPackages` + `internalWires` maps
 **Rendering:** Layered Pixi containers (wires behind nodes)
 **Physics:** Force-directed layout with repulsion/attraction

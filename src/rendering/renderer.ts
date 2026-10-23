@@ -407,7 +407,7 @@ export class GameRenderer {
 
     // Calculate synced pulse phase for duplicates
     // Pulse rate scales with combo: 2s (calm) → 1s (active) → 0.5s (urgent) → solid (max)
-    const combo = gameState.stats.comboCount
+    const combo = gameState.run.comboCount
     const pulseDuration =
       combo >= 10
         ? Infinity // Solid, no pulse
@@ -572,7 +572,7 @@ export class GameRenderer {
     const groups = getAllDuplicateGroups() // Already scope-aware
 
     // Calculate pulse phase based on combo (same as node halos)
-    const combo = gameState.stats.comboCount
+    const combo = gameState.run.comboCount
     const pulseDuration =
       combo >= 10 ? Infinity : combo >= 7 ? 500 : combo >= 4 ? 1000 : 2000
     const pulsePhase =
