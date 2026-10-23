@@ -1959,7 +1959,7 @@ export function checkIncompatibilityWithPackages(
 
 /**
  * Upgrade paths - what a conflicting package can transform into
- * Upgrading generates 2x bandwidth (better than pruning)
+ * Upgrading keeps the package in the tree, where pruning removes its subtree
  */
 const UPGRADE_PATHS: Record<string, string> = {
   // Legacy → Modern

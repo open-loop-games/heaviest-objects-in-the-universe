@@ -86,7 +86,7 @@ export class ConflictsAnimation extends BaseAnimation {
       this.drawResolveEffect(wireMid.x, wireMid.y, resolveT)
     }
 
-    // Resource hint: show bandwidth gain after resolve
+    // Resource hint: the resolve raises quality
     if (progress >= phases.resolve.start && progress < phases.reset.start) {
       const hintProgress =
         (progress - phases.resolve.start) /
@@ -94,8 +94,8 @@ export class ConflictsAnimation extends BaseAnimation {
       this.drawResourceHint(
         wireMid.x,
         wireMid.y - 30,
-        '↑',
-        TeachingColors.bandwidthGain,
+        '✓',
+        TeachingColors.qualityGain,
         hintProgress
       )
     }

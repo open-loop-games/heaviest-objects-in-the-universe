@@ -4,7 +4,6 @@ import {
   gameState,
   graphRevision,
   computed_gravity,
-  computed_ecosystemTier,
   computed_canPrestige,
   computed_rootPackageCount,
 } from '../game/state'
@@ -22,10 +21,8 @@ import AchievementDrawer from './hud/AchievementDrawer.vue'
 import AchievementToast from './hud/AchievementToast.vue'
 
 // Resource row components
-import BandwidthRow from './hud/BandwidthRow.vue'
 import WeightRow from './hud/WeightRow.vue'
 import AutomationRow from './hud/AutomationRow.vue'
-import SurgeRow from './hud/SurgeRow.vue'
 import UpgradeTooltip from './hud/UpgradeTooltip.vue'
 
 // Teaching book state
@@ -35,7 +32,7 @@ import { unlockTab } from '../onboarding'
 // STAGED HUD VISIBILITY
 // ============================================
 
-const showBandwidth = computed(() => gameState.onboarding.firstClickComplete)
+const showPanel = computed(() => gameState.onboarding.firstClickComplete)
 
 // Track onboarding state changes with watchEffect (side effects, not computation)
 watchEffect(() => {
@@ -70,10 +67,6 @@ watchEffect(() => {
   ) {
     unlockTab('ship')
   }
-  // Surge tab unlocks after first surge charge (available from T1)
-  if (gameState.onboarding.firstSurgeCharged) {
-    unlockTab('surge')
-  }
 })
 
 // Pure computeds - no mutations
@@ -86,10 +79,8 @@ const showEfficiency = computed(
     gameState.onboarding.efficiencySeen || computed_rootPackageCount.value >= 2
 )
 
-const showAutomation = computed(() => computed_ecosystemTier.value >= 2)
-
-// Surge unlocks after P2 (second prestige)
-const showSurge = computed(() => gameState.meta.timesShipped >= 2)
+// Auto-resolve is a meta upgrade; its row shows once a level is owned.
+const showAutomation = computed(() => gameState.upgrades.autoResolve > 0)
 
 // Check if we're inside a package scope
 const inPackageScope = computed(() => {
@@ -131,7 +122,7 @@ const showPrestigeArea = computed(() => {
     <div class="hud-left-stack">
       <!-- Unified resource panel -->
       <div
-        v-if="showBandwidth"
+        v-if="showPanel"
         class="hud-panel"
         :class="{ 'prestige-ready': prestigeProgress >= 1 }"
       >
@@ -143,17 +134,9 @@ const showPrestigeArea = computed(() => {
         <!-- Separator between quality and resources -->
         <div v-if="showEfficiency" class="hud-separator" />
 
-        <!-- Bandwidth Row -->
-        <BandwidthRow />
-
         <!-- Weight Row (DEMOTED - secondary indicator) -->
         <Transition name="fade">
           <WeightRow v-if="showWeight" />
-        </Transition>
-
-        <!-- Surge Row (P2+) -->
-        <Transition name="fade">
-          <SurgeRow v-if="showSurge" />
         </Transition>
 
         <!-- Automation Row -->

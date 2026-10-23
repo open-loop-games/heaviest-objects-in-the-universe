@@ -69,21 +69,8 @@ export const DEPTH_COMPRESSION_MULT = [1.0, 0.75, 0.5, 0.25, 0.0] as const
 export const MAX_COMPRESSED_PER_SCOPE = [1, 2, 2, 3, 3] as const
 
 // ============================================
-// ACTION COSTS (Bandwidth)
+// BOARD LIMITS
 // ============================================
-
-// Per-dependency spawn cost - NOW FREE (momentum loop)
-// Cascades flow uninterrupted, cost moved to install
-export const DEP_SPAWN_COST = 0
-
-// Conflict resolution cost - NOW GENERATES BW (see momentum.ts)
-export const CONFLICT_RESOLVE_COST = 0
-
-// Symlink merge cost - NOW GENERATES BW (see momentum.ts)
-export const SYMLINK_MERGE_COST = 0
-
-// Automation fixed drain per operation (momentum loop)
-export const AUTO_RESOLVE_DRAIN = 8
 
 // Maximum pending deps in queue
 export const MAX_PENDING_DEPS = 40
@@ -93,33 +80,6 @@ export const MAX_SAME_IDENTITY_PER_SCOPE = 4
 
 // Minimum duplicate pairs guaranteed per scope
 export const MIN_DUPLICATE_PAIRS_PER_SCOPE = 2
-
-// ============================================
-// MOMENTUM SYSTEM (Activity-driven BW)
-// ============================================
-
-// Generation amounts (base, scaled by tier)
-export const MOMENTUM_PACKAGE_RESOLVE = 4 // Per package install complete
-export const MOMENTUM_CONFLICT_RESOLVE = 15 // Manual conflict resolution
-export const MOMENTUM_SYMLINK_MERGE = 20 // Drag-merge duplicates
-export const MOMENTUM_STABILIZE_BASE = 50 // Base burst on scope stabilize
-export const MOMENTUM_STABILIZE_PER_PKG = 5 // Additional per package in scope
-export const MOMENTUM_GOLDEN_SPAWN = 8 // Golden package appears
-export const MOMENTUM_FRAGMENT_COLLECT = 5 // Cache fragment collected
-
-// Tier multipliers for generation [tier 1-5]
-export const MOMENTUM_TIER_MULTIPLIERS = [1.0, 1.0, 1.3, 1.6, 2.0, 2.5] as const
-
-// Safety passive regen by tier [tier 1-5]
-export const SAFETY_REGEN_BY_TIER = [2, 2, 2.5, 3, 3.5, 4] as const
-
-// Dampening (prevents spam exploit)
-export const MOMENTUM_DAMPENING_WINDOW = 5000 // ms
-export const MOMENTUM_DAMPENING_THRESHOLD = 100 // BW in window before dampening
-export const MOMENTUM_DAMPENING_FLOOR = 0.2 // Minimum generation rate (20%)
-
-// Install cost (entry gate to cascade)
-export const INSTALL_BASE_COST = 25 // × tier × 1.15^activeScopes
 
 // ============================================
 // COMBO SYSTEM (Resolution speed → weight retention)
@@ -133,19 +93,11 @@ export const COMBO_WEIGHT_RETENTION_MIN = 0.5 // 50% weight removed at combo 0
 export const COMBO_WEIGHT_RETENTION_MAX = 1.0 // 0% weight removed at combo 10
 
 // ============================================
-// SURGE SYSTEM (P2+)
+// SURGE
 // ============================================
 
-// Total segments in surge bar
-export const SURGE_SEGMENTS = 10
-
-// Cost per segment (percentage of max bandwidth)
-export const SURGE_COST_PER_SEGMENT = 0.1 // 10% of max bandwidth per segment
-
-// Boost effects per segment
+// Boost per surge segment, the spine's surge input. Surge is a run-setup choice.
 export const SURGE_CASCADE_BOOST = 0.08 // +8% cascade size per segment
-export const SURGE_GOLDEN_BOOST = 0.005 // +0.5% absolute golden chance per segment
-export const SURGE_FRAGMENT_BOOST = 0.004 // +0.4% absolute fragment chance per segment
 export const SURGE_PACKAGE_BOOST = 0.05 // +5% package count per segment
 
 // ============================================
@@ -187,16 +139,7 @@ export function calculateCollapseDrainProgress(elapsedMs: number): number {
 
 // Default configuration based on design doc
 export const DEFAULT_CONFIG: GameConfig = {
-  // Cost scaling
-  baseBandwidthCost: 10,
-  costMultiplier: 1.15,
-
-  // Production rates
-  cacheTokenMultiplier: 1.1,
-
   // Dependencies
-  minDependencies: 1,
-  maxDependencies: 5,
   dependencyDepthLimit: 4,
 
   // Physics
@@ -204,10 +147,6 @@ export const DEFAULT_CONFIG: GameConfig = {
   wireAttraction: 0.01,
   damping: 0.95,
 }
-
-// Starting values - tweak these for early game balance
-const STARTING_MAX_BANDWIDTH = 1000
-const STARTING_BANDWIDTH = STARTING_MAX_BANDWIDTH / 2 // Start half full
 
 /**
  * Create a fresh game state for new game or prestige reset
@@ -217,8 +156,6 @@ export function createInitialState(seed?: number): GameState {
   return {
     seed: seed ?? Date.now(),
     resources: {
-      bandwidth: STARTING_BANDWIDTH,
-      maxBandwidth: STARTING_MAX_BANDWIDTH,
       weight: 0,
       cacheFragments: 0,
     },
@@ -230,10 +167,10 @@ export function createInitialState(seed?: number): GameState {
       endlessMode: false,
     },
     upgrades: {
-      bandwidthLevel: 0,
-      compressionLevel: 0,
-      resolveSpeedLevel: 0,
-      surgeLevel: 0,
+      comboPayout: 0,
+      comboWindow: 0,
+      autoResolve: 0,
+      timed: 0,
     },
     onboarding: {
       introAnimationComplete: false,
@@ -245,7 +182,6 @@ export function createInitialState(seed?: number): GameState {
       firstDiveSeen: false,
       firstScopeExited: false,
       firstPrestigeComplete: false,
-      firstSurgeCharged: false,
       firstHighComboSeen: false,
       weightSeen: false,
       efficiencySeen: false,
@@ -263,8 +199,6 @@ export function createInitialState(seed?: number): GameState {
       scopePath: null,
       subDepQueue: null,
       compressedIndices: null,
-      surgeGoldenBoost: 0,
-      surgeFragmentBoost: 0,
       // Tutorial pacing
       isStarterKit: false,
       isSecondPackage: false,
@@ -285,11 +219,6 @@ export function createInitialState(seed?: number): GameState {
       // Timing
       processStartTime: 0,
       lastResolveTime: 0,
-    },
-    // Surge system (P2+ - boost cascades)
-    surge: {
-      chargedSegments: 0,
-      unlockedSegments: 1, // Start with 1 unlocked, upgrade for more
     },
     // Collapse hold state (Tier 5 finale)
     collapseHold: {

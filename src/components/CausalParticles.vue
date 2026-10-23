@@ -26,7 +26,6 @@ let animationFrameId: number | null = null
 // HUD element positions - cached to avoid DOM queries on every spawn
 // Plain object (not reactive) since we only read it during spawns
 let hudPositions: Record<string, { x: number; y: number }> = {
-  bandwidth: { x: 80, y: 36 },
   weight: { x: 200, y: 36 },
   gravity: { x: window.innerWidth - 200, y: window.innerHeight - 36 },
   efficiency: { x: 220, y: 60 },
@@ -38,16 +37,6 @@ let fragmentPositionFound = false
 
 // Update HUD positions based on actual element locations
 function updateHudPositions() {
-  // Bandwidth bar
-  const bandwidthEl = document.querySelector('.bar-fill.bandwidth')
-  if (bandwidthEl) {
-    const rect = bandwidthEl.getBoundingClientRect()
-    hudPositions.bandwidth = {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
-    }
-  }
-
   // Weight display
   const weightEl = document.querySelector('.weight-icon')
   if (weightEl) {
@@ -140,15 +129,6 @@ function spawnParticle(
   let duration: number
 
   switch (type) {
-    case 'bandwidth-cost':
-      target = hudPositions.bandwidth
-      duration = 400
-      break
-    case 'bandwidth-gain':
-      // Bandwidth refund from symlink - same target, different color
-      target = hudPositions.bandwidth
-      duration = 350 // Slightly faster for reward feel
-      break
     case 'weight-gain':
       target = hudPositions.weight
       duration = 500
@@ -318,10 +298,6 @@ function getParticleStyle(p: Particle) {
 // Get particle color based on type
 function getParticleClass(type: ParticleType): string {
   switch (type) {
-    case 'bandwidth-cost':
-      return 'particle-bandwidth'
-    case 'bandwidth-gain':
-      return 'particle-bandwidth-gain'
     case 'weight-gain':
       return 'particle-weight'
     case 'weight-loss':
@@ -350,10 +326,6 @@ function getParticleClass(type: ParticleType): string {
 // Get icon for particle type
 function getParticleIcon(type: ParticleType): string {
   switch (type) {
-    case 'bandwidth-cost':
-      return '↓'
-    case 'bandwidth-gain':
-      return '↑'
     case 'weight-gain':
       return '◆'
     case 'weight-loss':
@@ -449,27 +421,6 @@ onUnmounted(() => {
 
 .particle-icon {
   text-shadow: 0 0 8px currentColor;
-}
-
-.particle-bandwidth {
-  color: #7a7aff;
-  background: radial-gradient(
-    circle,
-    rgba(122, 122, 255, 0.4) 0%,
-    transparent 70%
-  );
-  box-shadow: 0 0 12px rgba(122, 122, 255, 0.6);
-}
-
-.particle-bandwidth-gain {
-  color: #5aff7a;
-  background: radial-gradient(
-    circle,
-    rgba(90, 255, 122, 0.5) 0%,
-    transparent 70%
-  );
-  box-shadow: 0 0 16px rgba(90, 255, 122, 0.8);
-  animation: particle-pulse 0.2s ease-in-out infinite alternate;
 }
 
 .particle-weight {

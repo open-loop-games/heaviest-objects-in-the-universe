@@ -11,7 +11,6 @@ import HUD from './components/HUD.vue'
 
 // Mobile components
 import MobileHUD from './components/mobile/MobileHUD.vue'
-import MobileUpgradeSheet from './components/mobile/MobileUpgradeSheet.vue'
 import MobileSettingsSheet from './components/mobile/MobileSettingsSheet.vue'
 import MobileTeachingBook from './components/mobile/MobileTeachingBook.vue'
 import MobileAchievementSheet from './components/mobile/MobileAchievementSheet.vue'
@@ -45,7 +44,6 @@ const mobileSelectedNodeId = ref<string | null>(null)
 const mobileSelectedWireId = ref<string | null>(null)
 
 // Sheet states
-const showUpgradeSheet = ref(false)
 const showSettingsSheet = ref(false)
 const showTeachingBookSheet = ref(false)
 const showAchievementSheet = ref(false)
@@ -80,10 +78,6 @@ function handleMobileBack() {
 
 function handleMobileSettings() {
   showSettingsSheet.value = true
-}
-
-function handleMobileUpgrades() {
-  showUpgradeSheet.value = true
 }
 
 function handleMobileOpenBook() {
@@ -135,17 +129,12 @@ const gameCanvas = ref<InstanceType<typeof GameCanvas> | null>(null)
         :selected-wire-id="mobileSelectedWireId"
         @back="handleMobileBack"
         @settings="handleMobileSettings"
-        @upgrades="handleMobileUpgrades"
         @open-book="handleMobileOpenBook"
         @open-achievements="handleMobileOpenAchievements"
         @prune="handleMobilePrune"
         @resolve-inside="handleMobileResolveInside"
         @toggle-automation="handleMobileToggleAutomation"
         @prestige="handleMobilePrestige"
-      />
-      <MobileUpgradeSheet
-        :open="showUpgradeSheet"
-        @close="showUpgradeSheet = false"
       />
       <MobileSettingsSheet
         :open="showSettingsSheet"

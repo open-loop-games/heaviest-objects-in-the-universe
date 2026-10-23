@@ -176,17 +176,8 @@ export function canSymlink(sourceId: string, targetId: string): boolean {
   return true
 }
 
-export function canAffordSymlinkMerge(): boolean {
-  return true
-}
-
-export function getSymlinkMergeCost(): number {
-  return 0
-}
-
 export interface MergeResult {
   weightSaved: number
-  bandwidthRefund: number
 }
 
 function isCompressed(g: Graph<Package, Wire>, pkgId: string): boolean {

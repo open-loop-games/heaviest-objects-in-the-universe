@@ -34,8 +34,6 @@ export const Colors = {
   wireSymlink: 0x5affff,
 
   // UI elements
-  bandwidthBar: 0x5a5aff,
-  bandwidthBarBg: 0x2a2a3a,
   heatBar: 0xff5a5a,
   heatBarBg: 0x2a2a3a,
   weightText: 0xaaaacc,

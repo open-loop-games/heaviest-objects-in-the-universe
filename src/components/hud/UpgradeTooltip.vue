@@ -8,10 +8,6 @@ import {
 import {
   TOOLTIP_WIDTH,
   TOOLTIP_HEIGHT,
-  BandwidthTooltip,
-  CompressionTooltip,
-  ResolveSpeedTooltip,
-  SurgeTooltip,
   AutoResolveTooltip,
   EfficiencyTooltip,
   StabilityTooltip,
@@ -21,9 +17,7 @@ import {
   Tier5Tooltip,
   RewardTooltip,
   FragmentTooltip,
-  BandwidthIconTooltip,
   WeightIconTooltip,
-  SurgeIconTooltip,
   type TooltipAnimation,
 } from '../../onboarding/tooltips'
 
@@ -47,14 +41,6 @@ const tooltipStyle = computed(() => ({
  */
 function createAnimation(type: TooltipType): TooltipAnimation | null {
   switch (type) {
-    case 'bandwidth':
-      return new BandwidthTooltip()
-    case 'compression':
-      return new CompressionTooltip()
-    case 'resolveSpeed':
-      return new ResolveSpeedTooltip()
-    case 'surge':
-      return new SurgeTooltip()
     case 'autoResolve':
       return new AutoResolveTooltip()
     case 'efficiency':
@@ -73,12 +59,8 @@ function createAnimation(type: TooltipType): TooltipAnimation | null {
       return new RewardTooltip()
     case 'fragment':
       return new FragmentTooltip()
-    case 'bandwidthIcon':
-      return new BandwidthIconTooltip()
     case 'weightIcon':
       return new WeightIconTooltip()
-    case 'surgeIcon':
-      return new SurgeIconTooltip()
     default:
       return null
   }

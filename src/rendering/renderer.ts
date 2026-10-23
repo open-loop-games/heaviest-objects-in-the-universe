@@ -40,9 +40,6 @@ import {
   getSiblingWires,
 } from '../game/cross-package'
 import { getCleanliness, isOrganizing } from '../game/physics'
-import { getAllPendingSpawns, isCascadeActive } from '../game/cascade'
-import { canAffordConflictResolve } from '../game/mutations'
-import { canAffordSymlinkMerge } from '../game/symlinks'
 
 export class GameRenderer {
   private app: Application
@@ -378,16 +375,13 @@ export class GameRenderer {
 
     const rawWires: Map<string, Wire> = scopeWires
 
-    // Check affordability for conflict resolution (cached for this frame)
-    const canAffordResolve = canAffordConflictResolve()
-
     // Update wires first (behind nodes)
     for (const wire of rawWires.values()) {
       const fromPkg = rawPackages.get(wire.fromId)
       const toPkg = rawPackages.get(wire.toId)
 
       if (fromPkg && toPkg) {
-        this.wireRenderer.updateWire(wire, fromPkg, toPkg, canAffordResolve)
+        this.wireRenderer.updateWire(wire, fromPkg, toPkg)
       }
     }
 
@@ -399,7 +393,7 @@ export class GameRenderer {
         const toPkg = rawPackages.get(wire.toId)
 
         if (fromPkg && toPkg) {
-          this.wireRenderer.updateWire(wire, fromPkg, toPkg, canAffordResolve)
+          this.wireRenderer.updateWire(wire, fromPkg, toPkg)
         }
       }
     }
@@ -451,8 +445,6 @@ export class GameRenderer {
       const isTopLevel = !inScope && isTopLevelPackage(pkg.id)
 
       // Get duplicate halo info if applicable (getDuplicateGroup is scope-aware)
-      // Check affordability once for all duplicates this frame
-      const canAffordMerge = canAffordSymlinkMerge()
       const hoveredGroup = this.getHoveredDuplicateGroup()
       const isFirstDuplicates =
         !gameState.onboarding.firstSymlinkSeen &&
@@ -462,7 +454,6 @@ export class GameRenderer {
         | {
             color: number
             pulsePhase: number
-            canAfford: boolean
             isHovered: boolean
             isFirstDuplicate: boolean
           }
@@ -473,7 +464,6 @@ export class GameRenderer {
         duplicateHalo = {
           color: group.haloColor,
           pulsePhase: pulsePhase,
-          canAfford: canAffordMerge,
           isHovered: isGroupHovered,
           isFirstDuplicate: isFirstDuplicates,
         }
@@ -544,21 +534,6 @@ export class GameRenderer {
         // Scope root stable indicator
         isScopeRootStable,
       })
-    }
-
-    // ============================================
-    // RENDER QUEUED DEPS (Awaiting Bandwidth)
-    // ============================================
-    // Only render when inside a scope and cascade is active
-    if (inScope && isCascadeActive()) {
-      const pendingSpawns = getAllPendingSpawns()
-      this.nodeRenderer.updateQueuedDeps(
-        pendingSpawns,
-        gameState.resources.bandwidth
-      )
-    } else {
-      // Clear queued deps when not in cascade
-      this.nodeRenderer.updateQueuedDeps([], 0)
     }
 
     // Clean up nodes that no longer exist in current scope
@@ -873,14 +848,13 @@ export class GameRenderer {
     // Track which nodes we've rendered
     const renderedNodeIds = new Set<string>()
 
-    // Render wires (use current affordability state)
-    const canAffordResolve = canAffordConflictResolve()
+    // Render wires
     for (const wire of wires.values()) {
       if (!wire) continue
       const fromPkg = packages.get(wire.fromId)
       const toPkg = packages.get(wire.toId)
       if (fromPkg && toPkg) {
-        wireRenderer.updateWire(wire, fromPkg, toPkg, canAffordResolve)
+        wireRenderer.updateWire(wire, fromPkg, toPkg)
       }
     }
 

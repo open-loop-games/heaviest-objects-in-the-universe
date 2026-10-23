@@ -23,7 +23,6 @@ You are a dependency resolver. Packages arrive. Each package contains its own `n
 
 | Resource | Symbol | Description | Generation |
 |----------|--------|-------------|------------|
-| **Bandwidth** | ↓ | Installation currency | Passive regen + momentum from actions |
 | **Weight** | ◆ | Total node_modules size | Sum of all package sizes |
 | **Cache Fragments** | ✦ | Depth rewards (depth 2+) | Collected during runs; each adds weight |
 
@@ -43,14 +42,8 @@ You are a dependency resolver. Packages arrive. Each package contains its own `n
 | **Gravity** | `weight / threshold` | Progress toward prestige (100% = ready) |
 | **Tier** | Derived from cache tokens | Unlocks depth, automation, upgrades |
 
-### Momentum System
-
-The game uses a "momentum loop" where actions generate bandwidth:
-- **Cascade spawns**: Free (0 bandwidth cost)
-- **Conflict resolution**: Generates 15 bandwidth
-- **Symlink merge**: Generates 20 bandwidth
-- **Install cost**: 25 × tier × 1.15^activeScopes (entry gate only)
-- **Base safety regen**: 2-4 bandwidth/tick by tier
+No in-run currency gates the verb: installs are free, and acts on conflicts and duplicates
+pay through q and combo at ship.
 
 ---
 
@@ -83,7 +76,7 @@ The game uses a "momentum loop" where actions generate bandwidth:
 
 ### Phase 1: Install (Player Action)
 - **Click** the root node to spawn a top-level package
-- **Cost:** Bandwidth (scales with tier and active scopes)
+- **Cost:** none
 - **Result:** A compressed package appears with empty internal `node_modules`
 
 ### Phase 2: Enter Scope (Player Action)
@@ -101,7 +94,7 @@ The game uses a "momentum loop" where actions generate bandwidth:
 ### Phase 4: Resolve Conflicts (Player Action)
 - Conflicts appear on wires when incompatible packages exist
 - **Click and hold** conflicted wire to resolve
-- Resolution generates momentum (bandwidth)
+- Resolution counts toward q and builds combo
 
 ### Phase 5: Optimize Duplicates (Player Action)
 - Duplicate packages get colored halos (cyan, magenta, yellow, lime)
@@ -207,36 +200,19 @@ root (package.json)
 
 \* Golden packages require first prestige (P1+) in addition to Tier 3 depth unlock
 
-### Automation (Tier-Gated)
+### Meta Upgrades
 
-| Feature | Unlock | Base Interval | Effect |
-|---------|--------|---------------|--------|
-| **Auto-Resolve** | Tier 2 | 3s→2s→1s→0.5s | Resolves conflicted wires automatically |
+Upgrades are tracks of the meta layer, bought with cache tokens between runs. The spine
+prices them (`TrackId` in `src/game/spine.ts`):
 
-Note: Symlink merging stays manual (core gameplay)
+| Track | Effect |
+|-------|--------|
+| **Combo payout** | Raises the combo exponent e by the solved Δe per level |
+| **Combo window** | Widens the combo decay window |
+| **Auto-resolve** | Each level shortens the interval at which conflicts are cleared in scopes the player has left; the current scope's conflicts stay the player's |
 
-### Upgrade Tracks (5 Total)
-
-| Upgrade | Icon | Max | Unlock | Effect |
-|---------|------|-----|--------|--------|
-| **Bandwidth** | ↓ | 15 | P1+ | +10% capacity per level |
-| **Efficiency** | ⚡ | 12 | 15 pkgs | -6% install cost, +25% speed |
-| **Compression** | ◆↓ | 8 | P3+ | -5% weight gain per level |
-| **Resolve Speed** | ⚙+ | 5 | Tier 2 | -10% drain, +15% speed |
-| **Surge** | ◎ | 9 | T1+ | +1 surge segment per level |
-
-### Surge System (T1+)
-
-Available from Tier 1 to give early "reserve vs spend" bandwidth choice.
-
-- Charge up to 10 segments (costs 10% max bandwidth each)
-- Only consumed at depth 2+ (not on first dive into package)
-- Effects per charged segment:
-  - +8% cascade size multiplier
-  - +5% package count boost
-  - +0.5% golden package chance
-  - +0.4% cache fragment chance
-- Teaching book tab unlocks after first charge
+Symlink merging stays manual (core gameplay). Surge is a run-setup choice: how hot to run
+the board.
 
 ---
 
@@ -280,7 +256,6 @@ reward = κ × grossWeight × q × floor × (1 + d̄)^e × (1 + timedReward)^tim
 
 **Resets:**
 - All packages and wires
-- Bandwidth (reset to 100 × tier)
 - Weight (reset to 0)
 - Cache fragments
 - Automation toggles (must re-enable)
@@ -301,7 +276,7 @@ As weight approaches threshold:
 
 | Color | Hex | Meaning |
 |-------|-----|---------|
-| **Blue** | 0x7a7aff | Installing, active, bandwidth |
+| **Blue** | 0x7a7aff | Installing, active |
 | **Green** | 0x5aff5a | Ready, stable, healthy |
 | **Red** | 0xff5a5a | Conflict, danger, unstable |
 | **Cyan** | 0x5affff | Optimized, symlink, pristine scope |
@@ -341,12 +316,10 @@ Three-tier system:
 
 | Component | Purpose |
 |-----------|---------|
-| **BandwidthRow** | Segmented bar, cost preview, upgrade pips |
 | **WeightRow** | Weight progress, magnitude dots, prestige progress |
 | **ScopeNavigation** | Back button, depth totem, conflict/dupe indicators |
-| **AutomationRow** | Auto-resolve toggle with speed pips |
+| **AutomationRow** | Auto-resolve toggle, once a level is owned |
 | **PrestigeOrbit** | Singularity button with gravitational effects |
-| **SurgeRow** | Draggable charge bar (T1+) |
 | **QualityHero** | Efficiency/stability bars |
 | **SettingsPanel** | Save, soft reset, hard reset |
 
@@ -358,13 +331,11 @@ Three-tier system:
 src/
 ├── components/
 │   ├── GameCanvas.vue      # Pixi.js canvas + input handling
-│   └── hud/                # 8 HUD components
-│       ├── BandwidthRow.vue
+│   └── hud/                # HUD components
 │       ├── WeightRow.vue
 │       ├── ScopeNavigation.vue
 │       ├── AutomationRow.vue
 │       ├── PrestigeOrbit.vue
-│       ├── SurgeRow.vue
 │       ├── QualityHero.vue
 │       └── SettingsPanel.vue
 ├── game/
@@ -377,7 +348,6 @@ src/
 │   ├── automation.ts       # Auto-resolve
 │   ├── symlinks.ts         # Duplicate detection + merge logic
 │   ├── registry.ts         # Real npm package identities + archetypes
-│   ├── upgrades.ts         # Cache token upgrades + tier system
 │   ├── mutations.ts        # State mutations, prestige logic
 │   ├── formulas.ts         # Cost scaling, reward calculations
 │   ├── config.ts           # Game constants, initial state
@@ -414,7 +384,6 @@ src/
 - [x] Tier/progression system (5 tiers)
 - [x] Prestige (black hole animation, cache tokens)
 - [x] Depth rewards (golden packages, cache fragments)
-- [x] Surge system (T1+)
 - [x] Save/load (localStorage)
 - [x] Package icons (Devicon + procedural fallback)
 - [x] Full HUD

@@ -3,11 +3,10 @@
  * Mobile HUD Layout - Complete Version
  *
  * Bottom-anchored, thumb-reachable design with full feature parity.
- * Upgrade pips replaced with dedicated upgrade sheet (+ button).
  *
  * Layout:
  * ┌─────────────────────────────────────┐
- * │ [← ●●○○○ ✓]              [⚙] [+]   │  ← Top bar
+ * │ [← ●●○○○ ✓]                  [⚙]   │  ← Top bar
  * │                                     │
  * │           [ CANVAS ]                │
  * │                                     │
@@ -16,20 +15,17 @@
  * ├─────────────────────────────────────┤
  * │ ⚡ ████░░ ▲   │  ✓ ██████ ●        │  ← Quality row
  * ├─────────────────────────────────────┤
- * │  ↓ ████░░░   │  ◎ [==▓▓░░░░]      │  ← Bandwidth + Surge
- * ├─────────────────────────────────────┤
  * │ ◆ ████████████████░░░░  │ ★ ⟲     │  ← Weight + Prestige + Auto
  * └─────────────────────────────────────┘
  */
 
-import { computed, ref, watchEffect } from 'vue'
+import { computed, watchEffect } from 'vue'
 import {
   gameState,
   graphRevision,
   stack,
   computed_gravity,
   computed_canPrestige,
-  computed_ecosystemTier,
 } from '../../game/state'
 import {
   isInPackageScope,
@@ -40,9 +36,6 @@ import {
 } from '../../game/scope'
 import { getSiblingWires } from '../../game/cross-package'
 import { getInternalStats } from '../../game/packages'
-import { canAffordConflictResolve } from '../../game/mutations'
-import { setSurgeCharge, getSurgeCost } from '../../game/surge'
-import { SURGE_SEGMENTS } from '../../game/config'
 import { hasUnviewedTabs, unlockTab } from '../../onboarding'
 
 // ============================================
@@ -57,7 +50,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   back: []
   settings: []
-  upgrades: []
   openBook: []
   openAchievements: []
   prune: []
@@ -86,10 +78,6 @@ watchEffect(() => {
     gameState.onboarding.firstPrestigeComplete
   ) {
     unlockTab('ship')
-  }
-  // Surge tab unlocks after first surge charge (available from T1)
-  if (gameState.onboarding.firstSurgeCharged) {
-    unlockTab('surge')
   }
 })
 
@@ -123,18 +111,6 @@ const scopeStats = computed(() => {
 // ============================================
 // RESOURCES
 // ============================================
-
-// Bandwidth
-const bandwidthPercent = computed(
-  () => gameState.resources.bandwidth / gameState.resources.maxBandwidth
-)
-
-const bandwidthState = computed(() => {
-  const pct = bandwidthPercent.value
-  if (pct < 0.1) return 'critical'
-  if (pct < 0.25) return 'low'
-  return 'normal'
-})
 
 // Weight / Prestige progress
 const WEIGHT_SEGMENTS = 12
@@ -186,61 +162,10 @@ const stabilityState = computed(() => {
 })
 
 // ============================================
-// SURGE BAR (Touch-draggable)
-// ============================================
-
-const showSurge = computed(() => computed_ecosystemTier.value >= 2)
-const chargedSegments = computed(() => gameState.surge.chargedSegments)
-const unlockedSegments = computed(() => gameState.surge.unlockedSegments)
-
-const surgeSegmentIndices = Array.from({ length: SURGE_SEGMENTS }, (_, i) => i)
-
-// Touch drag state for surge
-const isSurgeDragging = ref(false)
-
-function handleSurgeStart(index: number) {
-  isSurgeDragging.value = true
-  updateSurgeCharge(index)
-}
-
-function handleSurgeMove(e: TouchEvent) {
-  if (!isSurgeDragging.value) return
-
-  const touch = e.touches[0]
-  if (!touch) return
-
-  const target = document.elementFromPoint(touch.clientX, touch.clientY)
-  if (target?.classList.contains('surge-segment')) {
-    const index = parseInt(target.getAttribute('data-index') || '0', 10)
-    updateSurgeCharge(index)
-  }
-}
-
-function handleSurgeEnd() {
-  isSurgeDragging.value = false
-}
-
-function updateSurgeCharge(index: number) {
-  const targetCharge = index + 1
-  if (index < unlockedSegments.value) {
-    setSurgeCharge(targetCharge)
-  }
-}
-
-function canAffordSurgeSegment(index: number): boolean {
-  const cost = getSurgeCost(index + 1)
-  return (
-    index < unlockedSegments.value &&
-    index >= chargedSegments.value &&
-    gameState.resources.bandwidth >= cost
-  )
-}
-
-// ============================================
 // AUTOMATION
 // ============================================
 
-const showAutomation = computed(() => computed_ecosystemTier.value >= 2)
+const showAutomation = computed(() => gameState.upgrades.autoResolve > 0)
 const autoResolveEnabled = computed(() => gameState.automation.resolveEnabled)
 const autoResolveActive = computed(() => gameState.automation.resolveActive)
 
@@ -268,7 +193,6 @@ const selectedWire = computed(() => {
 })
 
 const isSiblingWire = computed(() => selectedWire.value?.wireType === 'sibling')
-const canPrune = computed(() => canAffordConflictResolve())
 
 const selectedNode = computed(() => {
   void graphRevision.value
@@ -288,11 +212,7 @@ const canEnterScope = computed(() => {
 </script>
 
 <template>
-  <div
-    class="mobile-hud"
-    @touchmove="handleSurgeMove"
-    @touchend="handleSurgeEnd"
-  >
+  <div class="mobile-hud">
     <!-- ==================== TOP BAR ==================== -->
     <div class="top-bar">
       <!-- Back / Scope navigation -->
@@ -337,9 +257,6 @@ const canEnterScope = computed(() => {
         <button class="top-btn" @click="emit('settings')">
           <span class="btn-icon">⚙</span>
         </button>
-        <button class="top-btn upgrade-btn" @click="emit('upgrades')">
-          <span class="btn-icon">+</span>
-        </button>
       </div>
     </div>
 
@@ -358,12 +275,7 @@ const canEnterScope = computed(() => {
               </button>
             </template>
             <template v-else>
-              <button
-                class="action-btn prune"
-                :class="{ disabled: !canPrune }"
-                :disabled="!canPrune"
-                @click="emit('prune')"
-              >
+              <button class="action-btn prune" @click="emit('prune')">
                 <span class="action-icon">✕</span>
               </button>
             </template>
@@ -409,47 +321,6 @@ const canEnterScope = computed(() => {
             {{ stabilityState === 'stable' ? '●' : '○' }}
           </span>
         </div>
-      </div>
-
-      <!-- Bandwidth + Surge row -->
-      <div class="resource-row bandwidth-surge-row">
-        <!-- Bandwidth -->
-        <div class="bandwidth-cell" :class="bandwidthState">
-          <span class="resource-icon">↓</span>
-          <div class="bandwidth-bar">
-            <div
-              class="bar-fill bandwidth-fill"
-              :style="{ width: bandwidthPercent * 100 + '%' }"
-            />
-          </div>
-        </div>
-
-        <!-- Surge (if unlocked) -->
-        <template v-if="showSurge">
-          <div class="row-divider" />
-          <div class="surge-cell">
-            <span
-              class="resource-icon surge-icon"
-              :class="{ charged: chargedSegments > 0 }"
-              >◎</span
-            >
-            <div class="surge-bar">
-              <div
-                v-for="i in surgeSegmentIndices"
-                :key="i"
-                class="surge-segment"
-                :class="{
-                  charged: i < chargedSegments,
-                  unlocked: i < unlockedSegments && i >= chargedSegments,
-                  locked: i >= unlockedSegments,
-                  affordable: canAffordSurgeSegment(i),
-                }"
-                :data-index="i"
-                @touchstart.prevent="handleSurgeStart(i)"
-              />
-            </div>
-          </div>
-        </template>
       </div>
 
       <!-- Weight + Prestige + Auto row -->
@@ -520,11 +391,9 @@ const canEnterScope = computed(() => {
   --bg-panel: rgba(20, 20, 35, 0.95);
   --bg-btn: rgba(30, 30, 50, 0.9);
   --border-subtle: rgba(100, 100, 140, 0.3);
-  --color-bandwidth: #7a7aff;
   --color-weight: #ffaa5a;
   --color-efficiency: #5affff;
   --color-stability: #5aff8a;
-  --color-surge: #f0a040;
   --color-prestige: #a855f7;
   --color-warning: #ff6b6b;
   --color-success: #4ade80;
@@ -568,18 +437,6 @@ const canEnterScope = computed(() => {
 .top-right-buttons {
   display: flex;
   gap: 8px;
-}
-
-.upgrade-btn {
-  background: rgba(40, 50, 60, 0.9);
-  border-color: var(--color-efficiency);
-  color: var(--color-efficiency);
-  font-weight: bold;
-  font-size: 24px;
-}
-
-.upgrade-btn:active {
-  background: rgba(90, 255, 255, 0.2);
 }
 
 /* Help button */
@@ -915,119 +772,6 @@ const canEnterScope = computed(() => {
 
 .quality-indicator.stable {
   color: var(--color-stability);
-}
-
-/* ============================================
-   BANDWIDTH + SURGE ROW
-   ============================================ */
-
-.bandwidth-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-.bandwidth-cell .resource-icon {
-  color: var(--color-bandwidth);
-}
-
-.bandwidth-cell.low .resource-icon,
-.bandwidth-cell.critical .resource-icon {
-  color: var(--color-warning);
-}
-
-.bandwidth-bar {
-  flex: 1;
-  height: 14px;
-  background: rgba(122, 122, 255, 0.15);
-  border-radius: 7px;
-  overflow: hidden;
-}
-
-.bandwidth-fill {
-  background: linear-gradient(to right, #5a5aaa, var(--color-bandwidth));
-  box-shadow: 0 0 6px rgba(122, 122, 255, 0.4);
-}
-
-.bandwidth-cell.low .bandwidth-fill {
-  background: linear-gradient(to right, var(--color-warning), #ffaa5a);
-}
-
-.bandwidth-cell.critical .bandwidth-fill {
-  background: var(--color-warning);
-  animation: pulse-warning 0.5s ease-in-out infinite alternate;
-}
-
-@keyframes pulse-warning {
-  from {
-    opacity: 0.7;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-/* Surge */
-.surge-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-}
-
-.surge-icon {
-  color: var(--color-surge);
-  opacity: 0.5;
-  transition: all 0.2s ease;
-}
-
-.surge-icon.charged {
-  opacity: 1;
-  text-shadow: 0 0 8px rgba(240, 160, 64, 0.8);
-}
-
-.surge-bar {
-  display: flex;
-  gap: 3px;
-  flex: 1;
-  height: 14px;
-}
-
-.surge-segment {
-  flex: 1;
-  height: 100%;
-  border-radius: 2px;
-  transition: all 0.15s ease;
-  touch-action: none;
-}
-
-.surge-segment.charged {
-  background: linear-gradient(to top, #c08020, var(--color-surge));
-  box-shadow: 0 0 4px rgba(240, 160, 64, 0.5);
-}
-
-.surge-segment.unlocked {
-  background: rgba(240, 160, 64, 0.25);
-}
-
-.surge-segment.affordable {
-  background: rgba(240, 160, 64, 0.4);
-  animation: segment-pulse 1s ease-in-out infinite;
-}
-
-.surge-segment.locked {
-  background: rgba(60, 60, 80, 0.4);
-}
-
-@keyframes segment-pulse {
-  0%,
-  100% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 1;
-  }
 }
 
 /* ============================================

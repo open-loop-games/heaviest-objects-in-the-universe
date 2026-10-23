@@ -4,18 +4,6 @@
 import { ref } from 'vue'
 
 // ============================================
-// ACTION COST PREVIEW (for HUD bandwidth bar)
-// ============================================
-
-// Track action being previewed (conflict resolve, symlink merge)
-export type ActionPreviewType = 'conflict' | 'symlink' | null
-export const previewedActionType = ref<ActionPreviewType>(null)
-
-export function setActionPreview(type: ActionPreviewType): void {
-  previewedActionType.value = type
-}
-
-// ============================================
 // COLLAPSE STATE (for prestige spaghettification)
 // ============================================
 
@@ -125,17 +113,6 @@ export function getWigglePhase(packageId: string): number {
 }
 
 // ============================================
-// CASCADE STARVED STATE
-// ============================================
-
-// True when cascade is waiting on bandwidth to spawn more packages
-export const cascadeStarved = ref(false)
-
-export function setCascadeStarved(starved: boolean): void {
-  cascadeStarved.value = starved
-}
-
-// ============================================
 // WORK HIGHLIGHT STATE (guide player to next action)
 // ============================================
 
@@ -173,10 +150,6 @@ export function triggerDuplicateHighlights(duplicateIds: string[]): void {
 // ============================================
 
 export type TooltipType =
-  | 'bandwidth'
-  | 'compression'
-  | 'resolveSpeed'
-  | 'surge'
   | 'autoResolve'
   | 'efficiency'
   | 'stability'
@@ -186,9 +159,7 @@ export type TooltipType =
   | 'tier5'
   | 'reward'
   | 'fragment'
-  | 'bandwidthIcon'
   | 'weightIcon'
-  | 'surgeIcon'
   | null
 
 export interface TooltipAnchor {

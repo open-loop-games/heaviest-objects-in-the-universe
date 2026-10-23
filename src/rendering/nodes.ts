@@ -1,8 +1,7 @@
 // Node rendering with Pixi.js
 
 import { Graphics, Container, type Application } from 'pixi.js'
-import type { Package, PendingSpawn } from '../game/types'
-import { DEP_SPAWN_COST } from '../game/config'
+import type { Package } from '../game/types'
 import { Colors, getNodeColor, getBorderColor } from './colors'
 import { createPackageIcon, isIconReady } from './icons'
 import { prefersReducedMotion } from './accessibility'
@@ -27,7 +26,6 @@ export interface NodeEffects {
   duplicateHalo?: {
     color: number
     pulsePhase: number // 0-1, synced across group
-    canAfford: boolean // Whether symlink merge is affordable
     isHovered: boolean // Group is being hovered (boost intensity)
     isFirstDuplicate: boolean // First time seeing duplicates (heavy teaching)
   }
@@ -87,7 +85,6 @@ export class NodeRenderer {
   private badgesLayer: Container
   private nodeContainers: Map<string, NodeContainer> = new Map()
   private badgeContainers: Map<string, BadgeData> = new Map()
-  private queuedDepsGraphics: Graphics
   private badgesElevated = false // When true, badges render in elevated layer above all nodes
 
   constructor(app: Application) {
@@ -101,11 +98,6 @@ export class NodeRenderer {
     this.badgesLayer.label = 'badges'
     // Note: badgesLayer is NOT added here - it's retrieved via getBadgesContainer()
     // and added to the world container at a higher z-index by the renderer
-
-    // Graphics for rendering queued deps (awaiting bandwidth)
-    this.queuedDepsGraphics = new Graphics()
-    this.queuedDepsGraphics.label = 'queued-deps'
-    this.nodesLayer.addChild(this.queuedDepsGraphics)
   }
 
   /**
@@ -350,7 +342,6 @@ export class NodeRenderer {
         radius,
         effects.duplicateHalo.color,
         effects.duplicateHalo.pulsePhase,
-        effects.duplicateHalo.canAfford,
         effects.duplicateHalo.isHovered,
         effects.duplicateHalo.isFirstDuplicate
       )
@@ -620,7 +611,6 @@ export class NodeRenderer {
 
   /**
    * Draw pulsing halo for duplicate packages
-   * Shows gray when symlink merge is unaffordable
    * Boosted intensity when hovered or first duplicate (teaching)
    */
   private drawDuplicateHalo(
@@ -628,7 +618,6 @@ export class NodeRenderer {
     radius: number,
     color: number,
     pulsePhase: number,
-    canAfford: boolean,
     isHovered: boolean = false,
     isFirstDuplicate: boolean = false
   ): void {
@@ -636,29 +625,27 @@ export class NodeRenderer {
     const reducedMotion = prefersReducedMotion()
     const effectivePhase = reducedMotion ? 0.5 : pulsePhase
 
-    // Use gray when unaffordable
-    const haloColor = canAfford ? color : 0x6a6a7a
+    const haloColor = color
 
     // Pulsing alpha based on phase (synced across group)
     // Hovered: slightly brighter, no pulsing
     // First duplicate: strong pulsing for attention
-    // Slower, dimmer pulse when unaffordable
     let alpha: number
     if (isHovered) {
       // Slightly brighter when hovered (no pulsing)
-      alpha = canAfford ? 0.35 : 0.25
+      alpha = 0.35
     } else if (isFirstDuplicate) {
       // Heavy pulsing for first duplicate teaching
-      const baseAlpha = canAfford ? 0.4 : 0.25
-      const pulseScale = canAfford ? 0.3 : 0.15
+      const baseAlpha = 0.4
+      const pulseScale = 0.3
       const pulseAlpha = reducedMotion
         ? 0
         : pulseScale * Math.sin(effectivePhase * Math.PI * 2)
       alpha = baseAlpha + pulseAlpha
     } else {
       // Normal pulsing
-      const baseAlpha = canAfford ? 0.2 : 0.15
-      const pulseScale = canAfford ? 0.15 : 0.08
+      const baseAlpha = 0.2
+      const pulseScale = 0.15
       const pulseAlpha = reducedMotion
         ? 0
         : pulseScale * Math.sin(effectivePhase * Math.PI * 2)
@@ -668,13 +655,7 @@ export class NodeRenderer {
     // Outer halo ring
     // First duplicate: larger, thicker ring for teaching
     // Hovered: slightly larger but not as intense as teaching
-    const expansionScale = isFirstDuplicate
-      ? 6
-      : isHovered
-        ? 4
-        : canAfford
-          ? 3
-          : 1.5
+    const expansionScale = isFirstDuplicate ? 6 : isHovered ? 4 : 3
     const haloRadius =
       radius +
       (isFirstDuplicate ? 12 : isHovered ? 10 : 8) +
@@ -1010,10 +991,7 @@ export class NodeRenderer {
       nodeData.container.destroy()
     }
     this.nodeContainers.clear()
-    this.queuedDepsGraphics.clear()
     this.nodesLayer.removeChildren()
-    // Re-add the queued deps graphics after clearing
-    this.nodesLayer.addChild(this.queuedDepsGraphics)
 
     // Clear badges layer
     for (const badgeData of this.badgeContainers.values()) {
@@ -1053,70 +1031,6 @@ export class NodeRenderer {
       }
       this.badgeContainers.clear()
       this.badgesLayer.removeChildren()
-    }
-  }
-
-  // ============================================
-  // QUEUED DEP RENDERING (Awaiting Bandwidth)
-  // ============================================
-
-  /**
-   * Update rendering of queued deps that are awaiting bandwidth
-   * Renders faded outlines with progress rings showing BW accumulation
-   */
-  updateQueuedDeps(
-    pendingSpawns: PendingSpawn[],
-    currentBandwidth: number
-  ): void {
-    this.queuedDepsGraphics.clear()
-
-    const reducedMotion = prefersReducedMotion()
-    const now = Date.now()
-
-    // Only render spawns that are awaiting bandwidth
-    const awaitingSpawns = pendingSpawns.filter((s) => s.awaitingBandwidth)
-
-    for (const spawn of awaitingSpawns) {
-      const x = spawn.position.x
-      const y = spawn.position.y
-      const size = 20 // Fixed size for queued dep outlines
-
-      // Faded box outline
-      this.queuedDepsGraphics.rect(x - size, y - size, size * 2, size * 2)
-      this.queuedDepsGraphics.stroke({ color: 0x5a5a7a, width: 2, alpha: 0.3 })
-
-      // Progress ring showing BW accumulation toward DEP_SPAWN_COST
-      const progress = Math.min(1, currentBandwidth / DEP_SPAWN_COST)
-      if (progress > 0) {
-        const ringRadius = size + 5
-
-        // Background ring (full circle, dim)
-        this.queuedDepsGraphics.circle(x, y, ringRadius)
-        this.queuedDepsGraphics.stroke({
-          color: 0x3a3a4a,
-          width: 3,
-          alpha: 0.3,
-        })
-
-        // Progress arc
-        const startAngle = -Math.PI / 2 // Start at top
-        const endAngle = startAngle + progress * Math.PI * 2
-
-        this.queuedDepsGraphics.arc(x, y, ringRadius, startAngle, endAngle)
-        this.queuedDepsGraphics.stroke({
-          color: 0x5a7aff,
-          width: 3,
-          alpha: 0.8,
-        })
-      }
-
-      // Pulsing effect when close to affordable (optional, skip if reduced motion)
-      if (!reducedMotion && progress > 0.8) {
-        const pulsePhase = ((now % 800) / 800) * Math.PI * 2
-        const pulseAlpha = 0.2 + 0.2 * Math.sin(pulsePhase)
-        this.queuedDepsGraphics.circle(x, y, size + 8)
-        this.queuedDepsGraphics.fill({ color: 0x5a7aff, alpha: pulseAlpha })
-      }
     }
   }
 }

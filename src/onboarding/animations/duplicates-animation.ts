@@ -89,7 +89,7 @@ export class DuplicatesAnimation extends BaseAnimation {
       }
     }
 
-    // Resource hint: show bandwidth gain after merge
+    // Resource hint: the merge raises quality
     if (progress >= phases.merge.start && progress < phases.reset.start) {
       const hintProgress =
         (progress - phases.merge.start) /
@@ -97,8 +97,8 @@ export class DuplicatesAnimation extends BaseAnimation {
       this.drawResourceHint(
         this.nodeBPos.x,
         this.nodeBPos.y - 25,
-        '↑',
-        TeachingColors.bandwidthGain,
+        '✓',
+        TeachingColors.qualityGain,
         hintProgress
       )
     }

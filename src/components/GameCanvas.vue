@@ -25,12 +25,7 @@ import {
   stack,
   userSettings,
 } from '../game/state'
-import {
-  setActionPreview,
-  startDrag,
-  endDrag,
-  triggerWiggle,
-} from '../game/ui-state'
+import { startDrag, endDrag, triggerWiggle } from '../game/ui-state'
 import { TouchInputHandler, type HitTestResult } from '../input/touch-input'
 import {
   isInPackageScope,
@@ -44,11 +39,7 @@ import {
   exitScope,
   exitToRoot,
 } from '../game/scope'
-import {
-  removeTopLevelPackage,
-  canAffordConflictResolve,
-  collectCacheFragment,
-} from '../game/mutations'
+import { removeTopLevelPackage, collectCacheFragment } from '../game/mutations'
 import { bootSave, saveToLocalStorage } from '../game/persistence'
 import {
   createRootPackage,
@@ -151,16 +142,6 @@ const selectedWire = computed(() => {
 // Computed: is the selected wire a sibling wire (cross-package conflict)?
 const isSiblingWire = computed(() => {
   return selectedWire.value?.wireType === 'sibling'
-})
-
-// Computed: can afford prune (conflict resolution)
-const canAffordPrune = computed(() => {
-  return canAffordConflictResolve()
-})
-
-// Computed: can always afford upgrade (generates BW instead of costing)
-const canAffordUpgrade = computed(() => {
-  return true
 })
 
 // Computed: has upgrade path
@@ -615,13 +596,6 @@ function handleMouseDown(event: MouseEvent) {
           clickedPkg.position.y
         )
 
-        // Bandwidth cost particle (flies to bandwidth bar)
-        emit('particles:spawn', {
-          type: 'bandwidth-cost',
-          x: screenPos.x,
-          y: screenPos.y,
-        })
-
         // Weight gain particle (flies to weight display) - slight delay
         setTimeout(() => {
           emit('particles:spawn', {
@@ -735,7 +709,6 @@ function handlePrune() {
   const wire = selectedWire.value
   const inScope = isInPackageScope()
 
-  // Momentum loop: Generate bandwidth for manual conflict resolution
   onConflictResolved()
 
   if (inScope) {
@@ -800,7 +773,6 @@ function handlePrune() {
 
 function handleUpgrade() {
   if (!selectedWire.value) return
-  if (!canAffordUpgrade.value) return
 
   const wire = selectedWire.value
   const inScope = isInPackageScope()
@@ -817,8 +789,7 @@ function handleUpgrade() {
   const newIdentity = findIdentityByName(upgradeName)
   if (!newIdentity) return
 
-  // Generate 2x bandwidth (upgrade is better than prune!)
-  onConflictResolved(undefined, 2)
+  onConflictResolved()
 
   // Visual feedback
   const effects = renderer.getEffectsRenderer()
@@ -992,7 +963,6 @@ function handleMouseMove(event: MouseEvent) {
   }
 
   // Update cursor based on what we're hovering over
-  // Also set action preview for bandwidth bar cost visualization
   if (canvasRef.value) {
     const hoveredPkg = findPackageAtPosition(
       worldPos,
@@ -1025,17 +995,14 @@ function handleMouseMove(event: MouseEvent) {
       // Duplicate package - show grab cursor to indicate draggable
       canvasRef.value.style.cursor = 'grab'
       renderer.setHoveredDuplicate(hoveredPkg.id)
-      setActionPreview('symlink') // Show symlink cost on bandwidth bar
     } else if (hoveredWire && hoveredWire.conflicted) {
-      // Hovering over conflict wire - show conflict cost on bandwidth bar
+      // Hovering over conflict wire
       canvasRef.value.style.cursor = 'pointer'
       renderer.setHoveredDuplicate(null)
-      setActionPreview('conflict')
     } else if (hoveredPkg && hoveredPkg.state === 'conflict') {
       // Conflict - show pointer for resolution
       canvasRef.value.style.cursor = 'pointer'
       renderer.setHoveredDuplicate(null)
-      setActionPreview('conflict') // Show conflict cost on bandwidth bar
     } else if (
       hoveredPkg &&
       hoveredPkg.state === 'ready' &&
@@ -1044,7 +1011,6 @@ function handleMouseMove(event: MouseEvent) {
       // Root node - show pointer for installing
       canvasRef.value.style.cursor = 'pointer'
       renderer.setHoveredDuplicate(null)
-      setActionPreview(null)
     } else if (
       hoveredPkg &&
       hoveredPkg.state === 'ready' &&
@@ -1053,11 +1019,9 @@ function handleMouseMove(event: MouseEvent) {
       // Divable package - show pointer
       canvasRef.value.style.cursor = 'pointer'
       renderer.setHoveredDuplicate(null)
-      setActionPreview(null)
     } else {
       canvasRef.value.style.cursor = 'default'
       renderer.setHoveredDuplicate(null)
-      setActionPreview(null)
     }
   }
 }
@@ -1103,11 +1067,6 @@ function handleMouseUp(_event?: MouseEvent) {
 
             // Spawn causal particles
             const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
-            emit('particles:spawn', {
-              type: 'bandwidth-gain',
-              x: screenPos.x,
-              y: screenPos.y,
-            })
             // Efficiency improved by deduplication
             emit('particles:spawn', {
               type: 'efficiency-up',
@@ -1141,12 +1100,6 @@ function handleMouseUp(_event?: MouseEvent) {
 
           // Spawn causal particles to show rewards flowing back
           const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
-          // Bandwidth refund particle (flies to bandwidth bar)
-          emit('particles:spawn', {
-            type: 'bandwidth-gain',
-            x: screenPos.x,
-            y: screenPos.y,
-          })
           // Efficiency improved by deduplication
           emit('particles:spawn', {
             type: 'efficiency-up',
@@ -1495,11 +1448,6 @@ function handleTouchAction(worldPos: { x: number; y: number }) {
         clickedPkg.position.x,
         clickedPkg.position.y
       )
-      emit('particles:spawn', {
-        type: 'bandwidth-cost',
-        x: screenPos.x,
-        y: screenPos.y,
-      })
       setTimeout(() => {
         emit('particles:spawn', {
           type: 'weight-gain',
@@ -1726,11 +1674,6 @@ function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
           effects.spawnBurst(targetPos.x, targetPos.y, Colors.borderOptimized)
           const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
           emit('particles:spawn', {
-            type: 'bandwidth-gain',
-            x: screenPos.x,
-            y: screenPos.y,
-          })
-          emit('particles:spawn', {
             type: 'efficiency-up',
             x: screenPos.x,
             y: screenPos.y,
@@ -1757,11 +1700,6 @@ function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
       if (weightSaved > 0) {
         effects.spawnBurst(targetPos.x, targetPos.y, Colors.borderOptimized)
         const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
-        emit('particles:spawn', {
-          type: 'bandwidth-gain',
-          x: screenPos.x,
-          y: screenPos.y,
-        })
         emit('particles:spawn', {
           type: 'efficiency-up',
           x: screenPos.x,
@@ -1836,19 +1774,10 @@ defineExpose({
 
         <!-- Regular conflict wire: Prune/Upgrade buttons -->
         <template v-else>
-          <button
-            class="action-btn prune"
-            :class="{ disabled: !canAffordPrune }"
-            :disabled="!canAffordPrune"
-            @click="handlePrune"
-          >
-            ✕
-          </button>
+          <button class="action-btn prune" @click="handlePrune">✕</button>
           <button
             v-if="hasUpgradePath"
             class="action-btn upgrade"
-            :class="{ disabled: !canAffordUpgrade }"
-            :disabled="!canAffordUpgrade"
             @click="handleUpgrade"
           >
             ↻

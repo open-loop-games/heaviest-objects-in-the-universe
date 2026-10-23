@@ -29,6 +29,7 @@
 
 import { COMBO_MAX, SURGE_CASCADE_BOOST, SURGE_PACKAGE_BOOST } from './config'
 import { SPINE_SOLVED } from './spine-solved'
+import type { Upgrades } from './types'
 
 export interface TierAnchor {
   id: string
@@ -176,14 +177,6 @@ export interface WalkSolved {
   comboExponentStep: number
   /** Index = tier − 1. */
   timedLimits: number[]
-}
-
-export interface Upgrades {
-  comboPayout: number
-  comboWindow: number
-  autoResolve: number
-  /** Timed challenges cleared. */
-  timed: number
 }
 
 export const NO_UPGRADES: Upgrades = {

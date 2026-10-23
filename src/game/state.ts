@@ -239,16 +239,16 @@ export const computed_gravity: ComputedRef<number> = computed(() => {
   return gameState.resources.weight / threshold
 })
 
-// What a ship would take home now, from this run's counters. No meta upgrades exist yet,
-// so the combo level and timed clears are 0, and the board is the current tier.
+// What a ship would take home now, from this run's counters and the meta upgrades owned.
+// The board is the current tier.
 export const computed_prestigeReward: ComputedRef<number> = computed(() => {
   const stats = gameState.stats
   return shipReward(GAME_SPINE, {
     grossWeight: stats.runGrossWeight,
     resolvedShare: stats.resolvedShare,
     comboDepth: stats.runActs > 0 ? stats.runComboSum / stats.runActs : 0,
-    comboLevel: 0,
-    timedCleared: 0,
+    comboLevel: gameState.upgrades.comboPayout,
+    timedCleared: gameState.upgrades.timed,
     tier: gameState.meta.ecosystemTier,
   })
 })
@@ -323,19 +323,3 @@ export const computed_canCollapse: ComputedRef<boolean> = computed(() => {
 export const computed_isEndlessMode: ComputedRef<boolean> = computed(() => {
   return gameState.meta.endlessMode
 })
-
-// ============================================
-// RESOURCE MUTATIONS (simple state changes)
-// ============================================
-
-/**
- * Spend bandwidth if available
- * @returns true if spent successfully, false if insufficient
- */
-export function spendBandwidth(amount: number): boolean {
-  if (gameState.resources.bandwidth >= amount) {
-    gameState.resources.bandwidth -= amount
-    return true
-  }
-  return false
-}

@@ -6,13 +6,7 @@ import { gameState } from '../game/state'
 import { recordTabView } from '../game/achievements'
 
 // Tab identifiers
-export type TabId =
-  | 'install'
-  | 'duplicates'
-  | 'conflicts'
-  | 'diving'
-  | 'ship'
-  | 'surge'
+export type TabId = 'install' | 'duplicates' | 'conflicts' | 'diving' | 'ship'
 
 // Tab metadata (icons are Unicode symbols to comply with no-text rule)
 export interface TabMeta {
@@ -27,7 +21,6 @@ export const TABS: TabMeta[] = [
   { id: 'conflicts', icon: '✕', order: 2 },
   { id: 'diving', icon: '⤵', order: 3 },
   { id: 'ship', icon: '⟲', order: 4 }, // Cycle = ship and repeat
-  { id: 'surge', icon: '◎', order: 5 }, // Concentric circles = power burst
 ]
 
 // Auto-close delay in ms (15 seconds to let animation loop)

@@ -1,6 +1,6 @@
 // Journey Animation
 // Shows the complete game loop: spawn → dive → cascade → resolve → merge → stable → exit → fill → ship → tier
-// Demonstrates resource interplay: Bandwidth, Weight, Efficiency, Stability, Cache Tokens
+// Demonstrates resource interplay: Weight, Efficiency, Stability, Cache Tokens
 // Larger canvas (320×220), 16 second loop
 
 import { TeachingColors, hexToCSS } from './base-animation'
@@ -12,11 +12,11 @@ const JOURNEY_HEIGHT = 220
 
 // Phase definitions (~16.25 second loop)
 const PHASES = {
-  spawn: { start: 0, end: 0.089, index: 0 }, // 1.45s - click root, bandwidth depletes, weight +
+  spawn: { start: 0, end: 0.089, index: 0 }, // 1.45s - click root, weight +
   dive: { start: 0.089, end: 0.148, index: 1 }, // 1s - enter scope
   cascade: { start: 0.148, end: 0.276, index: 2 }, // 2s - deps spawn, problems appear, efficiency drops
-  resolve: { start: 0.276, end: 0.374, index: 3 }, // 1.6s - click conflict, bandwidth gains
-  merge: { start: 0.374, end: 0.463, index: 4 }, // 1.45s - drag duplicate, bandwidth gains, efficiency recovers
+  resolve: { start: 0.276, end: 0.374, index: 3 }, // 1.6s - click conflict, efficiency recovers
+  merge: { start: 0.374, end: 0.463, index: 4 }, // 1.45s - drag duplicate, efficiency recovers
   stable: { start: 0.463, end: 0.522, index: 5 }, // 1s - scope stable, badge turns green
   exit: { start: 0.522, end: 0.581, index: 6 }, // 1s - exit scope
   fill: { start: 0.581, end: 0.65, index: 7 }, // 1.1s - weight fills quickly
@@ -28,7 +28,7 @@ type PhaseKey = keyof typeof PHASES
 
 /**
  * Journey Animation - Full game loop demonstration
- * Shows all resources: Bandwidth, Weight, Efficiency, Stability, Cache Tokens
+ * Shows all resources: Weight, Efficiency, Stability, Cache Tokens
  */
 export class JourneyAnimation {
   private canvas: HTMLCanvasElement | null = null
@@ -43,7 +43,6 @@ export class JourneyAnimation {
   public onPhaseChange: ((phase: number) => void) | null = null
 
   // Animation state - Resources
-  private bandwidthFill = 0.8 // 0-1 (depletes on actions, regenerates)
   private weightBarFill = 0.2 // 0-1 (fills toward prestige)
   private efficiencyFill = 1.0 // 0-1 (affected by problems)
   private scopeStableCount = 0 // stable scopes
@@ -99,7 +98,6 @@ export class JourneyAnimation {
 
   private setup(): void {
     // Reset animation state - Resources
-    this.bandwidthFill = 0.8
     this.weightBarFill = 0.2
     this.efficiencyFill = 1.0
     this.scopeStableCount = 0
@@ -203,7 +201,6 @@ export class JourneyAnimation {
     this.updateState(progress)
 
     // Draw UI elements (top area - matching actual HUD layout)
-    this.drawBandwidthBar()
     this.drawWeightBar()
     this.drawEfficiencyBar()
     this.drawStabilityBar()
@@ -226,24 +223,14 @@ export class JourneyAnimation {
   }
 
   private updateState(progress: number): void {
-    // Passive bandwidth regen (throughout animation)
-    const baseRegen = 0.002 // per frame roughly
-
     // ============================================
-    // PHASE 1: SPAWN - Click root, bandwidth depletes, package appears, weight +
+    // PHASE 1: SPAWN - Click root, package appears, weight +
     // ============================================
     if (progress >= PHASES.spawn.start && progress < PHASES.spawn.end) {
       const t = this.getPhaseProgress(progress, 'spawn')
-      if (t < 0.4) {
-        // Cursor moving to root
-        this.bandwidthFill = Math.min(1, this.bandwidthFill + baseRegen)
-      } else if (t < 0.5) {
-        // Click! Bandwidth depletes (install cost)
-        this.bandwidthFill = 0.5 // -30% cost
-      } else {
+      if (t >= 0.5) {
         // Package spawns, weight increases
         this.weightBarFill = 0.2 + (t - 0.5) * 0.2 // 0.2 → 0.3
-        this.bandwidthFill = Math.min(1, 0.5 + (t - 0.5) * baseRegen * 50) // slow regen
       }
     }
 
@@ -257,7 +244,6 @@ export class JourneyAnimation {
         this.scopeTotalCount = 1 // Entered 1 scope
         this.scopeStableCount = 0 // Not stable yet
       }
-      this.bandwidthFill = Math.min(1, this.bandwidthFill + baseRegen)
     }
 
     // ============================================
@@ -296,13 +282,10 @@ export class JourneyAnimation {
         this.hasDuplicates = true
         this.efficiencyFill = 0.4 // Duplicates drop it more
       }
-
-      // Bandwidth slowly drains during cascade
-      this.bandwidthFill = Math.max(0.2, this.bandwidthFill - 0.002)
     }
 
     // ============================================
-    // PHASE 4: RESOLVE - Click conflict, bandwidth GAINS, efficiency recovers
+    // PHASE 4: RESOLVE - Click conflict, efficiency recovers
     // ============================================
     if (progress >= PHASES.resolve.start && progress < PHASES.resolve.end) {
       const t = this.getPhaseProgress(progress, 'resolve')
@@ -310,13 +293,9 @@ export class JourneyAnimation {
       if (t < 0.5) {
         // Cursor moving to conflict
       } else if (t < 0.6) {
-        // Click! Conflict resolved, bandwidth GAINS
+        // Click! Conflict resolved
         this.hasConflict = false
-        this.bandwidthFill = Math.min(1, this.bandwidthFill + 0.15) // +15 momentum
         this.efficiencyFill = 0.55 // Partially recovers (was 0.4)
-      } else {
-        // Continue with slight regen
-        this.bandwidthFill = Math.min(1, this.bandwidthFill + baseRegen)
       }
     }
 
@@ -334,16 +313,13 @@ export class JourneyAnimation {
         this.mergeProgress = 1
         this.node3Merged = true
         this.hasDuplicates = false
-        this.bandwidthFill = Math.min(1, this.bandwidthFill + 0.2) // +20 momentum
         this.weightBarFill = Math.max(0.2, this.weightBarFill - 0.08) // Weight saved
         this.efficiencyFill = 0.85 // Major recovery
-      } else {
-        this.bandwidthFill = Math.min(1, this.bandwidthFill + baseRegen)
       }
     }
 
     // ============================================
-    // PHASE 6: STABLE - Scope has 0 problems → badge turns green, bandwidth burst
+    // PHASE 6: STABLE - Scope has 0 problems → badge turns green
     // ============================================
     if (progress >= PHASES.stable.start && progress < PHASES.stable.end) {
       const t = this.getPhaseProgress(progress, 'stable')
@@ -352,7 +328,6 @@ export class JourneyAnimation {
         this.scopeStable = true
         this.scopeStableCount = 1 // 1 stable scope
         this.badgeState = 'green' // Badge transitions red → green
-        this.bandwidthFill = Math.min(1, this.bandwidthFill + 0.3) // +50 burst (big!)
         this.efficiencyFill = 0.95 // Fully clean
       }
     }
@@ -365,7 +340,6 @@ export class JourneyAnimation {
       if (t > 0.5) {
         this.isInScope = false
       }
-      this.bandwidthFill = Math.min(1, this.bandwidthFill + baseRegen)
     }
 
     // ============================================
@@ -379,8 +353,6 @@ export class JourneyAnimation {
 
       // Ship button appears when weight reaches threshold
       this.shipButtonVisible = this.weightBarFill >= 0.9
-
-      this.bandwidthFill = Math.min(1, this.bandwidthFill + baseRegen)
     }
 
     // ============================================
@@ -432,52 +404,6 @@ export class JourneyAnimation {
   // ============================================
   // UI ELEMENTS (Mini HUD matching actual game)
   // ============================================
-
-  private drawBandwidthBar(): void {
-    if (!this.ctx) return
-
-    const x = 10
-    const y = 8
-    const segmentWidth = 6
-    const segmentHeight = 14
-    const gap = 2
-    const segments = 8
-
-    // Icon
-    this.ctx.font = '14px system-ui'
-    this.ctx.fillStyle = hexToCSS(0x7a7aff, 0.9)
-    this.ctx.fillText('↓', x, y + segmentHeight - 2)
-
-    // Segmented bar
-    const barX = x + 18
-    for (let i = 0; i < segments; i++) {
-      const segX = barX + i * (segmentWidth + gap)
-      const isFilled = i < Math.floor(this.bandwidthFill * segments)
-      const isPartial =
-        i === Math.floor(this.bandwidthFill * segments) &&
-        (this.bandwidthFill * segments) % 1 > 0
-
-      // Track
-      this.ctx.fillStyle = 'rgba(122, 122, 255, 0.15)'
-      this.ctx.fillRect(segX, y, segmentWidth, segmentHeight)
-
-      // Fill
-      if (isFilled) {
-        this.ctx.fillStyle = hexToCSS(0x7a7aff, 0.9)
-        this.ctx.fillRect(segX, y, segmentWidth, segmentHeight)
-      } else if (isPartial) {
-        const partialHeight =
-          segmentHeight * ((this.bandwidthFill * segments) % 1)
-        this.ctx.fillStyle = hexToCSS(0x7a7aff, 0.9)
-        this.ctx.fillRect(
-          segX,
-          y + segmentHeight - partialHeight,
-          segmentWidth,
-          partialHeight
-        )
-      }
-    }
-  }
 
   private drawWeightBar(): void {
     if (!this.ctx) return

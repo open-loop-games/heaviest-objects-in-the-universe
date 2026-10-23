@@ -42,7 +42,7 @@ pnpm circular     # dpdm circular
 src/
 ├── components/
 │   ├── GameCanvas.vue    # Pixi.js canvas + input handling
-│   └── hud/              # HUD components (resource bars, navigation, automation)
+│   └── hud/              # HUD components (quality and weight bars, navigation, automation)
 ├── game/
 │   ├── state.ts          # Reactive game state, graph, and the engine instance
 │   ├── types.ts          # Core interfaces (Package, Wire, GameState)
@@ -52,10 +52,9 @@ src/
 │   ├── packages.ts       # Package creation, dependency spawning
 │   ├── cascade.ts        # Staggered spawn system with depth rewards
 │   ├── scope.ts          # Scope navigation (dive into packages)
-│   ├── automation.ts     # Auto-resolve (tier-gated)
+│   ├── automation.ts     # Auto-resolve (a meta upgrade)
 │   ├── symlinks.ts       # Duplicate detection + merge logic
 │   ├── registry.ts       # Real npm package identities + archetypes
-│   ├── upgrades.ts       # Bandwidth-bought upgrades + tier system
 │   ├── config.ts         # Game constants, initial state factory
 │   └── persistence.ts    # Save/load through the engine save manager
 ├── rendering/
@@ -114,10 +113,11 @@ src/
 ## Game Mechanics
 
 **Resources:**
-- Bandwidth (↓) - spent to install, regenerates over time
-- Weight (◆) - total node_modules size, triggers ship
-- Cache Fragments - depth rewards, convert to tokens on ship
+- Weight (◆) - total node_modules size; the gross weight a run installs pays at ship
+- Cache Fragments - depth rewards; each collected fragment adds weight
 - Cache Tokens - meta-currency, persistent across runs
+
+No in-run currency gates installs.
 
 **Core Loop:**
 1. Click root → spawn top-level package (has internal scope)
@@ -140,13 +140,13 @@ src/
 
 **Progression (Tiers 1-5):**
 - Tier 1: Base game, depth 1 only
-- Tier 2: Depth 2 unlocked, auto-resolve available
+- Tier 2: Depth 2 unlocked
 - Tier 3: Depth 3+, golden packages spawn
 - Tier 4-5: Deeper nesting, faster automation
 - Tier 5: Collapse available (finale)
 
-**Automation (Tier 2+):**
-- Auto-resolve: Automatically resolves conflicts when enabled
+**Automation (meta upgrade):**
+- Auto-resolve: resolves conflicts in scopes the player has left, when enabled
 
 ## Current Implementation Status
 
@@ -164,7 +164,7 @@ src/
 - Depth rewards (golden packages, cache fragments)
 - Save/load (engine save manager: versioned, compressed, protects a save that fails to load)
 - Package icons (Devicon integration)
-- HUD with integrated upgrades
+- HUD (quality, weight, automation)
 - Resource bars, scope navigation, automation toggles
 - Event system (typed event bus)
 - Teaching book (tabbed drawer with Pixi animations)

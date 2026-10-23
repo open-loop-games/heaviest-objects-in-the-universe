@@ -516,7 +516,7 @@ export function getActiveGhostHint(): GhostHint | null {
 
   // === CLICK-FRAGMENT: Golden package with fragment visible ===
   // Conditions: In a scope, package has uncollected fragment
-  // This teaches fragment collection after surge unlocks (P2+)
+  // This teaches fragment collection
   if (isInPackageScope()) {
     const scopePackages = getCurrentScopePackages()
 

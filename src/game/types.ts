@@ -51,10 +51,17 @@ export interface Wire {
 }
 
 export interface GameResources {
-  bandwidth: number
-  maxBandwidth: number
   weight: number
   cacheFragments: number // Collected this run, converted to tokens on prestige
+}
+
+/** Levels owned on the meta layer's tracks, which the spine prices. */
+export interface Upgrades {
+  comboPayout: number
+  comboWindow: number
+  autoResolve: number
+  /** Timed challenges cleared. */
+  timed: number
 }
 
 export interface MetaResources {
@@ -63,19 +70,6 @@ export interface MetaResources {
   timesShipped: number // Renamed from totalPrestiges
   hasCollapsed: boolean // Player has triggered the finale
   endlessMode: boolean // Player chose endless after collapse
-}
-
-export interface Upgrades {
-  bandwidthLevel: number // Combined: regen + capacity
-  compressionLevel: number // Weight reduction (P3+)
-  resolveSpeedLevel: number // Auto-resolve speed (Tier 2+)
-  surgeLevel: number // Unlocks more surge segments (P2+)
-}
-
-// Surge system - reserve bandwidth to boost cascades (P2+)
-export interface SurgeState {
-  chargedSegments: number // How many segments are currently charged (0-10)
-  unlockedSegments: number // How many segments can be charged (1 + surgeLevel)
 }
 
 // Collapse hold gesture state (Tier 5 finale)
@@ -121,9 +115,6 @@ export interface PendingSpawn {
   depth: number
   parentInternalId: string | null // For sub-deps, the internal parent ID
   isSubDep: boolean
-  // Bandwidth queue fields
-  awaitingBandwidth: boolean // true if queued due to BW shortage
-  queuedAt: number // timestamp for progress calculation
 }
 
 export interface CascadeState {
@@ -137,8 +128,6 @@ export interface CascadeState {
   scopePath: string[] | null // Full path to the package whose internals are cascading
   subDepQueue: Array<{ parentIndex: number; identity: PackageIdentity }> | null
   compressedIndices: Set<number> | null
-  surgeGoldenBoost: number // Additive golden chance from surge
-  surgeFragmentBoost: number // Additive fragment chance from surge
   // Tutorial pacing (curated packages get slower cascade)
   isStarterKit: boolean // Whether this cascade is for the starter-kit package
   isSecondPackage: boolean // Whether this cascade is for the curated second package (express)
@@ -160,7 +149,6 @@ export interface OnboardingState {
   firstDiveSeen: boolean // Player has entered a package scope (dived in)
   firstScopeExited: boolean // Player has exited a stable scope (exit teaching complete)
   firstPrestigeComplete: boolean // Player has prestiged at least once
-  firstSurgeCharged: boolean // Player has charged surge at least once (P2+)
   firstHighComboSeen: boolean // Player reached combo 5+ (unlock combo teaching tab)
   // Sticky UI visibility (persists across prestiges)
   weightSeen: boolean // Weight indicator has been shown
@@ -195,7 +183,7 @@ export interface GameState {
   // Meta resources (persist through prestige)
   meta: MetaResources
 
-  // Upgrades
+  // Meta upgrades, the spine's tracks. None is purchasable before the meta layer, so all stay 0.
   upgrades: Upgrades
 
   // Onboarding (for staged HUD reveal)
@@ -209,9 +197,6 @@ export interface GameState {
 
   // Automation system (auto-resolve)
   automation: AutomationState
-
-  // Surge system (P2+ - boost cascades by reserving bandwidth)
-  surge: SurgeState
 
   // Collapse hold state (Tier 5 finale)
   collapseHold: CollapseHoldState
@@ -228,16 +213,7 @@ export interface GameState {
 }
 
 export interface GameConfig {
-  // Cost scaling
-  baseBandwidthCost: number
-  costMultiplier: number
-
-  // Production rates
-  cacheTokenMultiplier: number
-
   // Dependencies
-  minDependencies: number
-  maxDependencies: number
   dependencyDepthLimit: number
 
   // Physics

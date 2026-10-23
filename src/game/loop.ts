@@ -10,14 +10,12 @@ import {
 } from './mutations'
 import { spawnDependencies } from './packages'
 import { updateCascade } from './cascade'
-import { applyUpgradeEffects } from './upgrades'
 import {
   updatePhysics,
   updateInternalPhysics,
   isCollapseActive,
 } from './physics'
 import { updateAutomation } from './automation'
-import { applySafetyRegen, onPackageResolved } from './mutations'
 import { checkAchievements } from './achievements'
 import { isTopLevelPackage } from './scope'
 import type { Graph } from '@open-loop/engine'
@@ -60,7 +58,6 @@ function updateScopeGraph(
       if (pkg.installProgress >= 1) {
         pkg.installProgress = 1
         pkg.state = 'ready'
-        onPackageResolved()
       }
     }
 
@@ -143,8 +140,6 @@ function tick(deltaTime: number): void {
 
   updateCameraTransition(deltaTime)
 
-  updateResources(deltaTime)
-
   updateCascade()
 
   updatePackages(deltaTime)
@@ -164,7 +159,7 @@ function tick(deltaTime: number): void {
     checkAchievements()
   }
 
-  updateAutomation(now, deltaTime)
+  updateAutomation(now)
 
   if (gameState.stats.comboCount > 0) {
     const elapsed = now - gameState.stats.comboLastActionTime
@@ -189,11 +184,6 @@ function frame(): void {
   animationFrameId = requestAnimationFrame(frame)
 }
 
-function updateResources(deltaTime: number): void {
-  applyUpgradeEffects()
-  applySafetyRegen(deltaTime)
-}
-
 function updatePackages(deltaTime: number): void {
   // Root scope: walk top-level packages + root.
   const packagesToSpawn: string[] = []
@@ -205,7 +195,6 @@ function updatePackages(deltaTime: number): void {
         pkg.installProgress = 1
         pkg.state = 'ready'
         packagesToSpawn.push(id)
-        onPackageResolved()
         // Track when first divable package becomes ready.
         if (
           isTopLevelPackage(id) &&

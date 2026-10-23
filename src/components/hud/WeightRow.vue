@@ -1,19 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { gameState, computed_gravity } from '../../game/state'
-import {
-  getUpgradeLevel,
-  canPurchaseUpgrade,
-  purchaseUpgrade,
-  setPreviewedUpgrade,
-  previewedUpgradeId,
-  UPGRADES,
-} from '../../game/upgrades'
+import { computed_gravity } from '../../game/state'
 import { setActiveTooltip } from '../../game/ui-state'
-
-// ============================================
-// WEIGHT BAR
-// ============================================
 
 const SEGMENTS = 12
 
@@ -22,7 +10,6 @@ const prestigeProgress = computed(() => {
   return Math.min(1, computed_gravity.value)
 })
 
-// Segmented weight bar - split into separate computeds for v-memo
 const filledSegments = computed(() =>
   Math.floor(prestigeProgress.value * SEGMENTS)
 )
@@ -33,101 +20,26 @@ const partialFill = computed(() => {
   return Math.round(raw * 100) / 100
 })
 
-// Static segment indices for v-for
 const segmentIndices = Array.from({ length: SEGMENTS }, (_, i) => i)
 const LAST_SEGMENT = SEGMENTS - 1
 
-// ============================================
-// COMPRESSION PREVIEW
-// ============================================
-
-const isPreviewingCompression = computed(
-  () => previewedUpgradeId.value === 'compression'
-)
-
-// Preview: what fill would look like with upgraded compression
-// Compression multiplies weight gain, so same weight = more progress
-const previewProgress = computed(() => {
-  if (!isPreviewingCompression.value) return null
-  const currentLevel = getUpgradeLevel('compression')
-  const nextLevel = currentLevel + 1
-  // Ratio of next multiplier to current: 1.1^(next) / 1.1^(current) = 1.1
-  const boostRatio = Math.pow(1.1, nextLevel) / Math.pow(1.1, currentLevel)
-  return Math.min(1, prestigeProgress.value * boostRatio)
-})
-
-// Pre-compute segment states
 const segmentStates = computed(() => {
   const currentFilled = filledSegments.value
   const currentPartial = partialFill.value
-  const currentFilledEnd = currentFilled + (currentPartial > 0 ? 1 : 0)
-
-  // Preview values (when hovering compression upgrade)
-  const previewing = isPreviewingCompression.value
-  const previewProg = previewProgress.value
-  const previewFilled =
-    previewProg !== null ? Math.floor(previewProg * SEGMENTS) : currentFilled
-  const previewPartial =
-    previewProg !== null
-      ? Math.round(((previewProg * SEGMENTS) % 1) * 100) / 100
-      : currentPartial
-  const previewFilledEnd = previewFilled + (previewPartial > 0 ? 1 : 0)
-
   return segmentIndices.map((i) => {
-    const isFilled = i < currentFilled
     const isPartial = i === currentFilled && currentPartial > 0
-
-    // Bonus fill: segments between current fill and preview fill
-    const isBonusFill =
-      previewing && i >= currentFilledEnd && i < previewFilledEnd
-
     return {
       index: i,
-      filled: isFilled,
+      filled: i < currentFilled,
       partial: isPartial,
       partialValue: isPartial ? currentPartial : 0,
-      bonusFill: isBonusFill,
       isMilestone: i === LAST_SEGMENT,
     }
   })
 })
 
-// ============================================
-// COMPRESSION UPGRADE (P3+ only)
-// ============================================
-
-const showCompression = computed(() => {
-  return gameState.meta.timesShipped >= 3
-})
-
-const compressionLevel = computed(() => getUpgradeLevel('compression'))
-const compressionMaxLevel = computed(() => UPGRADES.compression?.maxLevel ?? 8)
-const canAffordCompression = computed(() => canPurchaseUpgrade('compression'))
-
-// Local hover state for upgrade preview
-const isHoveringCompression = ref(false)
-const compressionContainerRef = ref<HTMLElement | null>(null)
 const iconRef = ref<HTMLElement | null>(null)
 
-function handleCompressionClick() {
-  if (canAffordCompression.value) {
-    purchaseUpgrade('compression')
-  }
-}
-
-function handleCompressionEnter() {
-  isHoveringCompression.value = true
-  setPreviewedUpgrade('compression')
-  setActiveTooltip('compression', compressionContainerRef.value ?? undefined)
-}
-
-function handleCompressionLeave() {
-  isHoveringCompression.value = false
-  setPreviewedUpgrade(null)
-  setActiveTooltip(null)
-}
-
-// Icon tooltip handlers
 function handleIconEnter() {
   setActiveTooltip('weightIcon', iconRef.value ?? undefined)
 }
@@ -162,7 +74,6 @@ function handleIconLeave() {
           filled: seg.filled,
           partial: seg.partial,
           'milestone-segment': seg.isMilestone,
-          'bonus-fill': seg.bonusFill,
         }"
       >
         <div
@@ -170,29 +81,6 @@ function handleIconLeave() {
           class="segment-fill"
           :style="{ height: seg.partialValue * 100 + '%' }"
         ></div>
-      </div>
-    </div>
-
-    <!-- Compression pips (P3+ only) -->
-    <div
-      v-if="showCompression"
-      ref="compressionContainerRef"
-      class="upgrade-pips-container compression-container"
-      @mouseenter="handleCompressionEnter"
-      @mouseleave="handleCompressionLeave"
-      @click="handleCompressionClick"
-    >
-      <div class="upgrade-pips compression-pips">
-        <span
-          v-for="i in compressionMaxLevel"
-          :key="i"
-          class="pip compression"
-          :class="{
-            filled: i <= compressionLevel,
-            affordable: i === compressionLevel + 1 && canAffordCompression,
-            'next-level': i === compressionLevel + 1,
-          }"
-        />
       </div>
     </div>
   </div>
@@ -277,119 +165,5 @@ function handleIconLeave() {
   );
   box-shadow: 0 0 8px rgba(122, 90, 255, 0.6);
   animation: hud-pulse 1s ease-in-out infinite alternate;
-}
-
-/* Bonus fill - orange pulse showing weight gain increase from compression upgrade */
-.segment.bonus-fill {
-  background: linear-gradient(to top, #4a3a2a, #6a4a2a);
-  box-shadow: 0 0 8px rgba(255, 170, 90, 0.4);
-  animation: bonus-fill-pulse 0.8s ease-in-out infinite;
-}
-
-.segment.bonus-fill::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent,
-    transparent 2px,
-    rgba(255, 170, 90, 0.2) 2px,
-    rgba(255, 170, 90, 0.2) 4px
-  );
-  border-radius: 2px;
-}
-
-@keyframes bonus-fill-pulse {
-  0%,
-  100% {
-    opacity: 0.6;
-    box-shadow: 0 0 4px rgba(255, 170, 90, 0.3);
-  }
-  50% {
-    opacity: 1;
-    box-shadow: 0 0 12px rgba(255, 170, 90, 0.6);
-  }
-}
-
-/* Upgrade pips container */
-.upgrade-pips-container {
-  padding: 4px 6px;
-  border-radius: 6px;
-  transition: background var(--hud-t-fast) ease;
-  cursor: pointer;
-}
-
-.upgrade-pips-container:hover {
-  background: rgba(255, 170, 90, 0.1);
-}
-
-/* Compression upgrade pips */
-.upgrade-pips {
-  display: flex;
-  gap: 2px;
-}
-
-.pip {
-  width: 6px;
-  height: 6px;
-  background: #2a2a3a;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: all 0.15s;
-  will-change: transform;
-  flex-shrink: 0;
-}
-
-.pip.filled {
-  background: #5aff5a;
-  box-shadow: 0 0 3px rgba(90, 255, 90, 0.4);
-}
-
-.pip.affordable {
-  background: #2a3a2a;
-  box-shadow: 0 0 6px #5aff5a;
-  animation: pip-glow 1s infinite;
-}
-
-.pip:hover:not(.filled) {
-  background: #3a3a4a;
-  transform: scale(1.2);
-}
-
-.pip.affordable:hover {
-  background: #3a5a3a;
-  box-shadow: 0 0 10px #5aff5a;
-}
-
-/* Compression pips have a different color */
-.pip.compression.filled {
-  background: #ffaa5a;
-  box-shadow: 0 0 4px rgba(255, 170, 90, 0.4);
-}
-
-.pip.compression.affordable {
-  background: #3a2a2a;
-  box-shadow: 0 0 6px #ffaa5a;
-}
-
-.pip.compression.affordable:hover {
-  background: #5a3a2a;
-  box-shadow: 0 0 10px #ffaa5a;
-}
-
-.pip.compression.next-level:not(.affordable) {
-  background: #3a3a4a;
-  border: 1px solid #5a5a6a;
-}
-
-@keyframes pip-glow {
-  0%,
-  100% {
-    box-shadow: 0 0 4px currentColor;
-  }
-  50% {
-    box-shadow: 0 0 8px currentColor;
-  }
 }
 </style>

@@ -20,7 +20,6 @@ import { DuplicatesAnimation } from '../../onboarding/animations/duplicates-anim
 import { ConflictsAnimation } from '../../onboarding/animations/conflicts-animation'
 import { DivingAnimation } from '../../onboarding/animations/diving-animation'
 import { ShipAnimation } from '../../onboarding/animations/ship-animation'
-import { SurgeAnimation } from '../../onboarding/animations/surge-animation'
 
 // Canvas ref for Pixi animations
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -44,8 +43,6 @@ function createAnimationForTab(tab: TabId): BaseAnimation | null {
       return new DivingAnimation()
     case 'ship':
       return new ShipAnimation()
-    case 'surge':
-      return new SurgeAnimation()
     default:
       return null
   }

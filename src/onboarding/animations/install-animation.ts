@@ -87,7 +87,7 @@ export class InstallAnimation extends BaseAnimation {
       }
     }
 
-    // Resource hint: show bandwidth cost after click
+    // Resource hint: the install adds weight
     if (progress >= phases.spawn.start && progress < phases.settle.end) {
       const hintProgress =
         (progress - phases.spawn.start) /
@@ -95,8 +95,8 @@ export class InstallAnimation extends BaseAnimation {
       this.drawResourceHint(
         0,
         -30,
-        '↓',
-        TeachingColors.bandwidthCost,
+        '◆',
+        TeachingColors.weightGain,
         hintProgress
       )
     }

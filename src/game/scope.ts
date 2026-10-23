@@ -305,7 +305,7 @@ export function exitPackageScope(): void {
 
 /** Trigger a recalculate at the given path (and let it bubble up). Emits a
  *  'scope:stabilized' event when a scope transitions from non-stable to
- *  stable (used by mutations.ts to spawn momentum bursts). */
+ *  stable (mutations.ts turns it into the stabilize feedback event). */
 export function recalculateStateAtPath(scopePath: readonly string[]): void {
   if (scopePath.length === 0) return
   const before = stack.statusAt(scopePath)

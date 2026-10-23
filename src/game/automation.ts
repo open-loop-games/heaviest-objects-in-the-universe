@@ -1,38 +1,26 @@
-// Automation system for auto-resolve
-// Unlocks at tier 2
+// Auto-resolve, a meta upgrade: each level sells capacity, the rate at which it clears
+// conflicts in scopes the player has left. The spine solves the interval per level.
 
 import { gameState, stack } from './state'
-import { getEcosystemTier } from './formulas'
 import {
   getPackagesAtPath,
   getWiresAtPath,
   recalculateStateAtPath,
 } from './scope'
 import { getCascadeScopePath, isCascadeActive } from './cascade'
-import {
-  getResolveDrainMultiplier,
-  getResolveSpeedMultiplier,
-} from './upgrades'
-import { AUTO_RESOLVE_DRAIN } from './config'
 import { emit } from './events'
 import { getCrossPackageConflicts } from './cross-package'
 import { recordAutoResolve } from './achievements'
-import { countResolved } from './mutations'
-
-// ============================================
-// AUTOMATION TIMING CONSTANTS
-// ============================================
-
-const RESOLVE_INTERVALS = [
-  Infinity, // index 0 unused
-  Infinity, // Tier 1
-  3000,
-  2000,
-  1000,
-  500,
-] as const
+import { countResolved, iterateEnteredScopes } from './mutations'
+import { GAME_SPINE } from './spine'
 
 const PROCESS_DURATION = 400
+
+/** Milliseconds between auto-resolves at the owned level; Infinity before level 1. */
+function resolveIntervalMs(): number {
+  const level = gameState.upgrades.autoResolve
+  return (GAME_SPINE.autoResolveIntervals[level] ?? Infinity) * 1000
+}
 
 // ============================================
 // CONFLICT FINDING
@@ -89,26 +77,29 @@ function isScopePopulating(scopePath: string[]): boolean {
   return true
 }
 
+function isCurrentScope(scopePath: readonly string[]): boolean {
+  const current = stack.path
+  return (
+    current.length === scopePath.length &&
+    current.every((id, i) => id === scopePath[i])
+  )
+}
+
 /**
- * Find the first conflicted wire in the CURRENT scope.
- * Skips cross-package conflicts (they re-appear unless the node is removed).
+ * The first conflicted wire in an entered scope the player is not in. The current scope's
+ * conflicts stay the player's to chain: clearing them would take a skilled player's combo
+ * fodder first, a tax on skill. Skips cross-package conflicts, which re-appear unless the
+ * node is removed.
  */
-export function findFirstConflictedWire(): ConflictLocation | null {
-  const scopePath = [...stack.path]
-
-  if (isScopePopulating(scopePath)) return null
-
-  const wires = getWiresAtPath(scopePath)
-  if (!wires) return null
-
-  for (const [wireId, wire] of wires) {
-    if (wire.conflicted) {
-      if (isCrossPackageConflict(wireId, scopePath)) continue
-
-      return { wireId, scopePath }
+function findLeftBehindConflict(): ConflictLocation | null {
+  for (const { path, graph: scopeGraph } of iterateEnteredScopes()) {
+    if (isCurrentScope(path) || isScopePopulating(path)) continue
+    for (const [wireId, edge] of scopeGraph.edges) {
+      if (!edge.data.conflicted) continue
+      if (isCrossPackageConflict(wireId, path)) continue
+      return { wireId, scopePath: path }
     }
   }
-
   return null
 }
 
@@ -148,24 +139,18 @@ function resolveWireAtPath(wireId: string, scopePath: string[]): boolean {
 // AUTOMATION UPDATE (CALLED FROM GAME LOOP)
 // ============================================
 
-export function updateAutomation(now: number, _deltaTime: number = 0): void {
-  const tier = getEcosystemTier(gameState.meta.cacheTokens)
+export function updateAutomation(now: number): void {
   const auto = gameState.automation
+  const resolveInterval = resolveIntervalMs()
 
-  if (tier >= 2 && auto.resolveEnabled) {
-    const baseInterval = RESOLVE_INTERVALS[tier] ?? Infinity
-    const resolveInterval = baseInterval / getResolveSpeedMultiplier()
-
+  if (Number.isFinite(resolveInterval) && auto.resolveEnabled) {
     if (!auto.resolveActive && now - auto.lastResolveTime >= resolveInterval) {
-      const conflict = findFirstConflictedWire()
+      const conflict = findLeftBehindConflict()
       if (conflict) {
-        const drainCost = AUTO_RESOLVE_DRAIN * getResolveDrainMultiplier()
-        if (gameState.resources.bandwidth >= drainCost) {
-          auto.resolveActive = true
-          auto.resolveTargetWireId = conflict.wireId
-          auto.resolveTargetScope = conflict.scopePath
-          auto.processStartTime = now
-        }
+        auto.resolveActive = true
+        auto.resolveTargetWireId = conflict.wireId
+        auto.resolveTargetScope = conflict.scopePath
+        auto.processStartTime = now
       }
       auto.lastResolveTime = now
     }
@@ -190,12 +175,6 @@ export function updateAutomation(now: number, _deltaTime: number = 0): void {
               effectPosition = { x: toPkg.position.x, y: toPkg.position.y }
             }
           }
-
-          const drainCost = AUTO_RESOLVE_DRAIN * getResolveDrainMultiplier()
-          gameState.resources.bandwidth = Math.max(
-            0,
-            gameState.resources.bandwidth - drainCost
-          )
 
           const success = resolveWireAtPath(auto.resolveTargetWireId, scopePath)
 

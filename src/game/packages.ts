@@ -1,14 +1,7 @@
 // Package creation and management logic
 
 import { random, randomInt } from '@open-loop/engine'
-import {
-  gameState,
-  gameConfig,
-  graph,
-  rootIdRef,
-  spendBandwidth,
-  stack,
-} from './state'
+import { gameState, gameConfig, graph, rootIdRef, stack } from './state'
 import {
   getCurrentScopePackages,
   isTopLevelPackage,
@@ -22,7 +15,6 @@ import {
 import { generateId } from './state'
 import type { Package } from './types'
 import { rollDependencyCount, getIdentitySize } from './formulas'
-import { getEffectiveInstallCost } from './upgrades'
 import {
   pickRandomIdentity,
   pickDirectInstallIdentity,
@@ -108,11 +100,6 @@ export function installPackage(parentId: string): Package | null {
         return null
       }
     }
-  }
-
-  const cost = getEffectiveInstallCost()
-  if (!spendBandwidth(cost)) {
-    return null
   }
 
   emit('player:action')

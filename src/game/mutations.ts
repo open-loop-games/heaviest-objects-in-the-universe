@@ -1,28 +1,12 @@
 // State mutation helpers — graph + scope aware
 
-import {
-  MOMENTUM_PACKAGE_RESOLVE,
-  MOMENTUM_CONFLICT_RESOLVE,
-  MOMENTUM_SYMLINK_MERGE,
-  MOMENTUM_STABILIZE_BASE,
-  MOMENTUM_STABILIZE_PER_PKG,
-  MOMENTUM_GOLDEN_SPAWN,
-  MOMENTUM_FRAGMENT_COLLECT,
-  MOMENTUM_TIER_MULTIPLIERS,
-  SAFETY_REGEN_BY_TIER,
-  MOMENTUM_DAMPENING_WINDOW,
-  MOMENTUM_DAMPENING_THRESHOLD,
-  MOMENTUM_DAMPENING_FLOOR,
-  COMBO_MAX,
-  FRAGMENT_WEIGHT,
-} from './config'
+import { COMBO_MAX, FRAGMENT_WEIGHT } from './config'
 import {
   EFFICIENCY_BASE,
   EFFICIENCY_SCALE_ANCHOR,
   countScopeDuplicates,
 } from './formulas'
 import { gameState, generateWireId, graph, rootIdRef, stack } from './state'
-import { getEcosystemTier } from './formulas'
 import type { Package, Wire } from './types'
 import type { Graph } from '@open-loop/engine'
 import {
@@ -32,7 +16,6 @@ import {
   isInPackageScope,
 } from './scope'
 import { emit, on } from './events'
-import { getCompressionMultiplier, getStabilizationBonus } from './upgrades'
 import { getEfficiencyTierRank, updateEfficiencyTracking } from './formulas'
 import { checkAchievements } from './achievements'
 import { GAME_SPINE, comboWindow } from './spine'
@@ -44,7 +27,8 @@ import { GAME_SPINE, comboWindow } from './spine'
 // SCOPE WALKING (graph-aware)
 // ============================================
 
-function* iterateEnteredScopes(): Generator<{
+/** Every entered scope, root's children first, with its graph and owner id. */
+export function* iterateEnteredScopes(): Generator<{
   path: string[]
   graph: Graph<Package, Wire>
   ownerId: string
@@ -172,7 +156,7 @@ function checkEfficiencyChange(newEfficiency: number): void {
 
 /** The combo decay window, from the spine's solved base window. */
 export function comboWindowMs(): number {
-  return comboWindow(GAME_SPINE, 0) * 1000
+  return comboWindow(GAME_SPINE, gameState.upgrades.comboWindow) * 1000
 }
 
 /**
@@ -200,155 +184,40 @@ export function incrementCombo(): void {
 }
 
 // ============================================
-// MOMENTUM SYSTEM (Activity-driven BW generation)
+// PLAYER ACTS
 // ============================================
 
-interface GenerationEvent {
-  amount: number
-  timestamp: number
-}
-
-const recentGeneration: GenerationEvent[] = []
-
-function cleanOldEvents(): void {
-  const cutoff = Date.now() - MOMENTUM_DAMPENING_WINDOW
-  while (recentGeneration[0] && recentGeneration[0].timestamp < cutoff) {
-    recentGeneration.shift()
-  }
-}
-
-function getRecentTotal(): number {
-  cleanOldEvents()
-  return recentGeneration.reduce((sum, e) => sum + e.amount, 0)
-}
-
-function getDampeningMultiplier(): number {
-  const recentTotal = getRecentTotal()
-  if (recentTotal <= MOMENTUM_DAMPENING_THRESHOLD) return 1.0
-  const excess = recentTotal - MOMENTUM_DAMPENING_THRESHOLD
-  return Math.max(
-    MOMENTUM_DAMPENING_FLOOR,
-    1 -
-      (excess / (MOMENTUM_DAMPENING_THRESHOLD * 2)) *
-        (1 - MOMENTUM_DAMPENING_FLOOR)
-  )
-}
-
-function recordGeneration(amount: number): void {
-  recentGeneration.push({ amount, timestamp: Date.now() })
-}
-
-/** Clear momentum dampening history. Call on ship / prestige / load so a
- *  fresh run isn't immediately throttled by the previous run's events. */
-export function resetMomentumState(): void {
-  recentGeneration.length = 0
-}
-
-function getMomentumTierMultiplier(): number {
-  const tier = getEcosystemTier(gameState.meta.cacheTokens)
-  return MOMENTUM_TIER_MULTIPLIERS[tier] ?? 1.0
-}
-
-function generateBandwidth(
-  baseAmount: number,
-  applyTierScaling: boolean = true
-): number {
-  const tierMult = applyTierScaling ? getMomentumTierMultiplier() : 1.0
-  const dampeningMult = getDampeningMultiplier()
-  const actualAmount = Math.floor(baseAmount * tierMult * dampeningMult)
-
-  if (actualAmount > 0) {
-    gameState.resources.bandwidth = Math.min(
-      gameState.resources.maxBandwidth,
-      gameState.resources.bandwidth + actualAmount
-    )
-    recordGeneration(actualAmount)
-  }
-  return actualAmount
-}
-
-export function onPackageResolved(): number {
-  const amount = generateBandwidth(MOMENTUM_PACKAGE_RESOLVE)
-  emit('game:package-resolved', { amount })
-  return amount
-}
-
-export function onConflictResolved(
-  position?: {
-    x: number
-    y: number
-  },
-  momentumScale: number = 1
-): number {
+export function onConflictResolved(position?: { x: number; y: number }): void {
   incrementCombo()
   countResolved()
-  const amount = generateBandwidth(MOMENTUM_CONFLICT_RESOLVE * momentumScale)
-  emit('game:conflict-resolved', { amount, position })
-  return amount
+  emit('game:conflict-resolved', { position })
 }
 
 export function onSymlinkMerged(
   weightSaved: number,
   position: { x: number; y: number }
-): number {
+): void {
   incrementCombo()
   countResolved()
-  const amount = generateBandwidth(MOMENTUM_SYMLINK_MERGE)
-  emit('game:symlink-merged', { amount, weightSaved, position })
-  return amount
+  emit('game:symlink-merged', { weightSaved, position })
 }
 
-export function onScopeStabilized(packageCount: number): number {
-  const baseAmount =
-    MOMENTUM_STABILIZE_BASE + packageCount * MOMENTUM_STABILIZE_PER_PKG
-  const upgradeBonus = getStabilizationBonus()
-
+function onScopeStabilized(packageCount: number): void {
   const scopeId = stack.path[stack.path.length - 1] ?? 'root'
-
-  const amount = generateBandwidth(Math.floor(baseAmount * upgradeBonus))
-  emit('game:scope-stabilized', { amount, scopeId, packageCount })
-
-  return amount
-}
-
-export function onGoldenSpawned(): number {
-  const amount = generateBandwidth(MOMENTUM_GOLDEN_SPAWN, false)
-  emit('game:golden-spawned', { amount })
-  return amount
-}
-
-export function onFragmentCollected(): number {
-  const amount = generateBandwidth(MOMENTUM_FRAGMENT_COLLECT, false)
-  emit('game:fragment-collected', { amount })
-  return amount
-}
-
-export function getSafetyRegenRate(): number {
-  const tier = getEcosystemTier(gameState.meta.cacheTokens)
-  return SAFETY_REGEN_BY_TIER[tier] ?? 2
-}
-
-export function applySafetyRegen(deltaTime: number): void {
-  const regenRate = getSafetyRegenRate()
-  gameState.resources.bandwidth = Math.min(
-    gameState.resources.maxBandwidth,
-    gameState.resources.bandwidth + regenRate * deltaTime
-  )
+  emit('game:scope-stabilized', { scopeId, packageCount })
 }
 
 // ============================================
 // WEIGHT HELPERS
 // ============================================
 
-export function addWeight(baseWeight: number): number {
-  const finalWeight = baseWeight * getCompressionMultiplier()
-  gameState.resources.weight += finalWeight
-  gameState.stats.runGrossWeight += finalWeight
+export function addWeight(weight: number): void {
+  gameState.resources.weight += weight
+  gameState.stats.runGrossWeight += weight
   gameState.stats.maxWeightReached = Math.max(
     gameState.stats.maxWeightReached,
     gameState.resources.weight
   )
-  return finalWeight
 }
 
 // ============================================
@@ -519,14 +388,6 @@ export function resolveConflict(packageId: string): void {
     gameState.stats.totalConflictsResolved++
     checkAchievements()
   }
-}
-
-export function getConflictResolveCost(): number {
-  return 0
-}
-
-export function canAffordConflictResolve(): boolean {
-  return true
 }
 
 /**

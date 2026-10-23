@@ -30,7 +30,6 @@ import {
   userSettings,
 } from './state'
 import { serializeAchievements, deserializeAchievements } from './achievements'
-import { resetMomentumState } from './mutations'
 import { clearCascadeQueue } from './cascade'
 import { resetCrossPackageState } from './cross-package'
 import { resetPhysicsState } from './physics'
@@ -127,8 +126,6 @@ function resetTransientState(): void {
     scopePath: null,
     subDepQueue: null,
     compressedIndices: null,
-    surgeGoldenBoost: 0,
-    surgeFragmentBoost: 0,
     isStarterKit: false,
     isSecondPackage: false,
     isThirdPackage: false,
@@ -160,7 +157,6 @@ function restoreGame(data: SaveBlob): boolean {
     clearCascadeQueue()
     resetCrossPackageState()
     resetPhysicsState()
-    resetMomentumState()
     graph.restore(data.graph)
     // Re-link shadow scope-owner nodes back to their parent-graph data so
     // mutations through one are visible to the other (the snapshot path
@@ -178,9 +174,11 @@ function restoreGame(data: SaveBlob): boolean {
     rootIdRef.value = data.rootId ?? null
 
     Object.assign(gameState, data.state)
-    // A save can lack a stats field the run now counts; a fresh run's value fills it, so a
-    // missing counter never turns the ship reward into NaN.
-    gameState.stats = { ...createInitialState().stats, ...gameState.stats }
+    // A save can lack a stats field the run now counts, or an upgrade track; a fresh game's
+    // value fills it, so a missing input never turns the ship reward into NaN.
+    const fresh = createInitialState()
+    gameState.stats = { ...fresh.stats, ...gameState.stats }
+    gameState.upgrades = { ...fresh.upgrades, ...gameState.upgrades }
 
     if (!gameState.seed) {
       gameState.seed = Date.now()

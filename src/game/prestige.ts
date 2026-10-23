@@ -8,7 +8,7 @@ import { gameState, resetGraphAndStack } from './state'
 import { saveToLocalStorage, clearSavedGame } from './persistence'
 import { resetEfficiencyTracking } from './formulas'
 import { seedRNG } from '@open-loop/engine'
-import { resetMomentumState, resetRunCounters } from './mutations'
+import { resetRunCounters } from './mutations'
 import { clearCascadeQueue } from './cascade'
 import { resetCrossPackageState } from './cross-package'
 import { resetPhysicsState } from './physics'
@@ -29,9 +29,7 @@ export function softReset(): void {
   clearCascadeQueue()
   resetCrossPackageState()
   resetPhysicsState()
-  resetMomentumState()
 
-  gameState.resources.bandwidth = 100 * gameState.meta.ecosystemTier
   gameState.resources.weight = 0
   gameState.resources.cacheFragments = 0
 
@@ -39,8 +37,6 @@ export function softReset(): void {
   gameState.stats.currentStability = 1
   resetEfficiencyTracking()
   resetRunCounters()
-
-  gameState.surge.chargedSegments = 0
 
   gameState.camera.x = 0
   gameState.camera.y = 0
@@ -70,6 +66,5 @@ export function wipeGame(): void {
   clearCascadeQueue()
   resetCrossPackageState()
   resetPhysicsState()
-  resetMomentumState()
   seedRNG(gameState.seed)
 }

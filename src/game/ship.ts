@@ -11,11 +11,7 @@ import {
 import { saveToLocalStorage } from './persistence'
 import { emit } from './events'
 import { resetEfficiencyTracking } from './formulas'
-import {
-  resetMomentumState,
-  resetRunCounters,
-  updateResolvedShare,
-} from './mutations'
+import { resetRunCounters, updateResolvedShare } from './mutations'
 import { clearCascadeQueue } from './cascade'
 import { resetCrossPackageState } from './cross-package'
 import { resetPhysicsState } from './physics'
@@ -62,7 +58,6 @@ export function performShip(): void {
   clearCascadeQueue()
   resetCrossPackageState()
   resetPhysicsState()
-  resetMomentumState()
 
   gameState.tutorialGating = false
 
@@ -77,10 +72,6 @@ export function performShip(): void {
   gameState.automation.processStartTime = 0
   gameState.automation.lastResolveTime = 0
 
-  gameState.surge.chargedSegments = 0
-  gameState.surge.unlockedSegments = 1 + gameState.upgrades.surgeLevel
-
-  gameState.resources.bandwidth = 100 * gameState.meta.ecosystemTier
   gameState.resources.weight = 0
   gameState.resources.cacheFragments = 0
 

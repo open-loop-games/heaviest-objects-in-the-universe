@@ -10,12 +10,8 @@ export const TOOLTIP_HEIGHT = 56
 // Colors for tooltip animations
 export const TooltipColors = {
   background: '#1a1428',
-  bandwidth: Colors.borderInstalling, // Blue
-  bandwidthDark: 0x4a4aaa,
   weight: 0xffaa5a, // Orange
   weightDark: 0xc08040,
-  surge: 0xf0a040, // Amber
-  surgeBright: 0xffcc44,
   resolve: 0x5affff, // Cyan
   conflict: Colors.borderConflict, // Red
   ready: Colors.borderReady, // Green

@@ -22,9 +22,9 @@ import {
   type RunResult,
   type Spine,
   type TrackId,
-  type Upgrades,
   type WalkSolved,
 } from '../game/spine'
+import type { Upgrades } from '../game/types'
 
 const TRACK_IDS: TrackId[] = ['comboPayout', 'comboWindow', 'autoResolve']
 const MAX_RUNS = 3000

@@ -356,7 +356,7 @@ function handleRestart() {
 
 /* Icon colors matching game's visual language */
 .stat-icon.icon-install {
-  color: #7a7aff; /* --hud-bandwidth */
+  color: #7a7aff;
 }
 
 .stat-icon.icon-conflict {

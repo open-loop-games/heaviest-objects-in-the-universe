@@ -7,8 +7,6 @@ import type { EfficiencyTier } from './formulas'
 
 // Particle types (defined here to avoid circular imports with Vue components)
 export type ParticleType =
-  | 'bandwidth-cost'
-  | 'bandwidth-gain'
   | 'weight-gain'
   | 'weight-loss'
   | 'gravity-pulse'
@@ -96,21 +94,10 @@ export interface GameEvents {
   'input:drag-end': { worldX: number; worldY: number }
   'input:drag-cancel': void
 
-  // Momentum/activity events (bandwidth generation feedback)
-  'game:package-resolved': { amount: number }
-  'game:conflict-resolved': { amount: number; position?: Position }
-  'game:symlink-merged': {
-    amount: number
-    weightSaved: number
-    position: Position
-  }
-  'game:scope-stabilized': {
-    amount: number
-    scopeId: string
-    packageCount: number
-  }
-  'game:golden-spawned': { amount: number }
-  'game:fragment-collected': { amount: number }
+  // Player act events (feedback)
+  'game:conflict-resolved': { position?: Position }
+  'game:symlink-merged': { weightSaved: number; position: Position }
+  'game:scope-stabilized': { scopeId: string; packageCount: number }
 
   // Quality events (efficiency/stability feedback)
   'quality:efficiency-improved': {

@@ -21,8 +21,8 @@ export const TeachingColors = {
   portal: Colors.borderOptimized,
   prestige: 0x7a5aff,
   // Resource hint colors (matching CausalParticles.vue)
-  bandwidthCost: 0x7a7aff, // Blue-purple
-  bandwidthGain: 0x5aff7a, // Green
+  weightGain: 0xffaa5a, // Amber
+  qualityGain: 0x5aff8a, // Green
 }
 
 // Convert hex number to CSS color string

@@ -11,7 +11,6 @@ import {
   type Graph,
 } from '@open-loop/engine'
 import { getCompressionChance, getMaxCompressedDepth } from './formulas'
-import { setCascadeStarved } from './ui-state'
 import {
   MAX_PENDING_DEPS,
   MAX_COMPRESSED_PER_SCOPE,
@@ -22,12 +21,7 @@ import {
   MAX_SAME_IDENTITY_PER_SCOPE,
   MIN_DUPLICATE_PAIRS_PER_SCOPE,
 } from './config'
-import {
-  addWeight,
-  attachNodeToScope,
-  onGoldenSpawned,
-  onFragmentCollected,
-} from './mutations'
+import { addWeight, attachNodeToScope } from './mutations'
 import { type Package, type Wire, type PendingSpawn } from './types'
 import { recordCascadeSize } from './achievements'
 import {
@@ -44,7 +38,6 @@ import {
 } from './registry'
 import { getGraphAtPath, getPackageAtPath } from './scope'
 import { getIdentitySize } from './formulas'
-import { consumeSurge, isSurgeUnlocked } from './surge'
 import { emit } from './events'
 
 // Constants for cascade behavior
@@ -108,16 +101,6 @@ function startCascadeImmediate(
   const isThirdPackage = pkg.identity?.name === 'react'
   const isReactDom = pkg.identity?.name === 'react-dom'
 
-  let surgeBoost = {
-    sizeMultiplier: 1,
-    goldenBoost: 0,
-    fragmentBoost: 0,
-    packageMultiplier: 1,
-  }
-  if (isSurgeUnlocked() && depth >= 2) {
-    surgeBoost = consumeSurge()
-  }
-
   const isCurated =
     isStarterKit || isSecondPackage || isThirdPackage || isReactDom
   const depIdentities: PackageIdentity[] = isStarterKit
@@ -148,10 +131,6 @@ function startCascadeImmediate(
       }
       emit('cascade:crit', { count })
     }
-
-    count = Math.floor(
-      count * surgeBoost.sizeMultiplier * surgeBoost.packageMultiplier
-    )
 
     count = Math.min(count, 40)
     count = Math.max(count, 3)
@@ -249,8 +228,6 @@ function startCascadeImmediate(
       depth: 1,
       parentInternalId: null,
       isSubDep: false,
-      awaitingBandwidth: false,
-      queuedAt: 0,
     })
   }
 
@@ -277,8 +254,6 @@ function startCascadeImmediate(
   cascade.scopePath = [...scopePath]
   cascade.subDepQueue = subDepPlaceholders
   cascade.compressedIndices = compressedIndices
-  cascade.surgeGoldenBoost = surgeBoost.goldenBoost
-  cascade.surgeFragmentBoost = surgeBoost.fragmentBoost
 
   cascade.isStarterKit = isStarterKit
   cascade.isSecondPackage = isSecondPackage
@@ -424,8 +399,6 @@ function spawnNextFromQueue(): void {
           depth: 2,
           parentInternalId: parentId,
           isSubDep: true,
-          awaitingBandwidth: false,
-          queuedAt: 0,
         })
       }
 
@@ -448,10 +421,6 @@ function spawnNextFromQueue(): void {
 
   cascade.pendingSpawns.shift()
 
-  spawn.awaitingBandwidth = false
-  spawn.queuedAt = 0
-  setCascadeStarved(false)
-
   if (cascade.pendingSpawns.length > MAX_PENDING_DEPS) {
     cascade.pendingSpawns.length = MAX_PENDING_DEPS
   }
@@ -468,12 +437,11 @@ function spawnNextFromQueue(): void {
 
   const effectiveDepth = depth + spawn.depth
 
-  const surgeGoldenBoost = cascade.surgeGoldenBoost + cascade.surgeFragmentBoost
-
-  const goldenChance = GOLDEN_SPAWN_CHANCE + surgeGoldenBoost
   const hasPrestiged = gameState.meta.timesShipped >= 1
   const isGolden =
-    hasPrestiged && effectiveDepth >= GOLDEN_MIN_DEPTH && chance(goldenChance)
+    hasPrestiged &&
+    effectiveDepth >= GOLDEN_MIN_DEPTH &&
+    chance(GOLDEN_SPAWN_CHANCE)
 
   const isIncrementalEasterEgg =
     identity?.name === 'break_infinity' || identity?.name === 'break_eternity'
@@ -489,11 +457,6 @@ function spawnNextFromQueue(): void {
 
   if (isGolden) {
     gameState.stats.goldenPackagesFound++
-    onGoldenSpawned()
-  }
-
-  if (hasCacheFragment) {
-    onFragmentCollected()
   }
 
   const innerPkg: Package = {
@@ -646,8 +609,6 @@ function endCascade(): void {
   cascade.scopePath = null
   cascade.subDepQueue = null
   cascade.compressedIndices = null
-  cascade.surgeGoldenBoost = 0
-  cascade.surgeFragmentBoost = 0
   cascade.isStarterKit = false
   cascade.isSecondPackage = false
   cascade.isThirdPackage = false
@@ -655,8 +616,6 @@ function endCascade(): void {
   cascade.deferConflicts = false
   cascade.breathPhase = false
   cascade.breathStartTime = 0
-
-  setCascadeStarved(false)
 
   if (scopePath.length > 0) {
     emit('cascade:end', { scopePath })
@@ -677,16 +636,6 @@ export function cancelCascade(): void {
   if (gameState.cascade.active) {
     endCascade()
   }
-}
-
-export function getPendingSpawnsAwaitingBandwidth(): PendingSpawn[] {
-  if (!gameState.cascade.active) return []
-  return gameState.cascade.pendingSpawns.filter((s) => s.awaitingBandwidth)
-}
-
-export function getAllPendingSpawns(): PendingSpawn[] {
-  if (!gameState.cascade.active) return []
-  return [...gameState.cascade.pendingSpawns]
 }
 
 export function getCascadeScopePath(): string[] {
