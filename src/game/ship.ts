@@ -10,7 +10,7 @@ import {
   engine,
   gameState,
   resetGraphAndStack,
-  syncEcosystemTier,
+  unlockAffordableTiers,
 } from './state'
 import { saveToLocalStorage } from './persistence'
 import { emit } from './events'
@@ -62,6 +62,8 @@ export function clearRunSystems(): void {
   Object.assign(gameState.collapseHold, fresh.collapseHold)
   gameState.seed = Date.now()
   seedRNG(gameState.seed)
+  // The next run plays the highest unlocked map tier.
+  gameState.board.tier = gameState.meta.unlockedTier
 }
 
 // ============================================
@@ -71,17 +73,14 @@ export function clearRunSystems(): void {
 export function performShip(): void {
   emit('player:action')
 
-  // shipReward (spine.ts) over this run's counters, q measured fresh. Read before the
-  // cycle resets them.
+  // shipReward (spine.ts) over this run's counters, q measured fresh. The run is settled
+  // before the cycle resets it, so the next board starts at the tier the wallet unlocks.
   updateResolvedShare()
   const reward = computed_prestigeReward.value
-  const tierBefore = gameState.meta.ecosystemTier
+  const tierBefore = gameState.meta.unlockedTier
   const efficiency = gameState.run.currentEfficiency
-  const weight = gameState.resources.weight
 
-  if (!getRunCycle().end()) return
-
-  gameState.stats.totalWeight += weight
+  gameState.stats.totalWeight += gameState.resources.weight
   gameState.stats.peakEfficiency = Math.max(
     gameState.stats.peakEfficiency,
     efficiency
@@ -89,13 +88,15 @@ export function performShip(): void {
   gameState.onboarding.firstPrestigeComplete = true
   gameState.meta.cacheTokens += reward
   gameState.meta.timesShipped++
+  unlockAffordableTiers()
   recordShip()
-  syncEcosystemTier()
+
+  getRunCycle().end()
 
   emit('ship:reward', {
     tokensEarned: reward,
     tierBefore,
-    tierAfter: gameState.meta.ecosystemTier,
+    tierAfter: gameState.meta.unlockedTier,
     efficiency,
   })
 

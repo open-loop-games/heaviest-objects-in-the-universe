@@ -52,6 +52,7 @@ src/
 │   ├── ui-state.ts       # UI-specific state (drag, collapse, wiggle)
 │   ├── loop.ts           # Game tick, physics updates
 │   ├── packages.ts       # Package creation, dependency spawning
+│   ├── board.ts          # The run's board: map tier data, seeded plan, weight scale
 │   ├── cascade.ts        # Staggered spawn system with depth rewards
 │   ├── scope.ts          # Scope navigation (dive into packages)
 │   ├── automation.ts     # Auto-resolve (a meta upgrade)
@@ -109,7 +110,7 @@ src/
 | **Wire style** | Solid=dependency, dashed=symlink, red crackling=conflict |
 | **Portal rings** | Top-level packages have internal scopes (pristine/unstable/stable) |
 | **Glows/Halos** | Duplicate detection, affordability hints |
-| **Golden glow** | Depth 3+ reward package (4x weight) |
+| **Golden glow** | Reward package on tier 3+ boards (4x weight) |
 | **Bar fill** | Resource amount (NOT numeric display) |
 
 ## Game Mechanics
@@ -140,12 +141,13 @@ No in-run currency gates installs.
 - Internal state: pristine → unstable (has conflicts/dupes) → stable (resolved)
 - Depth totem shows current scope level (max depth = tier)
 
-**Progression (Tiers 1-5):**
-- Tier 1: Base game, depth 1 only
-- Tier 2: Depth 2 unlocked
-- Tier 3: Depth 3+, golden packages spawn
-- Tier 4-5: Deeper nesting, faster automation
-- Tier 5: Collapse available (finale)
+**Progression (map tiers 1-5):** each tier is a finite board drawn from a seeded plan
+(`src/game/board.ts`), bought with cache tokens; a board's depth is its tier.
+- Tier 1: utility lib, depth 1
+- Tier 2: app, nested scopes and cross-package conflicts
+- Tier 3: framework, golden packages and fragments
+- Tier 4: monorepo, more top-level deps
+- Tier 5: enterprise app, Collapse available (finale)
 
 **Automation (meta upgrade):**
 - Auto-resolve: resolves conflicts in scopes the player has left, when enabled

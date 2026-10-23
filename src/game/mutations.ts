@@ -19,6 +19,7 @@ import { emit, on } from './events'
 import { getEfficiencyTierRank, updateEfficiencyTracking } from './formulas'
 import { checkAchievements } from './achievements'
 import { GAME_SPINE, comboWindow } from './spine'
+import { boardWeightScale } from './board'
 
 // Quality event types are now in the main event bus (src/game/events.ts)
 // Use emit('quality:efficiency-improved', ...) etc.
@@ -247,8 +248,7 @@ export function addRootPackage(pkg: Package): void {
  * cache. Returns the wire id and the resolved scope graph.
  *
  * This is the canonical primitive for "put this package into that scope" —
- * cascade and addInnerPackage both route through it so the seed-cache step
- * can't be missed. Callers handle their own weight bookkeeping, stats, and
+ * the cascade routes through it so the seed-cache step can't be missed. Callers handle their own weight bookkeeping, stats, and
  * any package-state mutation downstream of attachment.
  */
 export function attachNodeToScope(
@@ -277,27 +277,6 @@ export function attachNodeToScope(
     stack.recalculateAt([...scopePath, pkg.id])
   }
   return { wireId, scopeGraph }
-}
-
-/**
- * Add an inner-scope package to the given scope's child graph. Creates the
- * wire from the parent (scope owner if `parentInScopeId === scopeOwnerId`,
- * or another inner pkg for sub-deps). If the package itself is compressed,
- * its own child graph + shadow are created.
- */
-export function addInnerPackage(
-  scopePath: readonly string[],
-  pkg: Package,
-  parentInScopeId: string,
-  isCompressed: boolean,
-  conflicted: boolean
-): void {
-  if (scopePath.length === 0) {
-    throw new Error('addInnerPackage requires a non-empty scope path')
-  }
-  attachNodeToScope(scopePath, pkg, parentInScopeId, isCompressed, conflicted)
-  addWeight(pkg.size)
-  gameState.stats.totalPackagesInstalled++
 }
 
 /** Create a child graph for `pkg` and add a shadow node mirroring its data. */
@@ -427,7 +406,7 @@ export function collectCacheFragment(packageId: string): boolean {
   }
 
   pkg.hasCacheFragment = false
-  addWeight(FRAGMENT_WEIGHT)
+  addWeight(FRAGMENT_WEIGHT * boardWeightScale())
   gameState.resources.cacheFragments++
   gameState.stats.cacheFragmentsCollected++
 

@@ -1,7 +1,8 @@
 // Prints the spine: solved values, the first-run decomposition, the pace sweep against the
 // 2-3x cap, and the levers that move it. A script that prints, not a test: `pnpm spine`.
-// `--write` regenerates src/game/spine-solved.ts from a fresh solve; `--check` exits nonzero
-// when the committed values differ from one, a derivation guard lint-staged runs.
+// `--write` regenerates src/game/spine-solved.ts from a fresh solve and src/game/scope-weights.ts
+// from a fresh sample; `--check` exits nonzero when the committed values differ from them, a
+// derivation guard lint-staged runs.
 
 import { execFileSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
@@ -18,6 +19,12 @@ import {
   type Spine,
 } from '../game/spine'
 import { SPINE_SOLVED } from '../game/spine-solved'
+import { SCOPE_WEIGHTS } from '../game/scope-weights'
+import {
+  roundedScopeWeights,
+  sampleScopeWeights,
+  scopeWeightsModule,
+} from './scope-weights'
 import {
   finaleRatio,
   solveAtStep,
@@ -28,6 +35,9 @@ import {
 
 const SOLVED_PATH = fileURLToPath(
   new URL('../game/spine-solved.ts', import.meta.url)
+)
+const SCOPE_WEIGHTS_PATH = fileURLToPath(
+  new URL('../game/scope-weights.ts', import.meta.url)
 )
 
 const MILESTONES = ['tier 2', 'tier 3', 'tier 4', 'tier 5', 'finale']
@@ -362,14 +372,25 @@ const mode = process.argv.includes('--write')
     ? 'check'
     : 'report'
 const fresh = solveSpine(ANCHORS)
+const freshWeights = sampleScopeWeights()
+const sameWeights =
+  JSON.stringify(roundedScopeWeights(SCOPE_WEIGHTS)) ===
+  JSON.stringify(roundedScopeWeights(freshWeights))
 if (mode === 'write') {
   writeFileSync(SOLVED_PATH, solvedModule(fresh))
-  execFileSync('oxfmt', [SOLVED_PATH], { stdio: 'inherit' })
-  console.log(`wrote ${SOLVED_PATH}`)
+  writeFileSync(SCOPE_WEIGHTS_PATH, scopeWeightsModule(freshWeights))
+  execFileSync('oxfmt', [SOLVED_PATH, SCOPE_WEIGHTS_PATH], { stdio: 'inherit' })
+  console.log(`wrote ${SOLVED_PATH}\nwrote ${SCOPE_WEIGHTS_PATH}`)
 } else if (mode === 'check') {
   if (!sameSolve(SPINE_SOLVED, fresh)) {
     console.error(
       'src/game/spine-solved.ts differs from a fresh solve: run `pnpm spine --write`'
+    )
+    process.exit(1)
+  }
+  if (!sameWeights) {
+    console.error(
+      'src/game/scope-weights.ts differs from a fresh sample: run `pnpm spine --write`'
     )
     process.exit(1)
   }

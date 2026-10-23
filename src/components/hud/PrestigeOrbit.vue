@@ -13,6 +13,7 @@ import {
   computed_gravity,
   computed_prestigeReward,
   computed_canPrestige,
+  computed_canCollapse,
   computed_isEndlessMode,
 } from '../../game/state'
 import { triggerShipWithAnimation } from '../../game/ship'
@@ -47,15 +48,14 @@ const showCacheTokens = computed(
 // Draws attention without being too noisy during approach
 const showGravityPull = computed(() => gravityReady.value)
 
-// Current ecosystem tier (1-5) for central mass visual
-const ecosystemTier = computed(() => gameState.meta.ecosystemTier)
+// The board's map tier (1-5) for the central mass visual
+const boardTier = computed(() => gameState.board.tier)
 
 // ============================================
 // COLLAPSE HOLD STATE
 // ============================================
 
-// Can collapse at Tier 5
-const collapseReady = computed(() => ecosystemTier.value >= 5)
+const collapseReady = computed(() => computed_canCollapse.value)
 
 // Reactive collapse hold state (updated via events)
 const collapseHoldProgress = ref(0)
@@ -491,6 +491,7 @@ function handlePrestige() {
         <TierArcs
           v-if="showCacheTokens"
           :cache-tokens="gameState.meta.cacheTokens"
+          :unlocked-tier="gameState.meta.unlockedTier"
           :is-holding="isHoldingCollapse"
           :hold-progress="collapseHoldProgress"
           :automation-active="automationActive"
@@ -502,7 +503,7 @@ function handlePrestige() {
 
         <!-- Central npm mass (holdable at Tier 5 for collapse) -->
         <NpmMass
-          :tier="ecosystemTier"
+          :tier="boardTier"
           :ready="gravityReady"
           :holdable="collapseReady"
           :holding="isHoldingCollapse"

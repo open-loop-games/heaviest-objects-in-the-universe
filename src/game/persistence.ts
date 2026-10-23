@@ -22,7 +22,6 @@ import {
   rootIdRef,
   resetGraphAndStack,
   stack,
-  syncEcosystemTier,
   syncIdCountersFromGraph,
   userSettings,
 } from './state'
@@ -144,8 +143,6 @@ function restoreGame(data: SaveBlob): boolean {
     syncIdCountersFromGraph()
 
     rebuildScopeStateCache()
-
-    syncEcosystemTier()
 
     return true
   } catch (e) {

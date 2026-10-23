@@ -8,7 +8,6 @@ import {
   updateResolvedShare,
   updateStability,
 } from './mutations'
-import { spawnDependencies } from './packages'
 import { updateCascade } from './cascade'
 import {
   updatePhysics,
@@ -186,7 +185,6 @@ function frame(): void {
 
 function updatePackages(deltaTime: number): void {
   // Root scope: walk top-level packages + root.
-  const packagesToSpawn: string[] = []
   for (const [id, node] of graph.nodes) {
     const pkg = node.data
     if (pkg.state === 'installing') {
@@ -194,7 +192,6 @@ function updatePackages(deltaTime: number): void {
       if (pkg.installProgress >= 1) {
         pkg.installProgress = 1
         pkg.state = 'ready'
-        packagesToSpawn.push(id)
         // Track when first divable package becomes ready.
         if (
           isTopLevelPackage(id) &&
@@ -218,12 +215,6 @@ function updatePackages(deltaTime: number): void {
     if (child) {
       updateScopeGraph(child, id, deltaTime)
     }
-  }
-
-  // Spawn dependencies for newly installed packages (inner deps only —
-  // top-level packages don't cascade until entered).
-  for (const id of packagesToSpawn) {
-    spawnDependencies(id)
   }
 }
 

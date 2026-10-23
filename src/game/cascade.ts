@@ -3,24 +3,22 @@
 // Supports arbitrary depth using scope paths
 
 import { gameState, generateId, stack } from './state'
+import { random, shuffle, chance, type Graph } from '@open-loop/engine'
 import {
-  random,
-  randomInt,
-  shuffle,
-  chance,
-  type Graph,
-} from '@open-loop/engine'
-import { getCompressionChance, getMaxCompressedDepth } from './formulas'
+  carriesFragment,
+  getIdentitySize,
+  rollGolden,
+  rollScopeDepCount,
+  rollSubDepCount,
+  spawnedSize,
+} from './formulas'
 import {
+  CASCADE_CRIT_CHANCE,
   MAX_PENDING_DEPS,
-  MAX_COMPRESSED_PER_SCOPE,
-  GOLDEN_SPAWN_CHANCE,
-  GOLDEN_WEIGHT_MULTIPLIER,
-  GOLDEN_MIN_DEPTH,
-  DEPTH_WEIGHT_MULTIPLIERS,
   MAX_SAME_IDENTITY_PER_SCOPE,
   MIN_DUPLICATE_PAIRS_PER_SCOPE,
 } from './config'
+import { boardWeightScale, plannedChildren } from './board'
 import { addWeight, attachNodeToScope } from './mutations'
 import { type Package, type Wire, type PendingSpawn } from './types'
 import { recordCascadeSize } from './achievements'
@@ -37,7 +35,6 @@ import {
   pickDistinctDuplicateIdentities,
 } from './registry'
 import { getGraphAtPath, getPackageAtPath } from './scope'
-import { getIdentitySize } from './formulas'
 import { emit } from './events'
 
 // Constants for cascade behavior
@@ -114,26 +111,15 @@ function startCascadeImmediate(
           : []
 
   if (!isCurated) {
-    let count: number
-    if (pkg.identity && pkg.identity.baseDeps > 0) {
-      const variance = randomInt(-2, 2)
-      count = Math.max(4, pkg.identity.baseDeps + variance)
-    } else {
-      const baseCount = depth === 1 ? 8 : 6
-      const variance = depth === 1 ? 8 : 4
-      count = baseCount + randomInt(0, variance - 1)
-    }
     const hasGuaranteedCrit = gameState.cascade.guaranteedCrits > 0
-    if (hasGuaranteedCrit || chance(0.05)) {
-      count *= 2
+    const crit = hasGuaranteedCrit || chance(CASCADE_CRIT_CHANCE)
+    const count = rollScopeDepCount(pkg.identity, depth, crit)
+    if (crit) {
       if (hasGuaranteedCrit) {
         gameState.cascade.guaranteedCrits--
       }
       emit('cascade:crit', { count })
     }
-
-    count = Math.min(count, 40)
-    count = Math.max(count, 3)
 
     const identityCounts = new Map<string, number>()
     const conflictingIdentityNames = new Set<string>()
@@ -181,26 +167,13 @@ function startCascadeImmediate(
     depIdentities.push(...shuffledIdentities)
   }
 
-  const cacheTokens = gameState.meta.cacheTokens
-  const maxDepth = getMaxCompressedDepth(cacheTokens)
-  const compressionChance = getCompressionChance(depth, cacheTokens)
-
-  const tier = gameState.meta.ecosystemTier
-  const maxCompressed = MAX_COMPRESSED_PER_SCOPE[tier - 1] ?? 1
-
-  const compressedIndices = new Set<number>()
-  if (depth <= maxDepth && compressionChance > 0) {
-    for (let i = 0; i < depIdentities.length; i++) {
-      if (compressedIndices.size >= maxCompressed) break
-
-      const dep = depIdentities[i]
-      if (!dep) continue
-      if (isThirdPackage && dep.name === 'react-dom') {
-        compressedIndices.add(i)
-      } else if (!isCurated && chance(compressionChance)) {
-        compressedIndices.add(i)
-      }
-    }
+  // The board plan says how many of this scope's deps are scopes of their own; which
+  // deps they are is the run's roll. Each maps to its child slot in the plan.
+  const compressedSlots = new Map<number, number>()
+  const planned = plannedChildren(pkg.planPath)
+  const indices = shuffle(depIdentities.map((_, i) => i))
+  for (let slot = 0; slot < Math.min(planned, indices.length); slot++) {
+    compressedSlots.set(indices[slot]!, slot)
   }
 
   const pendingSpawns: PendingSpawn[] = []
@@ -237,11 +210,8 @@ function startCascadeImmediate(
   }> = []
   if (!isCurated) {
     for (let i = 0; i < count; i++) {
-      if (compressedIndices.has(i)) continue
-      if (!chance(0.4)) continue
-
-      const subDepCount = randomInt(1, 2)
-      for (let j = 0; j < subDepCount; j++) {
+      if (compressedSlots.has(i)) continue
+      for (let j = rollSubDepCount(); j > 0; j--) {
         subDepPlaceholders.push({
           parentIndex: i,
           identity: pickRandomIdentity(),
@@ -253,7 +223,7 @@ function startCascadeImmediate(
   const cascade = gameState.cascade
   cascade.scopePath = [...scopePath]
   cascade.subDepQueue = subDepPlaceholders
-  cascade.compressedIndices = compressedIndices
+  cascade.compressedSlots = compressedSlots
 
   cascade.isStarterKit = isStarterKit
   cascade.isSecondPackage = isSecondPackage
@@ -280,8 +250,7 @@ function startCascadeImmediate(
     )
   }
 
-  // Touch the graph reference so lint/usage analysis sees it. Tracking
-  // node count to spawn into the graph is owned by `addInnerPackage`.
+  // Spawns attach through attachNodeToScope as the queue drains.
   void scopeGraph
 }
 
@@ -426,34 +395,21 @@ function spawnNextFromQueue(): void {
   }
 
   const depth = scopePath.length
-  const maxDepth = getMaxCompressedDepth(gameState.meta.cacheTokens)
-  const isCompressed =
-    depth <= maxDepth &&
-    !spawn.isSubDep &&
-    (cascade.compressedIndices?.has(spawnIndex) ?? false)
+  const planSlot = spawn.isSubDep
+    ? undefined
+    : cascade.compressedSlots?.get(spawnIndex)
+  const isCompressed = planSlot !== undefined
 
   const id = generateId()
   const identity = spawn.identity as PackageIdentity
 
   const effectiveDepth = depth + spawn.depth
 
-  const hasPrestiged = gameState.meta.timesShipped >= 1
-  const isGolden =
-    hasPrestiged &&
-    effectiveDepth >= GOLDEN_MIN_DEPTH &&
-    chance(GOLDEN_SPAWN_CHANCE)
-
-  const isIncrementalEasterEgg =
-    identity?.name === 'break_infinity' || identity?.name === 'break_eternity'
-  const hasCacheFragment = isGolden || isIncrementalEasterEgg
-
-  const depthIndex = Math.min(
-    effectiveDepth,
-    DEPTH_WEIGHT_MULTIPLIERS.length - 1
+  const isGolden = rollGolden(effectiveDepth, gameState.board.tier)
+  const hasCacheFragment = carriesFragment(identity, isGolden)
+  const finalSize = Math.round(
+    spawnedSize(spawn.size, effectiveDepth, isGolden) * boardWeightScale()
   )
-  const depthMultiplier = DEPTH_WEIGHT_MULTIPLIERS[depthIndex] ?? 1.0
-  const goldenMultiplier = isGolden ? GOLDEN_WEIGHT_MULTIPLIER : 1.0
-  const finalSize = Math.floor(spawn.size * depthMultiplier * goldenMultiplier)
 
   if (isGolden) {
     gameState.stats.goldenPackagesFound++
@@ -474,6 +430,7 @@ function spawnNextFromQueue(): void {
     ghostTargetScope: null,
     isGolden,
     hasCacheFragment,
+    planPath: isCompressed ? [...(targetPkg.planPath ?? []), planSlot] : null,
   }
 
   const parentInScopeId = spawn.parentInternalId || spawn.packageId
@@ -503,8 +460,7 @@ function spawnNextFromQueue(): void {
     }
   }
 
-  // Update the scope owner's accumulated weight (for visual size)
-  // and add to global weight via the compression-aware helper.
+  // Update the scope owner's accumulated weight (for visual size) and the run's weight.
   targetPkg.size += finalSize
   addWeight(finalSize)
 
@@ -608,7 +564,7 @@ function endCascade(): void {
   cascade.pendingSpawns = []
   cascade.scopePath = null
   cascade.subDepQueue = null
-  cascade.compressedIndices = null
+  cascade.compressedSlots = null
   cascade.isStarterKit = false
   cascade.isSecondPackage = false
   cascade.isThirdPackage = false

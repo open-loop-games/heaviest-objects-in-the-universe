@@ -276,7 +276,7 @@ export const THIRD_PACKAGE_IDENTITY: PackageIdentity = {
 // Compressed (react-dom) at index 0 - prominent position
 // Duplicates spread for visibility
 export const THIRD_PACKAGE_INTERNAL_DEPS: PackageIdentity[] = [
-  // Index 0: react-dom (COMPRESSED - has internal scope)
+  // Index 0: react-dom (a scope of its own only where the board plan nests one)
   {
     name: 'react-dom',
     iconKey: 'react',
@@ -1918,43 +1918,6 @@ export function pickDistinctDuplicateIdentities(
   }
 
   return result
-}
-
-/**
- * Check if a new package identity conflicts with any ancestor reachable via
- * the given parent-id resolver. Returns true if any ancestor's identity is
- * incompatible with `identity`.
- */
-export function checkIncompatibilityWithPackages(
-  identity: PackageIdentity | undefined,
-  parentId: string,
-  resolvers: {
-    getIdentity: (id: string) => PackageIdentity | undefined
-    getParentId: (id: string) => string | null
-  }
-): boolean {
-  if (!identity) return false
-
-  const newName = identity.name
-
-  let currentId: string | null = parentId
-  const visited = new Set<string>()
-
-  while (currentId !== null) {
-    if (visited.has(currentId)) break
-    visited.add(currentId)
-
-    const ancestorIdentity = resolvers.getIdentity(currentId)
-    if (ancestorIdentity) {
-      if (areIncompatible(newName, ancestorIdentity.name)) {
-        return true
-      }
-    }
-
-    currentId = resolvers.getParentId(currentId)
-  }
-
-  return false
 }
 
 /**

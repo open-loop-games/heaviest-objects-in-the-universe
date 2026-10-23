@@ -1,30 +1,21 @@
 // Package creation and management logic
 
-import { random, randomInt } from '@open-loop/engine'
-import { gameState, gameConfig, graph, rootIdRef, stack } from './state'
-import {
-  getCurrentScopePackages,
-  isTopLevelPackage,
-  _injectCascade,
-} from './scope'
-import {
-  addInnerPackage,
-  addRootPackage,
-  addTopLevelPackage,
-} from './mutations'
+import { random } from '@open-loop/engine'
+import { gameState, graph, rootIdRef, stack } from './state'
+import { _injectCascade } from './scope'
+import { addRootPackage, addTopLevelPackage } from './mutations'
 import { generateId } from './state'
 import type { Package } from './types'
-import { rollDependencyCount, getIdentitySize } from './formulas'
+import { getIdentitySize } from './formulas'
 import {
-  pickRandomIdentity,
   pickDirectInstallIdentity,
-  checkIncompatibilityWithPackages,
   STARTER_KIT_IDENTITY,
   SECOND_PACKAGE_IDENTITY,
   THIRD_PACKAGE_IDENTITY,
   type PackageIdentity,
 } from './registry'
 import { markDuplicateGroupsDirty } from './symlinks'
+import { boardWeightScale, topLevelRemaining } from './board'
 import { emit, on } from './events'
 import { startCascade } from './cascade'
 import { recalculateStateAtPath } from './scope'
@@ -72,6 +63,7 @@ export function createRootPackage(): Package | null {
     ghostTargetScope: null,
     isGolden: false,
     hasCacheFragment: false,
+    planPath: null,
   }
 
   addRootPackage(pkg)
@@ -89,6 +81,9 @@ export function installPackage(parentId: string): Package | null {
 
   const parent = graph.getNode(rootId)?.data
   if (!parent) return null
+
+  // A finite board: the root installs its tier's top-level deps, then no more.
+  if (topLevelRemaining() <= 0) return null
 
   // Tutorial gating: before first prestige, must stabilize previous package
   // before installing the next one.
@@ -112,9 +107,9 @@ export function installPackage(parentId: string): Package | null {
   const angle = random() * Math.PI * 2
   const distance = 80 + random() * 40
 
-  // Curated first three installs: starter-kit → express → react.
-  // Counted by current top-level package count (excluding root).
-  const topLevelCount = graph.nodes.size - 1
+  // Curated first three installs: starter-kit → express → react. Each install takes the
+  // next top-level slot of the board plan.
+  const topLevelCount = gameState.board.topLevelInstalled
   const isFirstInstall =
     gameState.meta.timesShipped === 0 && topLevelCount === 0
   const isSecondInstall =
@@ -136,12 +131,9 @@ export function installPackage(parentId: string): Package | null {
       ? SECOND_PACKAGE_IDENTITY
       : isThirdInstall
         ? THIRD_PACKAGE_IDENTITY
-        : pickDirectInstallIdentity(
-            gameState.meta.ecosystemTier,
-            existingTopLevel
-          )
+        : pickDirectInstallIdentity(gameState.board.tier, existingTopLevel)
 
-  const size = getIdentitySize(identity)
+  const size = Math.round(getIdentitySize(identity) * boardWeightScale())
 
   const pkg: Package = {
     id,
@@ -161,120 +153,12 @@ export function installPackage(parentId: string): Package | null {
     ghostTargetScope: null,
     isGolden: false,
     hasCacheFragment: false,
+    planPath: [topLevelCount],
   }
 
+  gameState.board.topLevelInstalled++
   addTopLevelPackage(pkg, rootId)
   return pkg
-}
-
-/**
- * Spawn dependencies for a top-level package or sub-dep that just finished
- * installing. Top-level packages don't spawn at root scope (they're
- * compressed seeds — cascade fires on enter). Inner deps spawned in
- * cascade may grow sub-trees here.
- */
-export function spawnDependencies(packageId: string): Package[] {
-  // Top-level packages: compressed seed, no cascade until entered.
-  if (isTopLevelPackage(packageId)) return []
-
-  const scopePackages = getCurrentScopePackages()
-  const pkg = scopePackages.get(packageId)
-  if (!pkg) return []
-
-  if (pkg.depth >= gameConfig.dependencyDepthLimit) {
-    return []
-  }
-
-  let count: number
-  if (pkg.identity && pkg.identity.baseDeps > 0) {
-    const variance = randomInt(-1, 1)
-    count = Math.max(0, pkg.identity.baseDeps + variance)
-  } else {
-    count = rollDependencyCount(gameConfig)
-  }
-
-  if (gameState.meta.timesShipped === 0) {
-    const packageCount = scopePackages.size
-    if (packageCount < 10) {
-      count = Math.min(count, 2)
-    } else if (packageCount < 30) {
-      count = Math.min(count, 3)
-    } else if (packageCount < 60) {
-      count = Math.min(count, 4)
-    }
-  }
-
-  const spawned: Package[] = []
-  const scopePath: string[] = [...stack.path]
-  const scopeGraph = stack.current
-
-  const resolvers = {
-    getIdentity: (id: string): PackageIdentity | undefined => {
-      return scopeGraph.getNode(id)?.data.identity
-    },
-    getParentId: (id: string): string | null => {
-      if (!scopeGraph.getNode(id)) return null
-      for (const edge of scopeGraph.edgesOf(id)) {
-        if (edge.toId === id && edge.data.wireType === 'dependency') {
-          return edge.fromId
-        }
-      }
-      return null
-    },
-  }
-
-  for (let i = 0; i < count; i++) {
-    const spreadAngle = Math.PI * 0.7
-    const startAngle = Math.PI * 0.5 - spreadAngle / 2
-    const baseAngle =
-      count > 1 ? startAngle + (spreadAngle * i) / (count - 1) : Math.PI * 0.5
-    const angle = baseAngle + (random() - 0.5) * 0.3
-    const distance = 80 + random() * 40
-
-    const id = generateId()
-    const identity = pickRandomIdentity()
-    const size = getIdentitySize(identity)
-
-    const child: Package = {
-      id,
-      position: {
-        x: pkg.position.x + Math.cos(angle) * distance,
-        y: pkg.position.y + Math.sin(angle) * distance,
-      },
-      velocity: {
-        vx: Math.cos(angle) * 2,
-        vy: Math.sin(angle) * 2,
-      },
-      state: 'installing',
-      size,
-      depth: pkg.depth + 1,
-      installProgress: 0,
-      conflictProgress: 0,
-      identity,
-      isGhost: false,
-      ghostTargetId: null,
-      ghostTargetScope: null,
-      isGolden: false,
-      hasCacheFragment: false,
-    }
-
-    const isConflicted = checkIncompatibilityWithPackages(
-      identity,
-      packageId,
-      resolvers
-    )
-    if (isConflicted) {
-      child.state = 'conflict'
-      if (!gameState.onboarding.firstConflictSeen) {
-        gameState.onboarding.firstConflictSeen = true
-      }
-    }
-
-    addInnerPackage(scopePath, child, packageId, false, isConflicted)
-    spawned.push(child)
-  }
-
-  return spawned
 }
 
 // ============================================

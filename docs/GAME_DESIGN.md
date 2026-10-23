@@ -24,7 +24,7 @@ You are a dependency resolver. Packages arrive. Each package contains its own `n
 | Resource | Symbol | Description | Generation |
 |----------|--------|-------------|------------|
 | **Weight** | ◆ | Total node_modules size | Sum of all package sizes |
-| **Cache Fragments** | ✦ | Depth rewards (depth 2+) | Collected during runs; each adds weight |
+| **Cache Fragments** | ✦ | Depth rewards (from map tier 3) | Collected during runs; each adds weight |
 
 ### Meta-Currencies (Persist through prestige)
 
@@ -88,7 +88,7 @@ pay through q and combo at ship.
 - Dependencies spawn with staggered timing (satisfying popcorn effect)
 - Each spawn positioned radially from parent with physics velocity
 - Spawn interval accelerates (120ms → 40ms minimum)
-- Depth rewards: golden packages (8% at depth 3+, requires P1+) give 4x weight + guaranteed fragment
+- Depth rewards: golden packages (8% at effective depth 3+, from map tier 3) give 4x weight + guaranteed fragment
 - Sub-dependencies (40% chance) spawn after main queue
 
 ### Phase 4: Resolve Conflicts (Player Action)
@@ -188,17 +188,23 @@ root (package.json)
 
 ## 6. Progression System
 
-### Tier System (Cache Token Thresholds)
+### Map Tiers
 
-| Tier | Tokens | Max Depth | Unlocks |
-|------|--------|-----------|---------|
-| **1** | 0 | 1 | Base game, single-level packages |
-| **2** | 9 | 2 | Auto-resolve, Resolve Speed upgrade |
-| **3** | 21 | 3 | Golden packages* |
-| **4** | 42 | 4 | Faster automation intervals |
-| **5** | 63 | 5 | Maximum automation speed |
+A map tier is a finite board, and each adds one thing to it. A board's depth is its tier.
 
-\* Golden packages require first prestige (P1+) in addition to Tier 3 depth unlock
+| Tier | Board | Adds |
+|------|-------|------|
+| **1** | utility lib | Conflicts and duplicates, one level of scopes |
+| **2** | app | Nested scopes; conflicts between top-level packages |
+| **3** | framework | Golden packages and cache fragments |
+| **4** | monorepo | More top-level deps |
+| **5** | enterprise app | The heaviest board; Collapse |
+
+Each run draws a board plan from its seed (`src/game/board.ts`): the tier's top-level deps,
+one chain of nested scopes to the tier's depth, and the rest of the spine's scope count
+spread above it. Package weights are scaled so a board's expected gross weight is the
+spine's board weight. Tiers are bought with cache tokens at the walk-solved prices in
+`src/game/spine-solved.ts`; a ship buys every tier the wallet affords.
 
 ### Meta Upgrades
 

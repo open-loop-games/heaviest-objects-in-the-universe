@@ -1,22 +1,14 @@
 // Cost and production formulas based on design doc
 
+import { random, randomInt, chance, type Graph } from '@open-loop/engine'
+import type { Package, Wire } from './types'
+import type { PackageIdentity } from './registry'
 import {
-  random,
-  chance,
-  weightedPick,
-  type Graph,
-  type WeightedItem,
-} from '@open-loop/engine'
-import type { GameConfig, Package, Wire } from './types'
-import {
-  DEFAULT_CONFIG,
-  TIER_THRESHOLDS,
-  TIER_MAX_DEPTH,
-  BASE_COMPRESSION_CHANCE,
-  COMPRESSION_PER_TOKEN,
-  COMPRESSION_SOFTCAP,
-  COMPRESSION_HARDCAP,
-  DEPTH_COMPRESSION_MULT,
+  DEPTH_WEIGHT_MULTIPLIERS,
+  GOLDEN_MIN_DEPTH,
+  GOLDEN_MIN_TIER,
+  GOLDEN_SPAWN_CHANCE,
+  GOLDEN_WEIGHT_MULTIPLIER,
 } from './config'
 
 // ============================================
@@ -30,61 +22,69 @@ export function getPrestigeThreshold(timesShipped: number): number {
 }
 
 // ============================================
-// ECOSYSTEM TIER
+// SCOPE ROLLS
 // ============================================
+// The cascade's rolls for what a scope holds. The cascade calls them, and the sampler
+// behind scope-weights.ts runs them, so a board's expected weight follows the rules.
 
-export function getEcosystemTier(cacheTokens: number): number {
-  for (let tier = TIER_THRESHOLDS.length; tier >= 1; tier--) {
-    const threshold = TIER_THRESHOLDS[tier - 1]
-    if (threshold !== undefined && cacheTokens >= threshold) {
-      return tier
-    }
-  }
-  return 1
-}
-
-export function getMaxCompressedDepth(
-  cacheTokens: number,
-  ecosystemTier?: number
+/** Deps a scope spawns before sub-deps; `crit` doubles them. */
+export function rollScopeDepCount(
+  owner: PackageIdentity | undefined,
+  scopeDepth: number,
+  crit: boolean
 ): number {
-  const tier = ecosystemTier ?? getEcosystemTier(cacheTokens)
-  return TIER_MAX_DEPTH[tier - 1] ?? 1
-}
-
-// ============================================
-// COMPRESSION CHANCE
-// ============================================
-
-function calculateBaseCompressionChance(cacheTokens: number): number {
-  let baseChance = BASE_COMPRESSION_CHANCE + cacheTokens * COMPRESSION_PER_TOKEN
-
-  if (baseChance > COMPRESSION_SOFTCAP) {
-    const tokensOverSoftcap = cacheTokens - 20
-    const push =
-      (COMPRESSION_HARDCAP - COMPRESSION_SOFTCAP) *
-      (1 - Math.exp(-tokensOverSoftcap / 75))
-    baseChance = COMPRESSION_SOFTCAP + push
+  let count: number
+  if (owner && owner.baseDeps > 0) {
+    count = Math.max(4, owner.baseDeps + randomInt(-2, 2))
+  } else {
+    const baseCount = scopeDepth === 1 ? 8 : 6
+    const variance = scopeDepth === 1 ? 8 : 4
+    count = baseCount + randomInt(0, variance - 1)
   }
-
-  return Math.min(COMPRESSION_HARDCAP, baseChance)
+  if (crit) count *= 2
+  return Math.max(3, Math.min(40, count))
 }
 
-export function getCompressionChance(
-  depth: number,
-  cacheTokens: number
+/** Sub-deps one uncompressed dep grows. */
+export function rollSubDepCount(): number {
+  return chance(0.4) ? randomInt(1, 2) : 0
+}
+
+/** Whether a package spawns golden: from GOLDEN_MIN_TIER, at effective depth GOLDEN_MIN_DEPTH+. */
+export function rollGolden(effectiveDepth: number, tier: number): boolean {
+  return (
+    tier >= GOLDEN_MIN_TIER &&
+    effectiveDepth >= GOLDEN_MIN_DEPTH &&
+    chance(GOLDEN_SPAWN_CHANCE)
+  )
+}
+
+/** Whether a spawned package carries a cache fragment. */
+export function carriesFragment(
+  identity: PackageIdentity | undefined,
+  golden: boolean
+): boolean {
+  return (
+    golden ||
+    identity?.name === 'break_infinity' ||
+    identity?.name === 'break_eternity'
+  )
+}
+
+/** A spawned package's raw weight: its identity size by depth, ×4 golden. */
+export function spawnedSize(
+  baseSize: number,
+  effectiveDepth: number,
+  golden: boolean
 ): number {
-  if (depth >= 5) return 0
-
-  const baseChance = calculateBaseCompressionChance(cacheTokens)
-
-  const depthIndex = Math.min(depth - 1, DEPTH_COMPRESSION_MULT.length - 1)
-  const depthMult = DEPTH_COMPRESSION_MULT[depthIndex] ?? 0
-
-  return baseChance * depthMult
-}
-
-export function getBaseCompressionChance(cacheTokens: number): number {
-  return calculateBaseCompressionChance(cacheTokens)
+  const depthIndex = Math.min(
+    effectiveDepth,
+    DEPTH_WEIGHT_MULTIPLIERS.length - 1
+  )
+  const depthMultiplier = DEPTH_WEIGHT_MULTIPLIERS[depthIndex] ?? 1
+  return Math.floor(
+    baseSize * depthMultiplier * (golden ? GOLDEN_WEIGHT_MULTIPLIER : 1)
+  )
 }
 
 /**
@@ -204,25 +204,8 @@ export function getEfficiencyTierProgress(efficiency: number): number {
 }
 
 // ============================================
-// DEPENDENCY COUNT ROLLER
+// PACKAGE SIZE
 // ============================================
-
-const DEPENDENCY_DISTRIBUTION: WeightedItem<number>[] = [
-  { item: 0, weight: 50 },
-  { item: 1, weight: 15 },
-  { item: 2, weight: 15 },
-  { item: 3, weight: 10 },
-  { item: 4, weight: 5 },
-  { item: 5, weight: 3 },
-  { item: 8, weight: 1.5 },
-  { item: 12, weight: 0.5 },
-]
-
-export function rollDependencyCount(
-  _config: GameConfig = DEFAULT_CONFIG
-): number {
-  return weightedPick(DEPENDENCY_DISTRIBUTION) ?? 0
-}
 
 export function rollPackageSize(): number {
   const base = 10 + random() * 40
@@ -240,8 +223,4 @@ export function getIdentitySize(
 ): number {
   if (!identity) return rollPackageSize()
   return Math.max(minSize, identity.weight)
-}
-
-export function shouldCompress(depth: number, cacheTokens: number): boolean {
-  return chance(getCompressionChance(depth, cacheTokens))
 }

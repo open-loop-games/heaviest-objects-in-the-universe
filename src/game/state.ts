@@ -36,13 +36,10 @@ import {
   type UserSettings,
   type Wire,
 } from './types'
-import { DEFAULT_CONFIG, createInitialState, TIER_THRESHOLDS } from './config'
-import {
-  getPrestigeThreshold,
-  getEcosystemTier,
-  getMaxCompressedDepth,
-} from './formulas'
+import { DEFAULT_CONFIG, createInitialState } from './config'
+import { getPrestigeThreshold } from './formulas'
 import { GAME_SPINE, shipReward } from './spine'
+import { SPINE_SOLVED } from './spine-solved'
 
 // ============================================
 // ENGINE
@@ -66,7 +63,8 @@ export const engine = createEngine({
 // GAME STATE
 // ============================================
 //
-// One facade over persistent refs, grouped by what resets them. The `run` module's refs
+// One facade over persistent refs, grouped by what resets them; each module builds every
+// saved section GameState declares for it. The `run` module's refs
 // reset when a run ends (ship.ts drives it as a Cycle); the `game` module's survive ships
 // and reset on a new game; a lifetime ref survives that too. Each field is its own ref,
 // which reactive() unwraps on read and writes through on assignment, so readers write
@@ -122,6 +120,7 @@ engine.use({
     Object.assign(gameState, {
       seed: persistent(fresh.seed, { id: 'seed' }),
       resources: persistentFields('resources', fresh.resources),
+      board: persistentFields('board', fresh.board),
       run: persistentFields('run', fresh.run),
       camera: persistentFields('camera', fresh.camera),
     })
@@ -310,7 +309,6 @@ export const computed_gravity: ComputedRef<number> = computed(() => {
 })
 
 // What a ship would take home now, from this run's counters and the meta upgrades owned.
-// The board is the current tier.
 export const computed_prestigeReward: ComputedRef<number> = computed(() => {
   const run = gameState.run
   return shipReward(GAME_SPINE, {
@@ -319,7 +317,8 @@ export const computed_prestigeReward: ComputedRef<number> = computed(() => {
     comboDepth: run.runActs > 0 ? run.runComboSum / run.runActs : 0,
     comboLevel: gameState.upgrades.comboPayout,
     timedCleared: gameState.upgrades.timed,
-    tier: gameState.meta.ecosystemTier,
+    tier: gameState.board.tier,
+    unlockedTier: gameState.meta.unlockedTier,
   })
 })
 
@@ -337,56 +336,44 @@ export const computed_rootPackageCount: ComputedRef<number> = computed(() => {
 })
 
 // ============================================
-// ECOSYSTEM TIER HELPERS
+// MAP TIERS
 // ============================================
 
-/**
- * Update the stored ecosystemTier to match current cache tokens.
- * Call this after prestige or when loading a save.
- */
-export function syncEcosystemTier(): void {
-  gameState.meta.ecosystemTier = getEcosystemTier(gameState.meta.cacheTokens)
+/** Price of unlocking a map tier, solved through the spine's walk; Infinity past the last. */
+export function tierPrice(tier: number): number {
+  return SPINE_SOLVED.tierPrices[tier] ?? Infinity
 }
 
-// Computed ecosystem tier (reactive)
-export const computed_ecosystemTier: ComputedRef<number> = computed(() => {
-  return getEcosystemTier(gameState.meta.cacheTokens)
-})
+/**
+ * Spend the wallet on each next map tier it affords. Until the meta layer sells tiers,
+ * a ship buys them as soon as they are affordable.
+ */
+export function unlockAffordableTiers(): void {
+  const meta = gameState.meta
+  while (meta.cacheTokens >= tierPrice(meta.unlockedTier + 1)) {
+    meta.cacheTokens -= tierPrice(meta.unlockedTier + 1)
+    meta.unlockedTier++
+  }
+}
 
-// Computed max depth (reactive)
-export const computed_maxDepth: ComputedRef<number> = computed(() => {
-  return getMaxCompressedDepth(gameState.meta.cacheTokens)
-})
-
-// Tokens needed for next tier (for UI progress display)
-export const computed_nextTierThreshold: ComputedRef<number | null> = computed(
+// Price of the next map tier; null once every tier is unlocked.
+export const computed_nextTierPrice: ComputedRef<number | null> = computed(
   () => {
-    const currentTier = computed_ecosystemTier.value
-    if (currentTier >= TIER_THRESHOLDS.length) return null // Max tier
-    return TIER_THRESHOLDS[currentTier] ?? null
+    const price = tierPrice(gameState.meta.unlockedTier + 1)
+    return Number.isFinite(price) ? price : null
   }
 )
 
-// Progress toward next tier (0-1)
+// The wallet's progress toward the next map tier (0-1); 1 once every tier is unlocked.
 export const computed_tierProgress: ComputedRef<number> = computed(() => {
-  const currentTier = computed_ecosystemTier.value
-  const tokens = gameState.meta.cacheTokens
-
-  if (currentTier >= TIER_THRESHOLDS.length) return 1 // Max tier
-
-  const currentThreshold = TIER_THRESHOLDS[currentTier - 1] ?? 0
-  const nextThreshold = TIER_THRESHOLDS[currentTier] ?? 0
-
-  const range = nextThreshold - currentThreshold
-  if (range <= 0) return 1 // Safety check
-  const progress = tokens - currentThreshold
-
-  return Math.min(1, progress / range)
+  const price = computed_nextTierPrice.value
+  if (price === null) return 1
+  return Math.min(1, gameState.meta.cacheTokens / price)
 })
 
-// Collapse availability (Tier 5 only)
+// Collapse is offered on a tier-5 board.
 export const computed_canCollapse: ComputedRef<boolean> = computed(() => {
-  return computed_ecosystemTier.value >= 5
+  return gameState.board.tier >= 5
 })
 
 // Endless mode state

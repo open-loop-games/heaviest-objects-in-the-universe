@@ -22,7 +22,7 @@
   "lint-staged": {
     "*.{ts,vue,css,html,json}": "oxfmt --no-error-on-unmatched-pattern",
     "*.{ts,vue}": "oxlint --fix",
-    "src/{game/spine,game/spine-solved,game/config,balance/spine-walk,balance/spine-report}.ts": "pnpm spine --check"
+    "src/{game/spine,game/spine-solved,game/scope-weights,game/config,game/formulas,game/registry,balance/spine-walk,balance/spine-report,balance/scope-weights}.ts": "pnpm spine --check"
   },
   "dependencies": {
     "@open-loop/engine": "^0.8.0",

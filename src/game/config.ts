@@ -21,18 +21,6 @@ export function getDefaultZoom(): number {
 }
 
 // ============================================
-// TIER SYSTEM
-// ============================================
-
-// Cache token thresholds for each ecosystem tier (1-5)
-// Tier is derived from cache tokens, not tracked separately
-// Unlocks: Tier 2 = auto-resolve, Tier 3+ = faster automation
-export const TIER_THRESHOLDS = [0, 9, 21, 42, 63] as const
-
-// Max depth allowed at each tier (tier N = depth N)
-export const TIER_MAX_DEPTH = [1, 2, 3, 4, 5] as const
-
-// ============================================
 // DUPLICATE HALO COLORS
 // ============================================
 
@@ -45,32 +33,11 @@ export const HALO_COLORS = [
 ]
 
 // ============================================
-// COMPRESSION SCALING
-// ============================================
-
-// Base compression chance (before token scaling)
-export const BASE_COMPRESSION_CHANCE = 0.2
-
-// Additional compression per cache token
-export const COMPRESSION_PER_TOKEN = 0.01
-
-// Compression softcap (reached at 20 tokens)
-export const COMPRESSION_SOFTCAP = 0.4
-
-// Compression hardcap (asymptotic limit)
-export const COMPRESSION_HARDCAP = 0.5
-
-// Depth multipliers for compression chance
-// depth 1 = 100%, depth 5 = 0% (always leaves)
-export const DEPTH_COMPRESSION_MULT = [1.0, 0.75, 0.5, 0.25, 0.0] as const
-
-// Max compressed packages per scope by tier [tier 1-5]
-// Prevents exponential scope growth
-export const MAX_COMPRESSED_PER_SCOPE = [1, 2, 2, 3, 3] as const
-
-// ============================================
 // BOARD LIMITS
 // ============================================
+
+// A scope's deps doubled: the cascade crit
+export const CASCADE_CRIT_CHANCE = 0.05
 
 // Maximum pending deps in queue
 export const MAX_PENDING_DEPS = 40
@@ -104,7 +71,11 @@ export const SURGE_PACKAGE_BOOST = 0.05 // +5% package count per segment
 // DEPTH REWARDS
 // ============================================
 
-// Golden packages (only spawn at depth 3+, 4x weight + guaranteed fragment)
+// Conflicts between top-level packages arrive with the app board (map tier 2)
+export const CROSS_PACKAGE_MIN_TIER = 2
+
+// Golden packages (from map tier 3, at effective depth 3+; 4x weight + guaranteed fragment)
+export const GOLDEN_MIN_TIER = 3
 export const GOLDEN_SPAWN_CHANCE = 0.08
 export const GOLDEN_WEIGHT_MULTIPLIER = 4
 export const GOLDEN_MIN_DEPTH = 3
@@ -122,7 +93,6 @@ export const DEPTH_WEIGHT_MULTIPLIERS = [1.0, 1.0, 1.15, 1.25, 1.35] as const
 // Hold gesture timing
 export const COLLAPSE_HOLD_DURATION = 5000 // 5 seconds in ms
 export const COLLAPSE_LOCK_THRESHOLD = 0.8 // 80% = point of no return
-export const COLLAPSE_MIN_TIER = 5 // Must be at Tier 5
 
 /**
  * Calculate collapse drain progress with quadratic curve
@@ -139,9 +109,6 @@ export function calculateCollapseDrainProgress(elapsedMs: number): number {
 
 // Default configuration based on design doc
 export const DEFAULT_CONFIG: GameConfig = {
-  // Dependencies
-  dependencyDepthLimit: 4,
-
   // Physics
   nodeRepulsion: 150, // Lower = nodes slide past each other easier
   wireAttraction: 0.01,
@@ -161,7 +128,7 @@ export function createInitialState(): GameState {
     },
     meta: {
       cacheTokens: 0,
-      ecosystemTier: 1,
+      unlockedTier: 1,
       timesShipped: 0,
       hasCollapsed: false,
       endlessMode: false,
@@ -197,7 +164,7 @@ export function createInitialState(): GameState {
       // Extended cascade data (null when inactive)
       scopePath: null,
       subDepQueue: null,
-      compressedIndices: null,
+      compressedSlots: null,
       // Tutorial pacing
       isStarterKit: false,
       isSecondPackage: false,
@@ -235,6 +202,10 @@ export function createInitialState(): GameState {
       cacheFragmentsCollected: 0,
       peakEfficiency: 1,
       totalWeight: 0,
+    },
+    board: {
+      tier: 1,
+      topLevelInstalled: 0,
     },
     run: {
       maxWeightReached: 0,

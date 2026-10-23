@@ -216,11 +216,11 @@ export class BlackHoleRenderer {
   }
 
   /**
-   * Check if we're at Tier 5 (collapse tier)
+   * Check if the board is tier 5 (the collapse tier)
    * Dramatic effects only show at Tier 5 - lower tiers use cleaner "ship" prestige
    */
   private isCollapseTier(): boolean {
-    return gameState.meta.ecosystemTier >= 5
+    return gameState.board.tier >= 5
   }
 
   /**

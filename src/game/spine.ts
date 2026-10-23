@@ -76,7 +76,10 @@ export interface Anchors {
   /** Seconds of window added per comboWindow level. Feel. */
   windowStep: number
   tiers: TierAnchor[]
-  /** Packages per scope. cascade.ts startCascadeImmediate: 8 + randInt(0, 7) deps, plus 40% × 1.5 sub-deps each. */
+  /**
+   * Packages per scope. With meanPackageWeight it sets the weight unit only: κ normalizes the
+   * tier-1 reference run, and the game scales each board's weight to Board.weight (board.ts).
+   */
   packagesPerScope: number
   /** Mean spawned package weight: getIdentitySize over pickRandomIdentity, 200k samples. */
   meanPackageWeight: number

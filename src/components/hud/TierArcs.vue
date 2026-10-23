@@ -2,7 +2,7 @@
 /**
  * TierArcs - Quarter-circle progress arcs showing tier progression
  *
- * Each arc represents progress toward the next tier:
+ * Each arc is a map tier: full once unlocked, filling with the wallet toward its price:
  * - Tier 2 (right): ⚙ Automation
  * - Tier 3 (bottom): ⟲ Symlinks
  * - Tier 4 (left): ⚡ Speed
@@ -11,11 +11,13 @@
  * During collapse hold, arcs drain in reverse order (tier 5 first).
  */
 import { computed } from 'vue'
-import { TIER_THRESHOLDS } from '../../game/config'
+import { tierPrice } from '../../game/state'
 
 const props = defineProps<{
   /** Current cache token count */
   cacheTokens: number
+  /** Highest map tier unlocked */
+  unlockedTier: number
   /** Whether user is holding for collapse */
   isHolding: boolean
   /** Collapse hold progress (0-1) */
@@ -49,25 +51,22 @@ function handleIconLeave() {
 
 // Static tier metadata (never changes)
 const TIER_ARC_META = [
-  { tier: 2, icon: '⚙', start: 0, end: TIER_THRESHOLDS[1] },
-  { tier: 3, icon: '⟲', start: TIER_THRESHOLDS[1], end: TIER_THRESHOLDS[2] },
-  { tier: 4, icon: '⚡', start: TIER_THRESHOLDS[2], end: TIER_THRESHOLDS[3] },
-  { tier: 5, icon: '★', start: TIER_THRESHOLDS[3], end: TIER_THRESHOLDS[4] },
+  { tier: 2, icon: '⚙' },
+  { tier: 3, icon: '⟲' },
+  { tier: 4, icon: '⚡' },
+  { tier: 5, icon: '★' },
 ] as const
 
-// Calculate progress within each tier segment (0-1)
+// Each arc's fill (0-1): unlocked tiers are full, the next fills with the wallet.
 const tierArcProgress = computed(() => {
-  const tokens = props.cacheTokens
-
   return TIER_ARC_META.map((meta) => {
-    const range = meta.end - meta.start
-    const progress =
-      tokens >= meta.start ? Math.min(1, (tokens - meta.start) / range) : 0
-    return {
-      ...meta,
-      progress,
-      complete: tokens >= meta.end,
-    }
+    const complete = meta.tier <= props.unlockedTier
+    const progress = complete
+      ? 1
+      : meta.tier === props.unlockedTier + 1
+        ? Math.min(1, props.cacheTokens / tierPrice(meta.tier))
+        : 0
+    return { ...meta, progress, complete }
   })
 })
 

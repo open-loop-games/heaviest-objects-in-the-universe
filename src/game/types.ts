@@ -38,6 +38,10 @@ export interface Package {
   // Depth rewards
   isGolden: boolean // Golden package (4x weight, only spawns at depth 3+)
   hasCacheFragment: boolean // Contains collectible cache fragment
+
+  // Path of this package's scope in the run's board plan (board.ts); null for a package
+  // with no scope of its own.
+  planPath: number[] | null
 }
 
 export interface Wire {
@@ -65,8 +69,8 @@ export interface Upgrades {
 }
 
 export interface MetaResources {
-  cacheTokens: number
-  ecosystemTier: number
+  cacheTokens: number // The wallet; unlocking a map tier spends it
+  unlockedTier: number // Highest map tier bought
   timesShipped: number // Renamed from totalPrestiges
   hasCollapsed: boolean // Player has triggered the finale
   endlessMode: boolean // Player chose endless after collapse
@@ -90,6 +94,12 @@ export interface GameStats {
   cacheFragmentsCollected: number
   peakEfficiency: number // Highest efficiency reached across all runs
   totalWeight: number // Cumulative weight across all runs
+}
+
+/** The run's board: which map tier it plays, and what of it is installed. */
+export interface BoardState {
+  tier: number
+  topLevelInstalled: number // Top-level deps installed from the root, of the tier's count
 }
 
 /** This run's measures, reset when the run ends. */
@@ -129,7 +139,7 @@ export interface CascadeState {
   // Extended cascade data (populated during active cascade)
   scopePath: string[] | null // Full path to the package whose internals are cascading
   subDepQueue: Array<{ parentIndex: number; identity: PackageIdentity }> | null
-  compressedIndices: Set<number> | null
+  compressedSlots: Map<number, number> | null // Dep index → its child slot in the board plan
   // Tutorial pacing (curated packages get slower cascade)
   isStarterKit: boolean // Whether this cascade is for the starter-kit package
   isSecondPackage: boolean // Whether this cascade is for the curated second package (express)
@@ -178,6 +188,7 @@ export interface GameState {
   // ---- The run: reset when it ends (Ship), saved ----
   seed: number // RNG seed for the run's rolls
   resources: GameResources
+  board: BoardState
   run: RunStats
   camera: {
     x: number
@@ -198,9 +209,6 @@ export interface GameState {
 }
 
 export interface GameConfig {
-  // Dependencies
-  dependencyDepthLimit: number
-
   // Physics
   nodeRepulsion: number
   wireAttraction: number

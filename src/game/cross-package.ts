@@ -5,7 +5,7 @@
 import { gameState, graph, rootIdRef, stack } from './state'
 import type { Package, Wire } from './types'
 import { areIncompatible } from './registry'
-import { HALO_COLORS } from './config'
+import { CROSS_PACKAGE_MIN_TIER, HALO_COLORS } from './config'
 import { countResolved } from './mutations'
 import type { GraphNode, Graph } from '@open-loop/engine'
 
@@ -37,10 +37,11 @@ function* iterateInnerNodes(
 
 /**
  * Detect conflicts between top-level packages based on their internal deps.
- * Only runs at root scope.
+ * Only runs at root scope, on a board of CROSS_PACKAGE_MIN_TIER or above.
  */
 export function updateCrossPackageConflicts(): void {
   if (stack.depth !== 0) return
+  if (gameState.board.tier < CROSS_PACKAGE_MIN_TIER) return
 
   crossPackageConflicts = []
   siblingWires.clear()

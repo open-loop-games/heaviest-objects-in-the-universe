@@ -5,11 +5,10 @@
 
 import {
   COLLAPSE_LOCK_THRESHOLD,
-  COLLAPSE_MIN_TIER,
   calculateCollapseDrainProgress,
 } from './config'
 import { createRootPackage } from './packages'
-import { gameState, computed_ecosystemTier } from './state'
+import { gameState, computed_canCollapse } from './state'
 import { emit, on } from './events'
 import type { EndScreenStats } from './events'
 import { saveToLocalStorage } from './persistence'
@@ -70,11 +69,9 @@ on('collapse:end-hold', () => {
 // COLLAPSE AVAILABILITY
 // ============================================
 
-/**
- * Check if collapse is available (Tier 5 only)
- */
+/** Check if collapse is available on this board. */
 export function canCollapse(): boolean {
-  return computed_ecosystemTier.value >= COLLAPSE_MIN_TIER
+  return computed_canCollapse.value
 }
 
 // ============================================
