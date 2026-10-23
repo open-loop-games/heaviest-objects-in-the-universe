@@ -339,8 +339,8 @@ export interface ShipInput {
  * step by tierRateStep at the reference pace by construction, so the lift is
  * max(1, f · step^(unlocked − tier)) and needs no second run priced.
  *
- * Retired: the jam's efficiency, 0.92^(unresolved / scale) with scale = log10(n + 10) /
- * log10(60) (mutations.ts calculateEfficiency). It counts unresolved problems absolutely:
+ * Declined: the jam's efficiency, 0.92^(unresolved / scale) with scale = log10(n + 10) /
+ * log10(60). It counts unresolved problems absolutely:
  * q = 0.7 leaves about 5 unresolved at 120 packages and about 7 at 600. On a finite board
  * every q* persona then does nearly every act, and q* stops being a choice.
  */

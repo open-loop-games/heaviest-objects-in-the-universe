@@ -8,7 +8,8 @@ import {
   calculateCollapseDrainProgress,
 } from './config'
 import { createRootPackage } from './packages'
-import { gameState, computed_canCollapse } from './state'
+import { gameState } from './state'
+import { computed_canCollapse } from './board'
 import { emit, on } from './events'
 import type { EndScreenStats } from './events'
 import { saveToLocalStorage } from './persistence'
@@ -183,14 +184,16 @@ export function triggerCollapseWithAnimation(): void {
   // Mark that player has collapsed (they've "won")
   gameState.meta.hasCollapsed = true
 
-  // Prepare end screen stats
-  // Note: Add current run's weight to totalWeight for display
+  // Prepare end screen stats, the finale run included
   const stats: EndScreenStats = {
     totalPackagesInstalled: gameState.stats.totalPackagesInstalled,
     totalConflictsResolved: gameState.stats.totalConflictsResolved,
     totalSymlinksCreated: gameState.stats.totalSymlinksCreated,
-    peakEfficiency: gameState.stats.peakEfficiency,
-    totalWeight: gameState.stats.totalWeight + gameState.resources.weight,
+    peakQuality: Math.max(
+      gameState.stats.peakQuality,
+      gameState.run.resolvedShare
+    ),
+    totalWeight: gameState.stats.totalWeight + gameState.run.runGrossWeight,
     timesShipped: gameState.meta.timesShipped,
   }
 

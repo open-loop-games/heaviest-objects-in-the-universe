@@ -6,8 +6,7 @@ export {
   TOOLTIP_HEIGHT,
 } from './tooltip-animation'
 export { AutoResolveTooltip } from './auto-resolve-tooltip'
-export { EfficiencyTooltip } from './efficiency-tooltip'
-export { StabilityTooltip } from './stability-tooltip'
+export { QualityTooltip } from './quality-tooltip'
 export { Tier2Tooltip } from './tier2-tooltip'
 export { Tier3Tooltip } from './tier3-tooltip'
 export { Tier4Tooltip } from './tier4-tooltip'
@@ -21,8 +20,7 @@ export { WeightIconTooltip } from './weight-icon-tooltip'
 // Tooltip types for state management
 export type TooltipType =
   | 'autoResolve'
-  | 'efficiency'
-  | 'stability'
+  | 'quality'
   | 'tier2'
   | 'tier3'
   | 'tier4'

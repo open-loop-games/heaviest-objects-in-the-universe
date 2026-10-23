@@ -151,8 +151,7 @@ export function triggerDuplicateHighlights(duplicateIds: string[]): void {
 
 export type TooltipType =
   | 'autoResolve'
-  | 'efficiency'
-  | 'stability'
+  | 'quality'
   | 'tier2'
   | 'tier3'
   | 'tier4'

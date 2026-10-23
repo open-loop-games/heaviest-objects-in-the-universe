@@ -3,10 +3,9 @@ import { computed, watchEffect } from 'vue'
 import {
   gameState,
   graphRevision,
-  computed_gravity,
-  computed_canPrestige,
   computed_rootPackageCount,
 } from '../game/state'
+import { computed_boardProgress, computed_canPrestige } from '../game/board'
 import { isInPackageScope } from '../game/scope'
 
 // Extracted HUD sub-components
@@ -43,10 +42,10 @@ watchEffect(() => {
     gameState.onboarding.weightSeen = true
   }
   if (
-    !gameState.onboarding.efficiencySeen &&
+    !gameState.onboarding.qualitySeen &&
     computed_rootPackageCount.value >= 2
   ) {
-    gameState.onboarding.efficiencySeen = true
+    gameState.onboarding.qualitySeen = true
   }
 })
 
@@ -74,9 +73,8 @@ const showWeight = computed(
   () => gameState.onboarding.weightSeen || computed_rootPackageCount.value >= 2
 )
 
-const showEfficiency = computed(
-  () =>
-    gameState.onboarding.efficiencySeen || computed_rootPackageCount.value >= 2
+const showQuality = computed(
+  () => gameState.onboarding.qualitySeen || computed_rootPackageCount.value >= 2
 )
 
 // Auto-resolve is a meta upgrade; its row shows once a level is owned.
@@ -90,11 +88,13 @@ const inPackageScope = computed(() => {
 
 // Gravity progress
 const gravityPercent = computed(() =>
-  Math.min(100, computed_gravity.value * 100)
+  Math.min(100, computed_boardProgress.value * 100)
 )
 
 // Prestige progress
-const prestigeProgress = computed(() => Math.min(1, computed_gravity.value))
+const prestigeProgress = computed(() =>
+  Math.min(1, computed_boardProgress.value)
+)
 
 // Show prestige area
 const showPrestigeArea = computed(() => {
@@ -126,13 +126,13 @@ const showPrestigeArea = computed(() => {
         class="hud-panel"
         :class="{ 'prestige-ready': prestigeProgress >= 1 }"
       >
-        <!-- Quality Hero (PROMOTED - shows efficiency & stability prominently) -->
+        <!-- Quality Hero: q, the share of the board resolved -->
         <Transition name="fade">
-          <QualityHero v-if="showEfficiency" />
+          <QualityHero v-if="showQuality" />
         </Transition>
 
         <!-- Separator between quality and resources -->
-        <div v-if="showEfficiency" class="hud-separator" />
+        <div v-if="showQuality" class="hud-separator" />
 
         <!-- Weight Row (DEMOTED - secondary indicator) -->
         <Transition name="fade">

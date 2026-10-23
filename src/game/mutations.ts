@@ -1,11 +1,7 @@
 // State mutation helpers — graph + scope aware
 
 import { COMBO_MAX, FRAGMENT_WEIGHT } from './config'
-import {
-  EFFICIENCY_BASE,
-  EFFICIENCY_SCALE_ANCHOR,
-  countScopeDuplicates,
-} from './formulas'
+import { countScopeDuplicates } from './formulas'
 import { gameState, generateWireId, graph, rootIdRef, stack } from './state'
 import type { Package, Wire } from './types'
 import type { Graph } from '@open-loop/engine'
@@ -16,13 +12,10 @@ import {
   isInPackageScope,
 } from './scope'
 import { emit, on } from './events'
-import { getEfficiencyTierRank, updateEfficiencyTracking } from './formulas'
+import { getQualityTierRank, updateQualityTracking } from './formulas'
 import { checkAchievements } from './achievements'
 import { GAME_SPINE, comboWindow } from './spine'
 import { boardWeightScale } from './board'
-
-// Quality event types are now in the main event bus (src/game/events.ts)
-// Use emit('quality:efficiency-improved', ...) etc.
 
 // ============================================
 // SCOPE WALKING (graph-aware)
@@ -63,82 +56,39 @@ export function* iterateEnteredScopes(): Generator<{
   yield* walk(graph, [])
 }
 
-/** Duplicates and conflicted wires still open across the entered scopes, and their packages. */
-function countOpenProblems(): { open: number; packages: number } {
+/** Duplicates and conflicted wires still open across the entered scopes. */
+function countOpenProblems(): { open: number } {
   let open = 0
-  let packages = 0
-
   for (const { graph: scopeGraph, ownerId } of iterateEnteredScopes()) {
-    const { duplicates, total } = countScopeDuplicates(scopeGraph, ownerId)
-    open += duplicates
-    packages += total
-
+    open += countScopeDuplicates(scopeGraph, ownerId).duplicates
     for (const edge of scopeGraph.edges.values()) {
       if (edge.data.conflicted) open++
     }
   }
-  return { open, packages }
-}
-
-export function calculateEfficiency(): number {
-  const { open, packages } = countOpenProblems()
-  if (packages === 0) return 1
-
-  const scale = Math.log10(packages + 10) / Math.log10(EFFICIENCY_SCALE_ANCHOR)
-  const efficiency = Math.pow(EFFICIENCY_BASE, open / scale)
-
-  return Math.max(0, Math.min(1, efficiency))
+  return { open }
 }
 
 /**
- * q for the ship reward: problems resolved this run over those resolved plus those still
- * open. A problem a prune deletes unresolved leaves both counts.
+ * q, the run's quality: problems resolved this run over those resolved plus those still
+ * open. A problem a prune deletes unresolved leaves both counts. The ship reward and the
+ * HUD's quality bar read it; a rise past a quality tier emits feedback.
  */
 export function updateResolvedShare(): void {
   const { runResolved } = gameState.run
   const { open } = countOpenProblems()
-  gameState.run.resolvedShare =
-    runResolved + open === 0 ? 1 : runResolved / (runResolved + open)
+  const q = runResolved + open === 0 ? 1 : runResolved / (runResolved + open)
+  gameState.run.resolvedShare = q
+
+  const { oldTier, newTier, delta } = updateQualityTracking(q)
+  if (getQualityTierRank(newTier) > getQualityTierRank(oldTier)) {
+    emit('quality:tier-up', { oldTier, newTier })
+  }
+  if (delta > 0.01) emit('quality:improved', { delta, newValue: q, newTier })
 }
 
 /** Count problems resolved this run, by the player or by auto-resolve. */
 export function countResolved(count: number = 1): void {
   gameState.run.runResolved += count
-}
-
-export function calculateStabilityRatio(): number {
-  let entered = 0
-  let stable = 0
-  for (const { path } of iterateEnteredScopes()) {
-    entered++
-    if (stack.statusAt(path) === 'stable') stable++
-  }
-  if (entered === 0) return 1
-  return stable / entered
-}
-
-// ============================================
-// EFFICIENCY TRACKING (for tier-up detection)
-// ============================================
-
-function checkEfficiencyChange(newEfficiency: number): void {
-  const { tierChanged, oldTier, newTier, delta } =
-    updateEfficiencyTracking(newEfficiency)
-
-  const oldRank = getEfficiencyTierRank(oldTier)
-  const newRank = getEfficiencyTierRank(newTier)
-
-  if (tierChanged && newRank > oldRank) {
-    emit('quality:efficiency-tier-up', { oldTier, newTier })
-  }
-
-  if (delta > 0.01) {
-    emit('quality:efficiency-improved', {
-      delta,
-      newValue: newEfficiency,
-      newTier,
-    })
-  }
 }
 
 // ============================================
@@ -202,10 +152,6 @@ function onScopeStabilized(packageCount: number): void {
 export function addWeight(weight: number): void {
   gameState.resources.weight += weight
   gameState.run.runGrossWeight += weight
-  gameState.run.maxWeightReached = Math.max(
-    gameState.run.maxWeightReached,
-    gameState.resources.weight
-  )
 }
 
 // ============================================
@@ -333,16 +279,6 @@ export function removeInnerPackage(
 // ============================================
 // RESOURCE MUTATIONS
 // ============================================
-
-export function updateEfficiency(): void {
-  const newEfficiency = calculateEfficiency()
-  gameState.run.currentEfficiency = newEfficiency
-  checkEfficiencyChange(newEfficiency)
-}
-
-export function updateStability(): void {
-  gameState.run.currentStability = calculateStabilityRatio()
-}
 
 export function resolveConflict(packageId: string): void {
   const packages = getCurrentScopePackages()

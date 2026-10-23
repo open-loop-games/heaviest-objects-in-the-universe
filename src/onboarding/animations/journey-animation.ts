@@ -1,6 +1,6 @@
 // Journey Animation
 // Shows the complete game loop: spawn → dive → cascade → resolve → merge → stable → exit → fill → ship → tier
-// Demonstrates resource interplay: Weight, Efficiency, Stability, Cache Tokens
+// Demonstrates resource interplay: Weight, Quality (q), Cache Tokens
 // Larger canvas (320×220), 16 second loop
 
 import { TeachingColors, hexToCSS } from './base-animation'
@@ -14,9 +14,9 @@ const JOURNEY_HEIGHT = 220
 const PHASES = {
   spawn: { start: 0, end: 0.089, index: 0 }, // 1.45s - click root, weight +
   dive: { start: 0.089, end: 0.148, index: 1 }, // 1s - enter scope
-  cascade: { start: 0.148, end: 0.276, index: 2 }, // 2s - deps spawn, problems appear, efficiency drops
-  resolve: { start: 0.276, end: 0.374, index: 3 }, // 1.6s - click conflict, efficiency recovers
-  merge: { start: 0.374, end: 0.463, index: 4 }, // 1.45s - drag duplicate, efficiency recovers
+  cascade: { start: 0.148, end: 0.276, index: 2 }, // 2s - deps spawn, problems appear, quality drops
+  resolve: { start: 0.276, end: 0.374, index: 3 }, // 1.6s - click conflict, quality recovers
+  merge: { start: 0.374, end: 0.463, index: 4 }, // 1.45s - drag duplicate, quality recovers
   stable: { start: 0.463, end: 0.522, index: 5 }, // 1s - scope stable, badge turns green
   exit: { start: 0.522, end: 0.581, index: 6 }, // 1s - exit scope
   fill: { start: 0.581, end: 0.65, index: 7 }, // 1.1s - weight fills quickly
@@ -28,7 +28,7 @@ type PhaseKey = keyof typeof PHASES
 
 /**
  * Journey Animation - Full game loop demonstration
- * Shows all resources: Weight, Efficiency, Stability, Cache Tokens
+ * Shows all resources: Weight, Quality (q), Cache Tokens
  */
 export class JourneyAnimation {
   private canvas: HTMLCanvasElement | null = null
@@ -44,9 +44,7 @@ export class JourneyAnimation {
 
   // Animation state - Resources
   private weightBarFill = 0.2 // 0-1 (fills toward prestige)
-  private efficiencyFill = 1.0 // 0-1 (affected by problems)
-  private scopeStableCount = 0 // stable scopes
-  private scopeTotalCount = 0 // total entered scopes
+  private qualityFill = 1.0 // q, 0-1: problems resolved over problems spawned
 
   // Animation state - Scene
   private isInScope = false
@@ -74,7 +72,7 @@ export class JourneyAnimation {
   private tokenFlyProgress = 0 // 0-1: tokens flying to arc
   private depthPulseTime = 0 // for depth change pulse effect
 
-  protected loopDuration = 16250 // 16.25 second loop (+250ms hold after efficiency teaching)
+  protected loopDuration = 16250 // 16.25 second loop (+250ms hold after quality teaching)
 
   async init(canvas: HTMLCanvasElement): Promise<void> {
     this.canvas = canvas
@@ -99,9 +97,7 @@ export class JourneyAnimation {
   private setup(): void {
     // Reset animation state - Resources
     this.weightBarFill = 0.2
-    this.efficiencyFill = 1.0
-    this.scopeStableCount = 0
-    this.scopeTotalCount = 0
+    this.qualityFill = 1.0
 
     // Reset animation state - Scene
     this.isInScope = false
@@ -202,8 +198,7 @@ export class JourneyAnimation {
 
     // Draw UI elements (top area - matching actual HUD layout)
     this.drawWeightBar()
-    this.drawEfficiencyBar()
-    this.drawStabilityBar()
+    this.drawQualityBar()
 
     // Draw main scene
     this.drawMainScene(progress)
@@ -241,8 +236,6 @@ export class JourneyAnimation {
       const t = this.getPhaseProgress(progress, 'dive')
       if (t > 0.5) {
         this.isInScope = true
-        this.scopeTotalCount = 1 // Entered 1 scope
-        this.scopeStableCount = 0 // Not stable yet
       }
     }
 
@@ -276,16 +269,16 @@ export class JourneyAnimation {
       // Problems appear AFTER all nodes spawned (60-100%)
       if (t > 0.65) {
         this.hasConflict = true
-        this.efficiencyFill = 0.7 // Conflict drops efficiency
+        this.qualityFill = 0.7 // Conflict drops quality
       }
       if (t > 0.8) {
         this.hasDuplicates = true
-        this.efficiencyFill = 0.4 // Duplicates drop it more
+        this.qualityFill = 0.4 // Duplicates drop it more
       }
     }
 
     // ============================================
-    // PHASE 4: RESOLVE - Click conflict, efficiency recovers
+    // PHASE 4: RESOLVE - Click conflict, quality recovers
     // ============================================
     if (progress >= PHASES.resolve.start && progress < PHASES.resolve.end) {
       const t = this.getPhaseProgress(progress, 'resolve')
@@ -295,7 +288,7 @@ export class JourneyAnimation {
       } else if (t < 0.6) {
         // Click! Conflict resolved
         this.hasConflict = false
-        this.efficiencyFill = 0.55 // Partially recovers (was 0.4)
+        this.qualityFill = 0.55 // Partially recovers (was 0.4)
       }
     }
 
@@ -314,7 +307,7 @@ export class JourneyAnimation {
         this.node3Merged = true
         this.hasDuplicates = false
         this.weightBarFill = Math.max(0.2, this.weightBarFill - 0.08) // Weight saved
-        this.efficiencyFill = 0.85 // Major recovery
+        this.qualityFill = 0.85 // Major recovery
       }
     }
 
@@ -326,14 +319,13 @@ export class JourneyAnimation {
 
       if (t > 0.3 && !this.scopeStable) {
         this.scopeStable = true
-        this.scopeStableCount = 1 // 1 stable scope
         this.badgeState = 'green' // Badge transitions red → green
-        this.efficiencyFill = 0.95 // Fully clean
+        this.qualityFill = 0.95 // Fully clean
       }
     }
 
     // ============================================
-    // PHASE 7: EXIT - Leave scope, stability persists
+    // PHASE 7: EXIT - Leave scope
     // ============================================
     if (progress >= PHASES.exit.start && progress < PHASES.exit.end) {
       const t = this.getPhaseProgress(progress, 'exit')
@@ -363,12 +355,8 @@ export class JourneyAnimation {
       this.shipButtonVisible = true
 
       if (t > 0.3 && !this.showReward) {
-        // Calculate reward: base × efficiency (0.5-1.5) × stability (0.7-1.0)
-        const effMult = 0.5 + this.efficiencyFill // 0.5 + 0.95 = 1.45
-        const stabMult =
-          0.7 +
-          (this.scopeStableCount / Math.max(1, this.scopeTotalCount)) * 0.3 // 1.0
-        this.rewardTokens = Math.floor(3 * effMult * stabMult) // ~4 tokens
+        // Reward is linear in q
+        this.rewardTokens = Math.max(1, Math.round(4 * this.qualityFill)) // ~4 tokens
         this.showReward = true
       }
     }
@@ -464,7 +452,8 @@ export class JourneyAnimation {
     }
   }
 
-  private drawEfficiencyBar(): void {
+  /** The quality bar: q, the share of the scope's problems resolved. */
+  private drawQualityBar(): void {
     if (!this.ctx) return
 
     const x = JOURNEY_WIDTH - 75
@@ -475,47 +464,11 @@ export class JourneyAnimation {
     // Icon
     this.ctx.font = '14px system-ui'
     const iconColor =
-      this.efficiencyFill < 0.5
+      this.qualityFill < 0.3
         ? Colors.borderConflict
-        : this.efficiencyFill < 0.85
+        : this.qualityFill < 0.5
           ? Colors.accentOrange
           : 0x5aff8a
-    this.ctx.fillStyle = hexToCSS(iconColor, 0.9)
-    this.ctx.fillText('⚡', x - 16, y + barHeight)
-
-    // Bar track
-    this.ctx.fillStyle = 'rgba(40, 35, 55, 0.9)'
-    this.ctx.fillRect(x, y, barWidth, barHeight)
-
-    // Bar fill (gradient: red → orange → cyan)
-    const fillWidth = barWidth * this.efficiencyFill
-    if (fillWidth > 0) {
-      const gradient = this.ctx.createLinearGradient(x, y, x + barWidth, y)
-      gradient.addColorStop(0, '#ff5a5a')
-      gradient.addColorStop(0.4, '#ffaa5a')
-      gradient.addColorStop(1, '#5affff')
-      this.ctx.fillStyle = gradient
-      this.ctx.fillRect(x, y, fillWidth, barHeight)
-    }
-
-    // 50% threshold marker
-    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'
-    this.ctx.fillRect(x + barWidth * 0.5 - 1, y - 1, 2, barHeight + 2)
-  }
-
-  private drawStabilityBar(): void {
-    if (!this.ctx) return
-
-    const x = JOURNEY_WIDTH - 75
-    const y = 24
-    const barWidth = 45
-    const barHeight = 10
-
-    // Icon
-    this.ctx.font = '14px system-ui'
-    const isStable =
-      this.scopeTotalCount > 0 && this.scopeStableCount === this.scopeTotalCount
-    const iconColor = isStable ? 0x5aff8a : 0x8a8aaa
     this.ctx.fillStyle = hexToCSS(iconColor, 0.9)
     this.ctx.fillText('✓', x - 16, y + barHeight)
 
@@ -523,12 +476,8 @@ export class JourneyAnimation {
     this.ctx.fillStyle = 'rgba(40, 35, 55, 0.9)'
     this.ctx.fillRect(x, y, barWidth, barHeight)
 
-    // Bar fill
-    const stabilityRatio =
-      this.scopeTotalCount > 0
-        ? this.scopeStableCount / this.scopeTotalCount
-        : 1
-    const fillWidth = barWidth * stabilityRatio
+    // Bar fill (gradient: orange → green, as in QualityHero)
+    const fillWidth = barWidth * this.qualityFill
     if (fillWidth > 0) {
       const gradient = this.ctx.createLinearGradient(x, y, x + barWidth, y)
       gradient.addColorStop(0, '#ff8a5a')
@@ -540,8 +489,8 @@ export class JourneyAnimation {
 
   /**
    * Draw reward comparison: two scenarios side-by-side (no text, visual only)
-   * Left: Low efficiency → fewer tokens
-   * Right: High efficiency → more tokens
+   * Left: Low quality → fewer tokens
+   * Right: High quality → more tokens
    */
   private drawRewardOverlay(progress: number): void {
     if (!this.ctx) return
@@ -558,15 +507,15 @@ export class JourneyAnimation {
     const barY = JOURNEY_HEIGHT / 2 - 25
     const tokenY = JOURNEY_HEIGHT / 2 + 20
 
-    // Left side: Low efficiency scenario (dimmed)
-    this.drawEfficiencyComparison(leftX, barY, tokenY, 0.3, 2, fadeIn * 0.6)
+    // Left side: Low quality scenario (dimmed)
+    this.drawQualityComparison(leftX, barY, tokenY, 0.3, 2, fadeIn * 0.6)
 
-    // Right side: High efficiency scenario (bright, current state)
-    this.drawEfficiencyComparison(
+    // Right side: High quality scenario (bright, current state)
+    this.drawQualityComparison(
       rightX,
       barY,
       tokenY,
-      this.efficiencyFill,
+      this.qualityFill,
       this.rewardTokens,
       fadeIn
     )
@@ -579,13 +528,13 @@ export class JourneyAnimation {
   }
 
   /**
-   * Draw a single efficiency → tokens comparison
+   * Draw a single quality → tokens comparison
    */
-  private drawEfficiencyComparison(
+  private drawQualityComparison(
     x: number,
     barY: number,
     tokenY: number,
-    efficiency: number,
+    quality: number,
     tokens: number,
     alpha: number
   ): void {
@@ -594,21 +543,21 @@ export class JourneyAnimation {
     const barWidth = 50
     const barHeight = 12
 
-    // Efficiency icon
+    // Quality icon
     this.ctx.font = '16px system-ui'
     this.ctx.textAlign = 'center'
-    const effColor =
-      efficiency < 0.5 ? 0xff5a5a : efficiency < 0.85 ? 0xffaa5a : 0x5affff
-    this.ctx.fillStyle = hexToCSS(effColor, alpha)
-    this.ctx.fillText('⚡', x, barY - 5)
+    const qualityColor =
+      quality < 0.3 ? 0xff5a5a : quality < 0.5 ? 0xffaa5a : 0x5aff8a
+    this.ctx.fillStyle = hexToCSS(qualityColor, alpha)
+    this.ctx.fillText('✓', x, barY - 5)
 
-    // Efficiency bar
+    // Quality bar
     const barX = x - barWidth / 2
     this.ctx.fillStyle = `rgba(40, 35, 55, ${0.9 * alpha})`
     this.ctx.fillRect(barX, barY, barWidth, barHeight)
 
     // Bar fill
-    const fillWidth = barWidth * efficiency
+    const fillWidth = barWidth * quality
     if (fillWidth > 0) {
       const gradient = this.ctx.createLinearGradient(
         barX,
@@ -616,9 +565,8 @@ export class JourneyAnimation {
         barX + barWidth,
         barY
       )
-      gradient.addColorStop(0, `rgba(255, 90, 90, ${alpha})`)
-      gradient.addColorStop(0.4, `rgba(255, 170, 90, ${alpha})`)
-      gradient.addColorStop(1, `rgba(90, 255, 255, ${alpha})`)
+      gradient.addColorStop(0, `rgba(255, 138, 90, ${alpha})`)
+      gradient.addColorStop(1, `rgba(90, 255, 138, ${alpha})`)
       this.ctx.fillStyle = gradient
       this.ctx.fillRect(barX, barY, fillWidth, barHeight)
     }

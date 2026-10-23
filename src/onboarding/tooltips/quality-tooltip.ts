@@ -1,6 +1,6 @@
-// Stability Tooltip Animation
-// Shows: Conflict wire being resolved → scope stabilizes → bar fills
-// Concept: Resolving conflicts improves stability
+// Quality Tooltip Animation
+// Shows: Conflict wire being resolved → scope stabilizes → the quality bar fills
+// Concept: each resolved problem raises q, the share of the board resolved
 
 import {
   TooltipAnimation,
@@ -10,7 +10,7 @@ import {
   TOOLTIP_HEIGHT,
 } from './tooltip-animation'
 
-export class StabilityTooltip extends TooltipAnimation {
+export class QualityTooltip extends TooltipAnimation {
   protected loopDuration = 2200 // 2.2 second loop
 
   // Animation phases
@@ -29,7 +29,7 @@ export class StabilityTooltip extends TooltipAnimation {
   protected update(progress: number): void {
     if (!this.ctx) return
 
-    const phases = StabilityTooltip.PHASES
+    const phases = QualityTooltip.PHASES
 
     // Resolution progress
     const resolveT = this.phaseProgress(progress, phases.resolve)
@@ -67,8 +67,8 @@ export class StabilityTooltip extends TooltipAnimation {
     const wireX2 = TOOLTIP_WIDTH - 14
     const wireMidX = TOOLTIP_WIDTH / 2
 
-    // Draw stability bar at top
-    this.drawStabilityBar(barX, barY, barWidth, barHeight, barFill, alpha)
+    // Draw the quality bar at top
+    this.drawQualityBar(barX, barY, barWidth, barHeight, barFill, alpha)
 
     // Draw wire (conflict → resolved)
     if (!isResolved) {
@@ -117,9 +117,9 @@ export class StabilityTooltip extends TooltipAnimation {
   }
 
   /**
-   * Draw stability bar with gradient
+   * Draw the quality bar with gradient
    */
-  private drawStabilityBar(
+  private drawQualityBar(
     x: number,
     y: number,
     width: number,

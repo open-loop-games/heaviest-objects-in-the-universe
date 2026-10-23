@@ -1,11 +1,7 @@
 // Tutorial state tracking - timers and "first seen" flags
 
-import {
-  gameState,
-  graph,
-  rootIdRef,
-  computed_canPrestige,
-} from '../game/state'
+import { gameState, graph, rootIdRef } from '../game/state'
+import { computed_canPrestige } from '../game/board'
 import {
   isInPackageScope,
   isTopLevelPackage,

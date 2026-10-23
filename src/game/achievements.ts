@@ -100,7 +100,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     iconData: { symbol: '◆', count: 1 },
     name: 'First Steps',
     category: 'weight',
-    check: () => gameState.run.maxWeightReached >= 1000,
+    check: () => gameState.run.runGrossWeight >= 1000,
   },
   {
     id: 'weight-2',
@@ -108,7 +108,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     iconData: { symbol: '◆', count: 2 },
     name: 'Getting Heavy',
     category: 'weight',
-    check: () => gameState.run.maxWeightReached >= 5000,
+    check: () => gameState.run.runGrossWeight >= 5000,
   },
   {
     id: 'weight-3',
@@ -116,7 +116,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     iconData: { symbol: '◆', count: 3 },
     name: 'Substantial',
     category: 'weight',
-    check: () => gameState.run.maxWeightReached >= 10000,
+    check: () => gameState.run.runGrossWeight >= 10000,
   },
   {
     id: 'weight-4',
@@ -124,7 +124,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     iconData: { symbol: '◆', count: 4 },
     name: 'Absolute Unit',
     category: 'weight',
-    check: () => gameState.run.maxWeightReached >= 50000,
+    check: () => gameState.run.runGrossWeight >= 50000,
     rare: true,
   },
   {
@@ -133,7 +133,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     iconData: { symbol: '◆', count: 5 },
     name: 'Heavier Than a Black Hole',
     category: 'weight',
-    check: () => gameState.run.maxWeightReached >= 100000,
+    check: () => gameState.run.runGrossWeight >= 100000,
     rare: true,
   },
 

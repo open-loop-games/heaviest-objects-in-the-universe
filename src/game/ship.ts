@@ -5,16 +5,16 @@
 import { createCycle, seedRNG, type Cycle } from '@open-loop/engine'
 import { createInitialState } from './config'
 import {
-  computed_canPrestige,
   computed_prestigeReward,
   engine,
   gameState,
   resetGraphAndStack,
   unlockAffordableTiers,
 } from './state'
+import { computed_canPrestige } from './board'
 import { saveToLocalStorage } from './persistence'
 import { emit } from './events'
-import { resetEfficiencyTracking } from './formulas'
+import { resetQualityTracking } from './formulas'
 import { updateResolvedShare } from './mutations'
 import { clearCascadeQueue } from './cascade'
 import { resetCrossPackageState } from './cross-package'
@@ -55,7 +55,7 @@ export function clearRunSystems(): void {
   clearCascadeQueue()
   resetCrossPackageState()
   resetPhysicsState()
-  resetEfficiencyTracking()
+  resetQualityTracking()
   const fresh = createInitialState()
   Object.assign(gameState.cascade, fresh.cascade)
   Object.assign(gameState.automation, fresh.automation)
@@ -78,13 +78,10 @@ export function performShip(): void {
   updateResolvedShare()
   const reward = computed_prestigeReward.value
   const tierBefore = gameState.meta.unlockedTier
-  const efficiency = gameState.run.currentEfficiency
+  const quality = gameState.run.resolvedShare
 
-  gameState.stats.totalWeight += gameState.resources.weight
-  gameState.stats.peakEfficiency = Math.max(
-    gameState.stats.peakEfficiency,
-    efficiency
-  )
+  gameState.stats.totalWeight += gameState.run.runGrossWeight
+  gameState.stats.peakQuality = Math.max(gameState.stats.peakQuality, quality)
   gameState.onboarding.firstPrestigeComplete = true
   gameState.meta.cacheTokens += reward
   gameState.meta.timesShipped++
@@ -97,7 +94,7 @@ export function performShip(): void {
     tokensEarned: reward,
     tierBefore,
     tierAfter: gameState.meta.unlockedTier,
-    efficiency,
+    quality,
   })
 
   saveToLocalStorage()

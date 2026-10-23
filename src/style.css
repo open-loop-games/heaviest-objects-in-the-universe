@@ -20,16 +20,12 @@
   /* Primary semantic colors */
   --hud-weight: #ffaa5a;
   --hud-weight-dark: #ff8a3a;
-  --hud-efficiency: #5affff;
-  --hud-stability: #5aff8a;
-  --hud-stability-dark: #5aff5a;
+  --hud-quality: #5aff8a;
   --hud-warning: #ff5a5a;
   --hud-warning-soft: #ff6b6b;
   --hud-warning-orange: #ffaa5a;
   --hud-prestige: #7a5aff;
   --hud-prestige-light: #9a7aff;
-  --hud-surge: #f0a040;
-  --hud-surge-dark: #c08020;
 
   /* Tier colors */
   --hud-tier2: #5aaaff;

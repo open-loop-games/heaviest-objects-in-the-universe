@@ -36,10 +36,8 @@ You are a dependency resolver. Packages arrive. Each package contains its own `n
 
 | Stat | Formula | Effect |
 |------|---------|--------|
-| **Efficiency** | `0.92^(unresolved / scale)` | HUD quality bar and efficiency-tier feedback; not in the reward |
-| **Stability** | Ratio of stable scopes | HUD quality bar; not in the reward |
-| **Resolved share (q)** | resolved / (resolved + open) problems this run | Ship reward multiplier |
-| **Gravity** | `weight / threshold` | Progress toward prestige (100% = ready) |
+| **Quality (q)** | resolved / (resolved + open) problems this run | The HUD's quality bar and its tier feedback; the ship reward is linear in it |
+| **Board progress** | scopes cascaded / the board's planned scopes | Progress toward Ship (100% = the board unpacked) |
 | **Tier** | Derived from cache tokens | Unlocks depth, automation, upgrades |
 
 No in-run currency gates the verb: installs are free, and acts on conflicts and duplicates
@@ -67,7 +65,7 @@ pay through q and combo at ship.
 │        │                                                    │
 │        ▼                                                    │
 │   ┌──────────┐         ┌──────────┐                        │
-│   │  WEIGHT  │────────▶│ PRESTIGE │ (at threshold)         │
+│   │  BOARD   │────────▶│   SHIP   │ (board unpacked)       │
 │   │ Grows    │         │ Collapse │                        │
 │   └──────────┘         └──────────┘                        │
 │                                                             │
@@ -100,12 +98,12 @@ pay through q and combo at ship.
 - Duplicate packages get colored halos (cyan, magenta, yellow, lime)
 - Halos pulse faster with combo (2s calm → 0.5s urgent → solid at max)
 - **Drag** one duplicate onto another to merge (symlink)
-- Merging reduces weight based on combo: 50% at combo 0, 0% at combo 10
+- Merging removes the duplicate from the tree; the run's gross weight, which pays, keeps it
 
 ### Phase 6: Stabilize & Exit
 - When scope has 0 conflicts and 0 duplicates → stable (green glow)
 - Exit scope to return to parent level
-- Stable scopes grant efficiency bonus
+- Each resolved problem raises q
 
 ---
 
@@ -164,25 +162,19 @@ root (package.json)
 **Merge:** Drag one duplicate onto another:
 - Keeps "better" node (compressed > lower depth > closer to center)
 - Rewires all connections to kept node
-- Weight removal scales with combo: 50% at combo 0, 0% at combo 10
+- The duplicate's weight leaves the visible tree; gross weight keeps it, so a merge costs no take-home
 
 ### Combo System (Resolution Speed)
 
-**Purpose:** Reward fast, skilled play with better weight retention
+**Purpose:** Pace is the skill axis: a fast player chains acts, and the chain pays at ship
 
 **Mechanic:**
 - Combo counter (0-10) increments on each conflict resolve or symlink merge
-- Decays to 0 after 3 seconds of inactivity
-- Higher combo = less weight removed on merge
+- Decays to 0 after the spine's combo window (`comboWindow` in `src/game/spine.ts`)
+- The ship reward multiplies by (1 + d̄)^e, d̄ the mean counter the run's acts found
 
 **Visual Feedback:**
 - Duplicate halos pulse faster: 2s (calm) → 1s (active) → 0.5s (urgent) → solid (max)
-- Weight-loss particles shrink/disappear at high combo
-
-**Impact:**
-- Combo 0: 50% weight removed on merge
-- Combo 5: 25% weight removed
-- Combo 10: 0% weight removed (pure efficiency gain)
 
 ---
 
@@ -224,17 +216,14 @@ the board.
 
 ## 7. Prestige System: Ecosystem Collapse
 
-### Prestige Thresholds
+### When a Run Ends
 
-| Prestige | Weight Required | Formula |
-|----------|-----------------|---------|
-| P0→P1 | 5,000 | Tutorial threshold |
-| P1→P2 | 20,000 | Fixed |
-| P2→P3 | 36,000 | 20,000 × 1.8 |
-| P3→P4 | 65,000 | 20,000 × 1.8² |
-| Pn→Pn+1 | — | 20,000 × 1.8^(n-1) |
+Ship appears once the board is unpacked: every top-level dep installed and every scope,
+nested ones included, entered and cascaded. So q is the share of the whole board's
+problems, and a hasty player ships early by leaving problems unresolved.
 
-**Note:** Prestige unlocks when **peak weight ever reached** >= threshold. This prevents "optimization lockout" where merging duplicates drops you below the threshold.
+On a tier-5 board resolved completely, hold-to-collapse replaces Ship: the finale, once.
+In Endless every board ships.
 
 ### Cache Token Reward Formula
 
@@ -266,7 +255,7 @@ Achievements and settings keep their own storage and survive every reset.
 
 ### Black Hole Animation
 
-As weight approaches threshold:
+As the board unpacks:
 1. Background warps toward center
 2. Packages drift inward (gravitational pull)
 3. Prestige button pulses with intensity
@@ -324,7 +313,7 @@ Three-tier system:
 | **ScopeNavigation** | Back button, depth totem, conflict/dupe indicators |
 | **AutomationRow** | Auto-resolve toggle, once a level is owned |
 | **PrestigeOrbit** | Singularity button with gravitational effects |
-| **QualityHero** | Efficiency/stability bars |
+| **QualityHero** | The quality bar (q) |
 | **SettingsPanel** | Save, soft reset, hard reset |
 
 ---
@@ -383,7 +372,7 @@ src/
 - [x] Force-directed physics (per-scope)
 - [x] Wire-based conflict system (resolution with hold)
 - [x] Duplicate detection + symlink merge UI
-- [x] Combo system (resolution speed → weight retention)
+- [x] Combo system (act pace → the reward's combo multiplier)
 - [x] Automation system (auto-resolve)
 - [x] Tier/progression system (5 tiers)
 - [x] Prestige (black hole animation, cache tokens)
@@ -391,7 +380,7 @@ src/
 - [x] Save/load (localStorage)
 - [x] Package icons (Devicon + procedural fallback)
 - [x] Full HUD
-- [x] Quality metrics (efficiency/stability)
+- [x] Quality bar (q)
 - [x] 5 upgrade tracks
 
 ### 🚧 Not Started
@@ -412,7 +401,7 @@ src/
 | **Prestige depth** | Single layer | Jam scope—ship clean, not complex |
 | **Automation** | Tier-gated, optional | Player choice, doesn't trivialize gameplay |
 | **Symlink merging** | Manual only | Core interaction, too satisfying to automate |
-| **Combo system** | Speed-based retention | Rewards skilled play, prevents optimization lockout |
+| **Combo system** | Pays through the ship reward | Skill compounds with combo-payout levels, inside the 2-3x cap |
 
 ---
 

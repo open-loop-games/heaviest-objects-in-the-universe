@@ -9,8 +9,7 @@ import {
   TOOLTIP_WIDTH,
   TOOLTIP_HEIGHT,
   AutoResolveTooltip,
-  EfficiencyTooltip,
-  StabilityTooltip,
+  QualityTooltip,
   Tier2Tooltip,
   Tier3Tooltip,
   Tier4Tooltip,
@@ -43,10 +42,8 @@ function createAnimation(type: TooltipType): TooltipAnimation | null {
   switch (type) {
     case 'autoResolve':
       return new AutoResolveTooltip()
-    case 'efficiency':
-      return new EfficiencyTooltip()
-    case 'stability':
-      return new StabilityTooltip()
+    case 'quality':
+      return new QualityTooltip()
     case 'tier2':
       return new Tier2Tooltip()
     case 'tier3':

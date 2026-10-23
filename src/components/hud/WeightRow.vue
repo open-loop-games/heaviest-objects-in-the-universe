@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { computed_gravity } from '../../game/state'
+import { computed_boardWeightShare } from '../../game/board'
 import { setActiveTooltip } from '../../game/ui-state'
 
 const SEGMENTS = 12
 
 // Progress toward prestige threshold (0-1, capped)
 const prestigeProgress = computed(() => {
-  return Math.min(1, computed_gravity.value)
+  return Math.min(1, computed_boardWeightShare.value)
 })
 
 const filledSegments = computed(() =>

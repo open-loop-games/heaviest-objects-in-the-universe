@@ -48,7 +48,7 @@ export function updateCrossPackageConflicts(): void {
 
   // Track top-level scopes whose conflict state changed this pass; we need
   // to recalculate their cached scope-state at the end so portal rings /
-  // stability ratio stay in sync with the per-frame conflict mutation.
+  // the quality count stay in sync with the per-frame conflict mutation.
   const dirtyTopLevels = new Set<string>()
 
   // Clear stale conflict states from previously marked inner packages.
@@ -149,8 +149,8 @@ export function updateCrossPackageConflicts(): void {
   }
 
   // Recalculate cached scope state for any top-level package whose inner
-  // conflict set changed this pass — without this, portal rings and the
-  // stability ratio diverge from the in-graph conflict flags.
+  // conflict set changed this pass — without this, portal rings and
+  // the quality count diverge from the in-graph conflict flags.
   for (const id of dirtyTopLevels) {
     stack.recalculateAt([id])
   }

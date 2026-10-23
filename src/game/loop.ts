@@ -2,12 +2,7 @@
 
 import { engine, gameState, graph, stack } from './state'
 import { isInPackageScope } from './scope'
-import {
-  comboWindowMs,
-  updateEfficiency,
-  updateResolvedShare,
-  updateStability,
-} from './mutations'
+import { comboWindowMs, updateResolvedShare } from './mutations'
 import { updateCascade } from './cascade'
 import {
   updatePhysics,
@@ -152,8 +147,6 @@ function tick(deltaTime: number): void {
   }
 
   if (tickCount % STATS_UPDATE_INTERVAL === 0) {
-    updateEfficiency()
-    updateStability()
     updateResolvedShare()
     checkAchievements()
   }

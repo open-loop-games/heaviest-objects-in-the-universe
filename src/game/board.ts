@@ -3,8 +3,10 @@
 // reaches its tier's depth; the cascade reads from it how many compressed children each
 // scope gets. Identities stay drawn from the tier's pool, so no two boards look alike.
 
-import { createSeededRNG } from '@open-loop/engine'
-import { gameState } from './state'
+import { computed, type ComputedRef } from 'vue'
+import { createSeededRNG, type Graph } from '@open-loop/engine'
+import { gameState, graph, graphRevision, rootIdRef, stack } from './state'
+import type { Package, Wire } from './types'
 import { GAME_SPINE } from './spine'
 import { SCOPE_WEIGHTS } from './scope-weights'
 
@@ -121,3 +123,74 @@ export function topLevelRemaining(): number {
   const { tier, topLevelInstalled } = gameState.board
   return TIER_BOARDS[tier - 1]!.topLevel - topLevelInstalled
 }
+
+// ============================================
+// SHIP AND COLLAPSE GATES
+// ============================================
+
+/** Scopes on the board, by whether they have cascaded; the root's own graph is not one. */
+function countScopes(): { entered: number; pristine: number } {
+  let entered = 0
+  let pristine = 0
+  const walk = (g: Graph<Package, Wire>, ownerId: string | null) => {
+    for (const [id] of g.nodes) {
+      if (id === ownerId) continue
+      const child = g.getChildGraph(id)
+      if (!child) continue
+      // A child graph holding only its shadow owner has not cascaded.
+      if (child.nodes.size <= 1) pristine++
+      else entered++
+      walk(child, id)
+    }
+  }
+  walk(graph, null)
+  return { entered, pristine }
+}
+
+// Every top-level dep installed and every scope cascaded: the whole board is on screen.
+export const computed_boardUnpacked: ComputedRef<boolean> = computed(() => {
+  void graphRevision.value
+  if (rootIdRef.value === null || topLevelRemaining() > 0) return false
+  if (gameState.cascade.active) return false
+  return countScopes().pristine === 0
+})
+
+// The board unpacked with every scope stable: no conflict or duplicate left anywhere.
+export const computed_boardStable: ComputedRef<boolean> = computed(() => {
+  if (!computed_boardUnpacked.value) return false
+  for (const id of graph.nodes.keys()) {
+    if (id === rootIdRef.value) continue
+    if (stack.statusAt([id]) !== 'stable') return false
+  }
+  return true
+})
+
+// The run's gross weight over the spine's weight for this board (0-1): how heavy it has grown.
+export const computed_boardWeightShare: ComputedRef<number> = computed(() =>
+  Math.min(
+    1,
+    gameState.run.runGrossWeight /
+      GAME_SPINE.boards[gameState.board.tier - 1]!.weight
+  )
+)
+
+// Share of the board's planned scopes cascaded so far (0-1): the run's way to Ship.
+export const computed_boardProgress: ComputedRef<number> = computed(() => {
+  void graphRevision.value
+  const planned = GAME_SPINE.boards[gameState.board.tier - 1]!.scopes
+  return Math.min(1, countScopes().entered / planned)
+})
+
+// Collapse, the one-time finale, ends a fully stable tier-5 board in place of Ship. In
+// Endless every board ships.
+export const computed_canCollapse: ComputedRef<boolean> = computed(
+  () =>
+    !gameState.meta.endlessMode &&
+    gameState.board.tier >= 5 &&
+    computed_boardStable.value
+)
+
+// Ship ends a run once its board is unpacked, unless the board offers Collapse instead.
+export const computed_canPrestige: ComputedRef<boolean> = computed(
+  () => computed_boardUnpacked.value && !computed_canCollapse.value
+)

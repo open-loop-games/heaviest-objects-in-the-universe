@@ -10,12 +10,14 @@ import {
 import { setShipButtonPos } from '../../onboarding/tutorial-state'
 import {
   gameState,
-  computed_gravity,
   computed_prestigeReward,
-  computed_canPrestige,
-  computed_canCollapse,
   computed_isEndlessMode,
 } from '../../game/state'
+import {
+  computed_boardProgress,
+  computed_canCollapse,
+  computed_canPrestige,
+} from '../../game/board'
 import { triggerShipWithAnimation } from '../../game/ship'
 import {
   isAutomationProcessing,
@@ -32,7 +34,7 @@ import TierArcs from './TierArcs.vue'
 
 // Gravity toward collapse
 const gravityPercent = computed(() => {
-  return Math.min(100, computed_gravity.value * 100)
+  return Math.min(100, computed_boardProgress.value * 100)
 })
 
 // Gravity ready: can prestige
@@ -201,12 +203,12 @@ const prestigeRewardDots = computed(() => {
   return 5
 })
 
-// Reward quality tier based on efficiency (for token styling)
+// Reward quality tier from q (for token styling)
 const rewardQuality = computed(() => {
-  const eff = gameState.run.currentEfficiency
-  if (eff >= 0.8) return 'excellent' // Bright glow
-  if (eff >= 0.5) return 'good' // Normal
-  if (eff >= 0.3) return 'poor' // Faded
+  const q = gameState.run.resolvedShare
+  if (q >= 0.8) return 'excellent' // Bright glow
+  if (q >= 0.5) return 'good' // Normal
+  if (q >= 0.3) return 'poor' // Faded
   return 'terrible' // Very faded, shaky
 })
 

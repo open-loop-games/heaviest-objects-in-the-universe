@@ -28,8 +28,7 @@ let animationFrameId: number | null = null
 let hudPositions: Record<string, { x: number; y: number }> = {
   weight: { x: 200, y: 36 },
   gravity: { x: window.innerWidth - 200, y: window.innerHeight - 36 },
-  efficiency: { x: 220, y: 60 },
-  stability: { x: 320, y: 60 },
+  quality: { x: 220, y: 60 },
   fragment: { x: window.innerWidth - 100, y: 36 },
 }
 let positionsCacheValid = false
@@ -57,25 +56,11 @@ function updateHudPositions() {
     }
   }
 
-  // Efficiency bar (quality metrics)
-  const efficiencyEl = document.querySelector(
-    '.quality-bar.efficiency .quality-fill'
-  )
-  if (efficiencyEl) {
-    const rect = efficiencyEl.getBoundingClientRect()
-    hudPositions.efficiency = {
-      x: rect.left + rect.width,
-      y: rect.top + rect.height / 2,
-    }
-  }
-
-  // Stability bar (quality metrics)
-  const stabilityEl = document.querySelector(
-    '.quality-bar.stability .quality-fill'
-  )
-  if (stabilityEl) {
-    const rect = stabilityEl.getBoundingClientRect()
-    hudPositions.stability = {
+  // Quality bar (q): particles land at the fill's leading edge
+  const qualityEl = document.querySelector('.quality-fill')
+  if (qualityEl) {
+    const rect = qualityEl.getBoundingClientRect()
+    hudPositions.quality = {
       x: rect.left + rect.width,
       y: rect.top + rect.height / 2,
     }
@@ -142,25 +127,10 @@ function spawnParticle(
       target = hudPositions.gravity
       duration = 600
       break
-    case 'efficiency-up':
-      // Efficiency improved - flies to efficiency bar (cyan glow)
-      target = hudPositions.efficiency
+    case 'quality-up':
+      // A resolved problem raises q - flies to the quality bar (green glow)
+      target = hudPositions.quality
       duration = 450
-      break
-    case 'efficiency-down':
-      // Efficiency dropped - warning particle stays near source then fades
-      target = { x: fromX + 30, y: fromY - 20 }
-      duration = 500
-      break
-    case 'stability-up':
-      // Stability improved - flies to stability bar (green glow)
-      target = hudPositions.stability
-      duration = 450
-      break
-    case 'stability-down':
-      // Stability dropped - warning particle stays near source
-      target = { x: fromX - 30, y: fromY - 20 }
-      duration = 500
       break
     case 'fragment-collect':
       // Fragment collected - flies to prestige panel fragment area
@@ -304,14 +274,8 @@ function getParticleClass(type: ParticleType): string {
       return 'particle-weight-loss'
     case 'gravity-pulse':
       return 'particle-gravity'
-    case 'efficiency-up':
-      return 'particle-efficiency-up'
-    case 'efficiency-down':
-      return 'particle-efficiency-down'
-    case 'stability-up':
-      return 'particle-stability-up'
-    case 'stability-down':
-      return 'particle-stability-down'
+    case 'quality-up':
+      return 'particle-quality-up'
     case 'fragment-collect':
       return 'particle-fragment'
     case 'token-collect':
@@ -332,14 +296,8 @@ function getParticleIcon(type: ParticleType): string {
       return '◇'
     case 'gravity-pulse':
       return '◉'
-    case 'efficiency-up':
-      return '⚡'
-    case 'efficiency-down':
-      return '⚡'
-    case 'stability-up':
+    case 'quality-up':
       return '✓'
-    case 'stability-down':
-      return '!'
     case 'fragment-collect':
       return '✦'
     case 'token-collect':
@@ -455,32 +413,8 @@ onUnmounted(() => {
   animation: particle-fade-up 0.6s ease-out forwards;
 }
 
-/* Efficiency up - cyan success glow */
-.particle-efficiency-up {
-  color: #5affff;
-  background: radial-gradient(
-    circle,
-    rgba(90, 255, 255, 0.5) 0%,
-    transparent 70%
-  );
-  box-shadow: 0 0 16px rgba(90, 255, 255, 0.8);
-  animation: particle-pulse 0.15s ease-in-out infinite alternate;
-}
-
-/* Efficiency down - orange/red warning */
-.particle-efficiency-down {
-  color: #ff8a5a;
-  background: radial-gradient(
-    circle,
-    rgba(255, 138, 90, 0.5) 0%,
-    transparent 70%
-  );
-  box-shadow: 0 0 12px rgba(255, 138, 90, 0.7);
-  animation: particle-warn-shake 0.1s linear infinite;
-}
-
-/* Stability up - green success glow */
-.particle-stability-up {
+/* Quality up - green success glow */
+.particle-quality-up {
   color: #5aff8a;
   background: radial-gradient(
     circle,
@@ -489,18 +423,6 @@ onUnmounted(() => {
   );
   box-shadow: 0 0 16px rgba(90, 255, 138, 0.8);
   animation: particle-pulse 0.15s ease-in-out infinite alternate;
-}
-
-/* Stability down - red warning */
-.particle-stability-down {
-  color: #ff5a5a;
-  background: radial-gradient(
-    circle,
-    rgba(255, 90, 90, 0.5) 0%,
-    transparent 70%
-  );
-  box-shadow: 0 0 14px rgba(255, 90, 90, 0.8);
-  animation: particle-warn-shake 0.08s linear infinite;
 }
 
 /* Fragment collect - golden/amber glow flying to prestige */
@@ -601,19 +523,6 @@ onUnmounted(() => {
   100% {
     opacity: 0;
     transform: translateY(-20px) scale(0.5);
-  }
-}
-
-@keyframes particle-warn-shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-2px);
-  }
-  75% {
-    transform: translateX(2px);
   }
 }
 </style>

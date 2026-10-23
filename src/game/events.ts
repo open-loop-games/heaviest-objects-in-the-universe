@@ -3,17 +3,14 @@
 
 import { createEmitHandle } from '@open-loop/engine'
 import type { Position } from './types'
-import type { EfficiencyTier } from './formulas'
+import type { QualityTier } from './formulas'
 
 // Particle types (defined here to avoid circular imports with Vue components)
 export type ParticleType =
   | 'weight-gain'
   | 'weight-loss'
   | 'gravity-pulse'
-  | 'efficiency-up'
-  | 'efficiency-down'
-  | 'stability-up'
-  | 'stability-down'
+  | 'quality-up'
   | 'fragment-collect'
   | 'token-collect' // Cache tokens flying to prestige panel on ship
   | 'tier-up' // Special tier-up celebration particle
@@ -23,7 +20,7 @@ export interface EndScreenStats {
   totalPackagesInstalled: number
   totalConflictsResolved: number
   totalSymlinksCreated: number
-  peakEfficiency: number
+  peakQuality: number
   totalWeight: number
   timesShipped: number
 }
@@ -48,7 +45,7 @@ export interface GameEvents {
     tokensEarned: number
     tierBefore: number
     tierAfter: number
-    efficiency: number
+    quality: number
   }
 
   // Collapse input events (from UI)
@@ -99,20 +96,15 @@ export interface GameEvents {
   'game:symlink-merged': { weightSaved: number; position: Position }
   'game:scope-stabilized': { scopeId: string; packageCount: number }
 
-  // Quality events (efficiency/stability feedback)
-  'quality:efficiency-improved': {
+  // Quality events (q feedback)
+  'quality:improved': {
     delta: number
     newValue: number
-    newTier: EfficiencyTier
+    newTier: QualityTier
   }
-  'quality:efficiency-tier-up': {
-    oldTier: EfficiencyTier
-    newTier: EfficiencyTier
-  }
-  'quality:stability-improved': {
-    newValue: number
-    scopesStable: number
-    scopesTotal: number
+  'quality:tier-up': {
+    oldTier: QualityTier
+    newTier: QualityTier
   }
 
   // Physics events (decouples symlinks → physics)

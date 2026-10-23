@@ -4,7 +4,8 @@
 
 import { Graphics, Container, type Application } from 'pixi.js'
 import { Colors } from './colors'
-import { gameState, graph, computed_gravity } from '../game/state'
+import { gameState, graph } from '../game/state'
+import { computed_boardProgress } from '../game/board'
 import { on } from '../game/events'
 import {
   startCollapse as startCollapseState,
@@ -209,10 +210,10 @@ export class BlackHoleRenderer {
 
   /**
    * Get the current gravity progress (0-1) based on weight
-   * Uses computed_gravity which has the correct dynamic threshold
+   * Uses computed_boardProgress which has the correct dynamic threshold
    */
   private getGravityProgress(): number {
-    return Math.min(1, computed_gravity.value)
+    return Math.min(1, computed_boardProgress.value)
   }
 
   /**

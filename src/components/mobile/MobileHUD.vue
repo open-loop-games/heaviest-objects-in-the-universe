@@ -20,13 +20,13 @@
  */
 
 import { computed, watchEffect } from 'vue'
+import { gameState, graphRevision, stack } from '../../game/state'
 import {
-  gameState,
-  graphRevision,
-  stack,
-  computed_gravity,
+  computed_boardProgress,
+  computed_boardWeightShare,
   computed_canPrestige,
-} from '../../game/state'
+} from '../../game/board'
+import { getQualityTier } from '../../game/formulas'
 import {
   isInPackageScope,
   isPackageCompressed,
@@ -112,9 +112,9 @@ const scopeStats = computed(() => {
 // RESOURCES
 // ============================================
 
-// Weight / Prestige progress
+// Weight: the run's gross weight over the board's expected weight
 const WEIGHT_SEGMENTS = 12
-const prestigeProgress = computed(() => Math.min(1, computed_gravity.value))
+const prestigeProgress = computed(() => computed_boardWeightShare.value)
 const filledWeightSegments = computed(() =>
   Math.floor(prestigeProgress.value * WEIGHT_SEGMENTS)
 )
@@ -129,7 +129,7 @@ const showPrestige = computed(() => {
   return (
     gameState.onboarding.firstPrestigeComplete ||
     gameState.meta.cacheTokens > 0 ||
-    computed_gravity.value > 0.2
+    computed_boardProgress.value > 0.2
   )
 })
 
@@ -137,27 +137,14 @@ const showPrestige = computed(() => {
 // QUALITY METRICS
 // ============================================
 
-const efficiencyValue = computed(() => gameState.run.currentEfficiency)
+// q: the share of the board's problems resolved. Colour only; see QualityHero.
+const quality = computed(() => gameState.run.resolvedShare)
 
-const efficiencyIndicator = computed(() => {
-  if (efficiencyValue.value < 0.5) return '▼'
-  if (efficiencyValue.value >= 0.85) return '▲▲'
-  return '▲'
-})
-
-const efficiencyState = computed(() => {
-  if (efficiencyValue.value < 0.3) return 'critical'
-  if (efficiencyValue.value < 0.5) return 'warning'
-  if (efficiencyValue.value >= 0.85) return 'excellent'
-  return 'normal'
-})
-
-const stabilityValue = computed(() => gameState.run.currentStability)
-
-const stabilityState = computed(() => {
-  if (stabilityValue.value >= 1.0) return 'stable'
-  if (stabilityValue.value < 0.5) return 'critical'
-  if (stabilityValue.value < 0.7) return 'warning'
+const qualityState = computed(() => {
+  if (quality.value >= 1) return 'stable'
+  const tier = getQualityTier(quality.value)
+  if (tier === 'bloated') return 'critical'
+  if (tier === 'messy') return 'warning'
   return 'normal'
 })
 
@@ -289,36 +276,18 @@ const canEnterScope = computed(() => {
         </div>
       </Transition>
 
-      <!-- Quality row (Efficiency + Stability) -->
+      <!-- Quality row (q) -->
       <div class="resource-row quality-row">
-        <!-- Efficiency -->
-        <div class="quality-cell efficiency" :class="efficiencyState">
-          <span class="quality-icon">⚡</span>
-          <div class="quality-bar">
-            <div
-              class="bar-fill efficiency-fill"
-              :style="{ width: efficiencyValue * 100 + '%' }"
-            />
-            <div class="threshold-marker" />
-          </div>
-          <span class="quality-indicator" :class="efficiencyState">
-            {{ efficiencyIndicator }}
-          </span>
-        </div>
-
-        <div class="row-divider" />
-
-        <!-- Stability -->
-        <div class="quality-cell stability" :class="stabilityState">
+        <div class="quality-cell" :class="qualityState">
           <span class="quality-icon">✓</span>
           <div class="quality-bar">
             <div
-              class="bar-fill stability-fill"
-              :style="{ width: stabilityValue * 100 + '%' }"
+              class="bar-fill quality-fill"
+              :style="{ width: quality * 100 + '%' }"
             />
           </div>
-          <span class="quality-indicator" :class="stabilityState">
-            {{ stabilityState === 'stable' ? '●' : '○' }}
+          <span class="quality-indicator" :class="qualityState">
+            {{ qualityState === 'stable' ? '●' : '○' }}
           </span>
         </div>
       </div>
@@ -392,7 +361,6 @@ const canEnterScope = computed(() => {
   --bg-btn: rgba(30, 30, 50, 0.9);
   --border-subtle: rgba(100, 100, 140, 0.3);
   --color-weight: #ffaa5a;
-  --color-efficiency: #5affff;
   --color-stability: #5aff8a;
   --color-prestige: #a855f7;
   --color-warning: #ff6b6b;
@@ -669,7 +637,7 @@ const canEnterScope = computed(() => {
 }
 
 /* ============================================
-   QUALITY ROW (Efficiency + Stability)
+   QUALITY ROW (q)
    ============================================ */
 
 .quality-row {
@@ -689,11 +657,7 @@ const canEnterScope = computed(() => {
   text-align: center;
 }
 
-.quality-cell.efficiency .quality-icon {
-  color: var(--color-efficiency);
-}
-
-.quality-cell.stability .quality-icon {
+.quality-icon {
   color: var(--color-stability);
 }
 
@@ -717,34 +681,12 @@ const canEnterScope = computed(() => {
   transition: width 0.3s ease-out;
 }
 
-.efficiency-fill {
-  background: linear-gradient(
-    90deg,
-    #ff5a5a 0%,
-    #ffaa5a 40%,
-    var(--color-efficiency) 100%
-  );
-}
-
-.quality-cell.excellent .efficiency-fill {
-  background: linear-gradient(90deg, #5affaa, var(--color-efficiency));
-}
-
-.stability-fill {
+.quality-fill {
   background: linear-gradient(90deg, #ff8a5a 0%, var(--color-stability) 100%);
 }
 
-.quality-cell.stable .stability-fill {
+.quality-cell.stable .quality-fill {
   background: var(--color-stability);
-}
-
-.threshold-marker {
-  position: absolute;
-  left: 50%;
-  top: -1px;
-  bottom: -1px;
-  width: 2px;
-  background: rgba(255, 255, 255, 0.2);
 }
 
 .quality-indicator {
@@ -752,10 +694,6 @@ const canEnterScope = computed(() => {
   width: 20px;
   text-align: center;
   font-weight: bold;
-}
-
-.quality-indicator.excellent {
-  color: var(--color-efficiency);
 }
 
 .quality-indicator.normal {

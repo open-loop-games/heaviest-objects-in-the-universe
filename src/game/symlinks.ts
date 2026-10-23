@@ -12,12 +12,7 @@ import type { Package, Wire } from './types'
 import { updateCrossPackageDuplicates } from './cross-package'
 import { onSymlinkMerged } from './mutations'
 import { emit } from './events'
-import {
-  HALO_COLORS,
-  COMBO_MAX,
-  COMBO_WEIGHT_RETENTION_MIN,
-  COMBO_WEIGHT_RETENTION_MAX,
-} from './config'
+import { HALO_COLORS } from './config'
 import { recordSymlink, checkAchievements } from './achievements'
 import type { Graph } from '@open-loop/engine'
 
@@ -35,19 +30,6 @@ let lastScopeStackLength = -1
 
 export function markDuplicateGroupsDirty(): void {
   duplicateGroupsDirty = true
-}
-
-// ============================================
-// COMBO WEIGHT RETENTION
-// ============================================
-
-function getComboWeightRetention(): number {
-  const combo = gameState.run.comboCount
-  const t = combo / COMBO_MAX
-  return (
-    COMBO_WEIGHT_RETENTION_MIN +
-    t * (COMBO_WEIGHT_RETENTION_MAX - COMBO_WEIGHT_RETENTION_MIN)
-  )
 }
 
 // ============================================
@@ -203,7 +185,7 @@ function shouldKeep(g: Graph<Package, Wire>, a: Package, b: Package): boolean {
 /**
  * Perform a symlink merge in the current scope. The source vanishes; its
  * dependency edges are redirected to point at the target (modulo dedup).
- * Returns the weight saved (0 if the merge couldn't proceed).
+ * Returns the weight deduplicated out of the tree (0 if the merge couldn't proceed).
  */
 export function performSymlinkMerge(
   sourceId: string,
@@ -225,19 +207,19 @@ export function performSymlinkMerge(
     ;[sourceId, targetId] = [targetId, sourceId]
   }
 
-  const retention = getComboWeightRetention()
-  const weightRemoved = Math.floor(source.size * (1 - retention))
-  const weightSaved = source.size - weightRemoved
+  // The duplicate leaves the visible tree; the run's gross weight, which the ship pays
+  // on, keeps it, so a merge costs no take-home.
+  const weightSaved = source.size
   const mergePosition = { x: source.position.x, y: source.position.y }
 
   onSymlinkMerged(weightSaved, mergePosition)
 
-  gameState.resources.weight -= weightRemoved
+  gameState.resources.weight -= weightSaved
 
   if (inScope) {
     const scopePkg = getCurrentScopeRoot()
     if (scopePkg) {
-      scopePkg.size -= weightRemoved
+      scopePkg.size -= weightSaved
     }
   }
 

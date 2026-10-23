@@ -37,7 +37,6 @@ import {
   type Wire,
 } from './types'
 import { DEFAULT_CONFIG, createInitialState } from './config'
-import { getPrestigeThreshold } from './formulas'
 import { GAME_SPINE, shipReward } from './spine'
 import { SPINE_SOLVED } from './spine-solved'
 
@@ -294,20 +293,6 @@ export const userSettings = ref<UserSettings>({
 // COMPUTED VALUES
 // ============================================
 
-// Current prestige threshold (dynamic based on progress)
-export const computed_prestigeThreshold: ComputedRef<number> = computed(() => {
-  return getPrestigeThreshold(gameState.meta.timesShipped)
-})
-
-// Gravity: progress toward prestige (0 to 1+)
-// Simple formula: weight / threshold
-// Efficiency affects rewards, not when you can ship
-export const computed_gravity: ComputedRef<number> = computed(() => {
-  const threshold = computed_prestigeThreshold.value
-  if (threshold <= 0) return 0
-  return gameState.resources.weight / threshold
-})
-
 // What a ship would take home now, from this run's counters and the meta upgrades owned.
 export const computed_prestigeReward: ComputedRef<number> = computed(() => {
   const run = gameState.run
@@ -320,13 +305,6 @@ export const computed_prestigeReward: ComputedRef<number> = computed(() => {
     tier: gameState.board.tier,
     unlockedTier: gameState.meta.unlockedTier,
   })
-})
-
-// Prestige unlocks when max weight ever reached >= threshold
-// Uses peak weight so optimization (merging) doesn't drop below threshold
-export const computed_canPrestige: ComputedRef<boolean> = computed(() => {
-  const threshold = computed_prestigeThreshold.value
-  return gameState.run.maxWeightReached >= threshold
 })
 
 // Reactive root-graph package count (for HUD reveal triggers etc.)
@@ -369,11 +347,6 @@ export const computed_tierProgress: ComputedRef<number> = computed(() => {
   const price = computed_nextTierPrice.value
   if (price === null) return 1
   return Math.min(1, gameState.meta.cacheTokens / price)
-})
-
-// Collapse is offered on a tier-5 board.
-export const computed_canCollapse: ComputedRef<boolean> = computed(() => {
-  return gameState.board.tier >= 5
 })
 
 // Endless mode state

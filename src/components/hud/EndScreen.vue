@@ -121,11 +121,10 @@ function handleRestart() {
           </div>
           <div class="stat-row">
             <span class="stat-label"
-              ><span class="stat-icon icon-efficiency">⚡</span>Peak
-              Efficiency</span
+              ><span class="stat-icon icon-quality">✓</span>Peak Quality</span
             >
             <span class="stat-value">{{
-              formatPercent(stats.peakEfficiency)
+              formatPercent(stats.peakQuality)
             }}</span>
           </div>
           <div class="stat-row">
@@ -364,11 +363,11 @@ function handleRestart() {
 }
 
 .stat-icon.icon-symlink {
-  color: #5affff; /* --hud-efficiency / wireSymlink */
+  color: #5affff; /* wireSymlink */
 }
 
-.stat-icon.icon-efficiency {
-  color: #5affff; /* --hud-efficiency */
+.stat-icon.icon-quality {
+  color: #5aff8a;
 }
 
 .stat-icon.icon-weight {

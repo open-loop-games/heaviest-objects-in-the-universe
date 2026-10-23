@@ -1,12 +1,8 @@
 // Tutorial indicators logic - decides what indicators/vignettes to show
 // Based on game state and tutorial progress
 
-import {
-  gameState,
-  graph,
-  rootIdRef,
-  computed_canPrestige,
-} from '../game/state'
+import { gameState, graph, rootIdRef } from '../game/state'
+import { computed_canPrestige } from '../game/board'
 import {
   isInPackageScope,
   getCurrentScopePackages,

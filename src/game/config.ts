@@ -49,15 +49,11 @@ export const MAX_SAME_IDENTITY_PER_SCOPE = 4
 export const MIN_DUPLICATE_PAIRS_PER_SCOPE = 2
 
 // ============================================
-// COMBO SYSTEM (Resolution speed → weight retention)
+// COMBO SYSTEM (act pace → the ship reward's combo multiplier)
 // ============================================
 
 // Maximum combo level
 export const COMBO_MAX = 10
-
-// Weight retention scaling: at combo 0 remove 50%, at combo 10 remove 0%
-export const COMBO_WEIGHT_RETENTION_MIN = 0.5 // 50% weight removed at combo 0
-export const COMBO_WEIGHT_RETENTION_MAX = 1.0 // 0% weight removed at combo 10
 
 // ============================================
 // SURGE
@@ -151,7 +147,7 @@ export function createInitialState(): GameState {
       firstPrestigeComplete: false,
       firstHighComboSeen: false,
       weightSeen: false,
-      efficiencySeen: false,
+      qualitySeen: false,
     },
     // Cascade system
     cascade: {
@@ -200,7 +196,7 @@ export function createInitialState(): GameState {
       totalSymlinksCreated: 0,
       goldenPackagesFound: 0,
       cacheFragmentsCollected: 0,
-      peakEfficiency: 1,
+      peakQuality: 0,
       totalWeight: 0,
     },
     board: {
@@ -208,9 +204,6 @@ export function createInitialState(): GameState {
       topLevelInstalled: 0,
     },
     run: {
-      maxWeightReached: 0,
-      currentEfficiency: 1,
-      currentStability: 1,
       comboCount: 0,
       comboLastActionTime: 0,
       runGrossWeight: 0,

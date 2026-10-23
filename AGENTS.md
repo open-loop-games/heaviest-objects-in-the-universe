@@ -129,11 +129,11 @@ No in-run currency gates installs.
 4. Conflicts appear on wires → click wire to Prune
 5. Duplicates detected → drag to merge (symlink)
 6. Stabilize scope → exit with satisfaction
-7. Weight accumulates → **Ship to npm** at threshold → gain cache tokens
+7. The board unpacks (every scope entered) → **Ship to npm** → gain cache tokens
 
 **Ship & Collapse:**
-- **Ship to npm** (soft reset): When weight fills the bar, ship your packages to the registry. Resets run, grants cache tokens based on weight + efficiency. Repeatable.
-- **Collapse** (hard ending): At Tier 5, hold the collapse button (5 seconds) to trigger the finale. Black hole consumes everything. Shows end screen with lifetime stats. Option to continue in Endless Mode.
+- **Ship to npm** (soft reset): once the board is unpacked, ship it to the registry. Ends the run; grants cache tokens by gross weight, q and combo (`shipReward` in `src/game/spine.ts`). Repeatable.
+- **Collapse** (hard ending): a tier-5 board resolved completely offers it in place of Ship; hold the collapse button (5 seconds) to trigger the finale. Black hole consumes everything. Shows end screen with lifetime stats. Option to continue in Endless Mode.
 
 **Scope System:**
 - Top-level packages are "compressed" - they contain internal node_modules

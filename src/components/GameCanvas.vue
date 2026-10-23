@@ -68,7 +68,7 @@ import type { Package } from '../game/types'
 import { Colors } from '../rendering/colors'
 import { setSelectedConflictWire } from '../onboarding/tutorial-state'
 import { triggerAutoOpen } from '../onboarding'
-import { getDefaultZoom, COMBO_MAX } from '../game/config'
+import { getDefaultZoom } from '../game/config'
 
 // Inject platform detection
 const platform = inject<Ref<'desktop' | 'mobile'>>('platform')
@@ -758,10 +758,10 @@ function handlePrune() {
   // Update stats
   gameState.stats.totalConflictsResolved++
 
-  // Spawn stability-up particle to show conflict resolved
+  // Quality rises with the resolved conflict
   if (wireActionPosition.value) {
     emit('particles:spawn', {
-      type: 'stability-up',
+      type: 'quality-up',
       x: wireActionPosition.value.x,
       y: wireActionPosition.value.y,
     })
@@ -814,10 +814,10 @@ function handleUpgrade() {
   // Update stats
   gameState.stats.totalConflictsResolved++
 
-  // Spawn stability-up particle to show conflict resolved
+  // Quality rises with the resolved conflict
   if (wireActionPosition.value) {
     emit('particles:spawn', {
-      type: 'stability-up',
+      type: 'quality-up',
       x: wireActionPosition.value.x,
       y: wireActionPosition.value.y,
     })
@@ -1066,22 +1066,18 @@ function handleMouseUp(_event?: MouseEvent) {
 
             // Spawn causal particles
             const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
-            // Efficiency improved by deduplication
+            // Quality rises with the resolved duplicate
             emit('particles:spawn', {
-              type: 'efficiency-up',
+              type: 'quality-up',
               x: screenPos.x,
               y: screenPos.y,
             })
-            // Weight saved (scale based on combo - high combo = tiny/no particle)
-            const weightLossScale = 1 - gameState.run.comboCount / COMBO_MAX
-            if (weightLossScale > 0.1) {
-              emit('particles:spawn', {
-                type: 'weight-loss',
-                x: screenPos.x,
-                y: screenPos.y,
-                scale: weightLossScale,
-              })
-            }
+            // The duplicate's weight leaves the tree
+            emit('particles:spawn', {
+              type: 'weight-loss',
+              x: screenPos.x,
+              y: screenPos.y,
+            })
           }
         }
       } else {
@@ -1099,22 +1095,18 @@ function handleMouseUp(_event?: MouseEvent) {
 
           // Spawn causal particles to show rewards flowing back
           const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
-          // Efficiency improved by deduplication
+          // Quality rises with the resolved duplicate
           emit('particles:spawn', {
-            type: 'efficiency-up',
+            type: 'quality-up',
             x: screenPos.x,
             y: screenPos.y,
           })
-          // Weight saved (scale based on combo - high combo = tiny/no particle)
-          const weightLossScale = 1 - gameState.run.comboCount / COMBO_MAX
-          if (weightLossScale > 0.1) {
-            emit('particles:spawn', {
-              type: 'weight-loss',
-              x: screenPos.x,
-              y: screenPos.y,
-              scale: weightLossScale,
-            })
-          }
+          // The duplicate's weight leaves the tree
+          emit('particles:spawn', {
+            type: 'weight-loss',
+            x: screenPos.x,
+            y: screenPos.y,
+          })
         }
       }
     } else if (!isDraggingSymlink) {
@@ -1673,20 +1665,16 @@ function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
           effects.spawnBurst(targetPos.x, targetPos.y, Colors.borderOptimized)
           const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
           emit('particles:spawn', {
-            type: 'efficiency-up',
+            type: 'quality-up',
             x: screenPos.x,
             y: screenPos.y,
           })
-          // Weight saved (scale based on combo)
-          const weightLossScale = 1 - gameState.run.comboCount / COMBO_MAX
-          if (weightLossScale > 0.1) {
-            emit('particles:spawn', {
-              type: 'weight-loss',
-              x: screenPos.x,
-              y: screenPos.y,
-              scale: weightLossScale,
-            })
-          }
+          // The duplicate's weight leaves the tree
+          emit('particles:spawn', {
+            type: 'weight-loss',
+            x: screenPos.x,
+            y: screenPos.y,
+          })
         }
       }
     } else {
@@ -1700,20 +1688,16 @@ function handleTouchDragEnd(_worldPos: { x: number; y: number }) {
         effects.spawnBurst(targetPos.x, targetPos.y, Colors.borderOptimized)
         const screenPos = renderer.worldToScreen(targetPos.x, targetPos.y)
         emit('particles:spawn', {
-          type: 'efficiency-up',
+          type: 'quality-up',
           x: screenPos.x,
           y: screenPos.y,
         })
-        // Weight saved (scale based on combo)
-        const weightLossScale = 1 - gameState.run.comboCount / COMBO_MAX
-        if (weightLossScale > 0.1) {
-          emit('particles:spawn', {
-            type: 'weight-loss',
-            x: screenPos.x,
-            y: screenPos.y,
-            scale: weightLossScale,
-          })
-        }
+        // The duplicate's weight leaves the tree
+        emit('particles:spawn', {
+          type: 'weight-loss',
+          x: screenPos.x,
+          y: screenPos.y,
+        })
       }
     }
   }

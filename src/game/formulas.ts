@@ -12,16 +12,6 @@ import {
 } from './config'
 
 // ============================================
-// PRESTIGE THRESHOLD
-// ============================================
-
-export function getPrestigeThreshold(timesShipped: number): number {
-  if (timesShipped === 0) return 5000
-  if (timesShipped === 1) return 20000
-  return Math.floor(20000 * Math.pow(1.8, timesShipped - 1))
-}
-
-// ============================================
 // SCOPE ROLLS
 // ============================================
 // The cascade's rolls for what a scope holds. The cascade calls them, and the sampler
@@ -120,87 +110,53 @@ export function countScopeDuplicates(
   return { duplicates, total }
 }
 
-// Efficiency formula constants
-export const EFFICIENCY_BASE = 0.92
-export const EFFICIENCY_SCALE_ANCHOR = 60
-
 // ============================================
-// EFFICIENCY TIERS
+// QUALITY TIERS
 // ============================================
+// Feedback thresholds over q, the share of the board's problems resolved.
 
-export type EfficiencyTier =
-  | 'bloated'
-  | 'messy'
-  | 'decent'
-  | 'clean'
-  | 'pristine'
+export type QualityTier = 'bloated' | 'messy' | 'decent' | 'clean' | 'pristine'
 
-export const EFFICIENCY_TIER_THRESHOLDS: Record<EfficiencyTier, number> = {
-  bloated: 0.3,
-  messy: 0.5,
-  decent: 0.7,
-  clean: 0.85,
-  pristine: 1.01,
+const QUALITY_TIER_FLOORS: [QualityTier, number][] = [
+  ['pristine', 0.85],
+  ['clean', 0.7],
+  ['decent', 0.5],
+  ['messy', 0.3],
+  ['bloated', 0],
+]
+
+export function getQualityTier(q: number): QualityTier {
+  return QUALITY_TIER_FLOORS.find(([, floor]) => q >= floor)![0]
 }
 
-export function getEfficiencyTier(efficiency: number): EfficiencyTier {
-  if (efficiency < 0.3) return 'bloated'
-  if (efficiency < 0.5) return 'messy'
-  if (efficiency < 0.7) return 'decent'
-  if (efficiency < 0.85) return 'clean'
-  return 'pristine'
+export function getQualityTierRank(tier: QualityTier): number {
+  return (
+    QUALITY_TIER_FLOORS.length -
+    1 -
+    QUALITY_TIER_FLOORS.findIndex(([t]) => t === tier)
+  )
 }
 
-let lastEfficiency = 1
-let lastEfficiencyTier: EfficiencyTier = 'pristine'
+let lastQuality = 1
+let lastQualityTier: QualityTier = 'pristine'
 
-export function resetEfficiencyTracking(): void {
-  lastEfficiency = 1
-  lastEfficiencyTier = 'pristine'
+export function resetQualityTracking(): void {
+  lastQuality = 1
+  lastQualityTier = 'pristine'
 }
 
-export function getLastEfficiencyTier(): EfficiencyTier {
-  return lastEfficiencyTier
-}
-
-export function updateEfficiencyTracking(newEfficiency: number): {
-  tierChanged: boolean
-  oldTier: EfficiencyTier
-  newTier: EfficiencyTier
+/** Record a new q; returns its tier and the change since the last one. */
+export function updateQualityTracking(q: number): {
+  oldTier: QualityTier
+  newTier: QualityTier
   delta: number
 } {
-  const newTier = getEfficiencyTier(newEfficiency)
-  const delta = newEfficiency - lastEfficiency
-  const oldTier = lastEfficiencyTier
-  const tierChanged = newTier !== oldTier
-
-  lastEfficiency = newEfficiency
-  lastEfficiencyTier = newTier
-
-  return { tierChanged, oldTier, newTier, delta }
-}
-
-export function getEfficiencyTierRank(tier: EfficiencyTier): number {
-  const ranks: Record<EfficiencyTier, number> = {
-    bloated: 0,
-    messy: 1,
-    decent: 2,
-    clean: 3,
-    pristine: 4,
-  }
-  return ranks[tier]
-}
-
-export function getEfficiencyTierProgress(efficiency: number): number {
-  const tier = getEfficiencyTier(efficiency)
-  const thresholds: number[] = [0, 0.3, 0.5, 0.7, 0.85, 1.0]
-  const tierIndex = getEfficiencyTierRank(tier)
-
-  const low = thresholds[tierIndex] ?? 0
-  const high = thresholds[tierIndex + 1] ?? 1
-
-  if (high <= low) return 1
-  return Math.min(1, (efficiency - low) / (high - low))
+  const oldTier = lastQualityTier
+  const newTier = getQualityTier(q)
+  const delta = q - lastQuality
+  lastQuality = q
+  lastQualityTier = newTier
+  return { oldTier, newTier, delta }
 }
 
 // ============================================

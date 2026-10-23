@@ -92,7 +92,7 @@ export interface GameStats {
   totalSymlinksCreated: number
   goldenPackagesFound: number
   cacheFragmentsCollected: number
-  peakEfficiency: number // Highest efficiency reached across all runs
+  peakQuality: number // Highest q shipped across all runs
   totalWeight: number // Cumulative weight across all runs
 }
 
@@ -104,9 +104,6 @@ export interface BoardState {
 
 /** This run's measures, reset when the run ends. */
 export interface RunStats {
-  maxWeightReached: number
-  currentEfficiency: number
-  currentStability: number
   comboCount: number // Current combo level (0-10)
   comboLastActionTime: number // Timestamp of last combo-building action
   // The ship reward's inputs (spine.ts shipReward)
@@ -164,7 +161,7 @@ export interface OnboardingState {
   firstHighComboSeen: boolean // Player reached combo 5+ (unlock combo teaching tab)
   // Sticky UI visibility (persists across prestiges)
   weightSeen: boolean // Weight indicator has been shown
-  efficiencySeen: boolean // Efficiency indicator has been shown
+  qualitySeen: boolean // Quality bar has been shown
 }
 
 // Automation state for auto-resolve
