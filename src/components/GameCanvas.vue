@@ -39,7 +39,7 @@ import {
   exitScope,
   exitToRoot,
 } from '../game/scope'
-import { removeTopLevelPackage, collectCacheFragment } from '../game/mutations'
+import { prunePackage, collectCacheFragment } from '../game/mutations'
 import { wasGameRestored, saveToLocalStorage } from '../game/persistence'
 import {
   createRootPackage,
@@ -655,53 +655,6 @@ function updateWireActionPosition() {
   }
 }
 
-/**
- * Sum the total weight contribution of a subtree (= what to subtract from
- * `gameState.resources.weight` when the subtree is removed).
- *
- * Cascade does `targetPkg.size += finalSize` to make compressed scope-owners
- * grow visually, so `node.size` for a scope owner = its intrinsic + sum of
- * direct children's intrinsics. Naive summing of `.size` across a subtree
- * therefore double-counts every non-root node. We recover each node's
- * intrinsic bottom-up: leaf.intrinsic = leaf.size; internal.intrinsic =
- * internal.size − sum(direct children intrinsics).
- */
-function sumSubtreeSize(
-  scopeGraph: ReturnType<typeof getGraphAtPath> | typeof graph,
-  rootId: string
-): number {
-  if (!scopeGraph) return 0
-  let total = 0
-  const visited = new Set<string>()
-  function walk(g: typeof scopeGraph, id: string): number {
-    if (!g) return 0
-    if (visited.has(id)) return 0
-    visited.add(id)
-    const node = g.getNode(id)
-    if (!node) return 0
-
-    let directIntrinsicSum = 0
-    const child = g.getChildGraph(id)
-    if (child) {
-      for (const [innerId] of child.nodes) {
-        if (innerId === id) continue
-        directIntrinsicSum += walk(child, innerId)
-      }
-    }
-    const myIntrinsic = node.data.size - directIntrinsicSum
-    total += myIntrinsic
-
-    for (const edge of g.edgesOf(id)) {
-      if (edge.fromId === id && edge.data.wireType === 'dependency') {
-        walk(g, edge.toId)
-      }
-    }
-    return myIntrinsic
-  }
-  walk(scopeGraph, rootId)
-  return total
-}
-
 function handlePrune() {
   if (!selectedWire.value) return
 
@@ -725,10 +678,9 @@ function handlePrune() {
         Colors.borderConflict
       )
 
-      const removedWeight = sumSubtreeSize(scopeGraph, wire.toId)
+      const removedWeight = prunePackage(scopeGraph, wire.toId)
       scopePkg.size -= removedWeight
       gameState.resources.weight -= removedWeight
-      scopeGraph.removeNode(wire.toId)
     } else {
       // Wire's target node already missing — drop the dangling edge.
       const edge = scopeGraph.getEdge(wire.id)
@@ -746,9 +698,7 @@ function handlePrune() {
         childNode.data.position.y,
         Colors.borderConflict
       )
-      const removedWeight = sumSubtreeSize(graph, wire.toId)
-      gameState.resources.weight -= removedWeight
-      removeTopLevelPackage(wire.toId)
+      gameState.resources.weight -= prunePackage(graph, wire.toId)
     } else {
       const edge = graph.getEdge(wire.id)
       if (edge) graph.removeEdge(wire.id)

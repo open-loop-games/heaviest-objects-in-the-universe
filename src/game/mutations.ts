@@ -256,26 +256,74 @@ function makeDependencyWire(id: string, fromId: string, toId: string): Wire {
  *  attached wires and any child graph it owns. Caller is responsible for
  *  any weight adjustment beyond the node itself — typical use is to
  *  pre-compute the subtree weight and subtract before calling this. */
-export function removeTopLevelPackage(id: string): void {
-  if (id === rootIdRef.value) {
-    console.error('Attempted to remove root package!')
-    return
+/**
+ * Prune a package from a scope graph: it, the sub-deps only it depends on, and everything
+ * their scopes hold leave the tree. A sub-dep another package still depends on (a merge can
+ * redirect edges onto it) stays. Returns the weight removed; the caller books it.
+ */
+export function prunePackage(g: Graph<Package, Wire>, id: string): number {
+  if (id === rootIdRef.value || !g.getNode(id)) return 0
+
+  const pruned = new Set([id])
+  const queue = [id]
+  while (queue.length > 0) {
+    const from = queue.pop()!
+    for (const edge of g.edgesOf(from)) {
+      if (edge.fromId !== from || edge.data.wireType !== 'dependency') continue
+      if (pruned.has(edge.toId)) continue
+      pruned.add(edge.toId)
+      queue.push(edge.toId)
+    }
   }
-  const node = graph.getNode(id)
-  if (!node) return
-  graph.removeNode(id)
+  // Keep what a package outside the prune still depends on; its sub-deps follow next pass.
+  for (let changed = true; changed;) {
+    changed = false
+    for (const node of pruned) {
+      if (node === id) continue
+      const kept = [...g.edgesOf(node)].some(
+        (edge) =>
+          edge.toId === node &&
+          edge.data.wireType === 'dependency' &&
+          !pruned.has(edge.fromId)
+      )
+      if (kept) {
+        pruned.delete(node)
+        changed = true
+      }
+    }
+  }
+
+  let removed = 0
+  for (const node of pruned) {
+    removed += weightWithin(g, node)
+    g.removeNode(node)
+  }
+  return removed
 }
 
-/** Remove a package from a specific scope (and cascade to its descendants).
- *  Caller handles weight bookkeeping. */
-export function removeInnerPackage(
-  scopePath: readonly string[],
-  id: string
-): void {
-  const g = getGraphAtPath(scopePath)
-  if (!g) return
-  if (!g.getNode(id)) return
-  g.removeNode(id)
+/**
+ * A node's weight with everything its scope holds, at any depth. A scope owner's size
+ * already counts each package spawned directly into its scope, so each package's own
+ * weight is its size less its scope's direct packages'.
+ */
+function weightWithin(g: Graph<Package, Wire>, id: string): number {
+  let total = 0
+  const walk = (graph: Graph<Package, Wire>, nodeId: string): number => {
+    const node = graph.getNode(nodeId)
+    if (!node) return 0
+    let direct = 0
+    const child = graph.getChildGraph(nodeId)
+    if (child) {
+      for (const innerId of child.nodes.keys()) {
+        if (innerId !== nodeId) direct += walk(child, innerId)
+      }
+    }
+    const own = node.data.size - direct
+    total += own
+    return own
+  }
+  walk(g, id)
+  return total
 }
 
 // ============================================
