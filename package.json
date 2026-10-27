@@ -13,6 +13,7 @@
     "lint": "oxlint src --fix",
     "circular": "dpdm --circular --exit-code circular:1 --exclude node_modules 'src/game/*.ts'",
     "spine": "vite-node src/balance/spine-report.ts",
+    "recordings": "vite-node src/balance/recordings.ts",
     "lint:check": "oxlint src",
     "format": "oxfmt src",
     "format:check": "oxfmt --check src",

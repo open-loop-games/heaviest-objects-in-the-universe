@@ -56,16 +56,17 @@ export function* iterateEnteredScopes(): Generator<{
   yield* walk(graph, [])
 }
 
-/** Duplicates and conflicted wires still open across the entered scopes. */
-function countOpenProblems(): { open: number } {
-  let open = 0
+/** Problems still open on the board's entered scopes, by kind. */
+export function countOpenProblems(): { conflicts: number; duplicates: number } {
+  let conflicts = 0
+  let duplicates = 0
   for (const { graph: scopeGraph, ownerId } of iterateEnteredScopes()) {
-    open += countScopeDuplicates(scopeGraph, ownerId).duplicates
+    duplicates += countScopeDuplicates(scopeGraph, ownerId).duplicates
     for (const edge of scopeGraph.edges.values()) {
-      if (edge.data.conflicted) open++
+      if (edge.data.conflicted) conflicts++
     }
   }
-  return { open }
+  return { conflicts, duplicates }
 }
 
 /**
@@ -75,7 +76,8 @@ function countOpenProblems(): { open: number } {
  */
 export function updateResolvedShare(): void {
   const { runResolved } = gameState.run
-  const { open } = countOpenProblems()
+  const { conflicts, duplicates } = countOpenProblems()
+  const open = conflicts + duplicates
   const q = runResolved + open === 0 ? 1 : runResolved / (runResolved + open)
   gameState.run.resolvedShare = q
 

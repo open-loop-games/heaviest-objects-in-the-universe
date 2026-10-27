@@ -30,3 +30,6 @@ itch_assets
 !.claude/CLAUDE.md
 !.claude/rules/
 .claude/CLAUDE.local.md
+
+# Calibration recordings from the dev recorder
+recordings
