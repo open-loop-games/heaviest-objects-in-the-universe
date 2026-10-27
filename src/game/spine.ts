@@ -1,8 +1,9 @@
 // ─── The spine ───
 // Heaviest's economy between runs, in plain arithmetic: no engine, no game state. A run is
 // takeHome(pace, q*, tier, upgrades, surge) → { currency, duration }, and
-// `src/balance/spine-walk.ts` walks the meta layer over it. A value marked "feel" is a guess;
-// the event-stream recordings refit it. Everything else is solved here or read from code.
+// `src/balance/spine-walk.ts` walks the meta layer over it. A value marked "feel" is a guess,
+// and one marked "recorded" was refit from play (`pnpm recordings`). Everything else is
+// solved here or read from code.
 //
 // Buckets, per subsystem:
 //   one run's take-home → pure closed form per fixed input: κ · W · q · (1 + d̄)^e · floor · timed
@@ -27,7 +28,13 @@
 // separates only the fastest pace from it. On geometric price ladders every walker buys both
 // tracks in turn anyway, so it never sorted players by pace.
 
-import { COMBO_MAX, SURGE_CASCADE_BOOST, SURGE_PACKAGE_BOOST } from './config'
+import {
+  COMBO_MAX,
+  SURGE_CASCADE_BOOST,
+  SURGE_PACKAGE_BOOST,
+  TIER_BOARDS,
+} from './config'
+import { SCOPE_MEANS, type ScopeMeans } from './scope-means'
 import { SPINE_SOLVED } from './spine-solved'
 import type { Upgrades } from './types'
 
@@ -35,10 +42,12 @@ export interface TierAnchor {
   id: string
   /** Deepest scope on the board. */
   depth: number
-  /** Run length at the reference pace for the reference persona, no upgrades. Feel. */
+  /**
+   * Run length at the reference pace for the reference persona, no upgrades; it solves the
+   * board's scope count. Feel. A depth-1 board has only its top-level scopes, so tier 1's
+   * length follows from its board instead.
+   */
   runMinutes: number
-  /** Conflicts and duplicates per scope. Feel; today's rolls give 2 guaranteed pairs plus conflicts. */
-  actsPerScope: number
 }
 
 export interface Persona {
@@ -61,9 +70,9 @@ export interface Anchors {
   pace: { slowestGap: number; fastestGap: number }
   /** Erlang shape of the act gap; coefficient of variation 1/√k. Feel. */
   gapShape: number
-  /** Seconds to leave one scope and settle in the next: exit, dive, cascade. Feel. */
+  /** Seconds to leave one scope and settle in the next: exit, dive, cascade. Recorded. */
   transitionSeconds: number
-  /** Seconds a run spends outside its scopes: setup, first look, the ship animation. Feel. */
+  /** Seconds a run spends outside its scopes: setup, first look, the ship animation. Recorded. */
   runFixedSeconds: number
   /** Overhead ∝ gap^β. 0 holds overhead equal across paces, the case kindest to the cap. Feel. */
   overheadPaceExponent: number
@@ -73,6 +82,8 @@ export interface Anchors {
   comboBaseExponent: number
   /** Reference persona's finale time, slowest pace over fastest; solves Δe. Authored, starting at the cap's top. */
   capTarget: number
+  /** The lowest finale ratio the solve accepts when combo growth cannot reach capTarget. Authored. */
+  capFloor: number
   /** Seconds of window added per comboWindow level. Feel. */
   windowStep: number
   tiers: TierAnchor[]
@@ -83,8 +94,8 @@ export interface Anchors {
   packagesPerScope: number
   /** Mean spawned package weight: getIdentitySize over pickRandomIdentity, 200k samples. */
   meanPackageWeight: number
-  /** Share of a scope's problems that are conflicts, the rest duplicates. Feel. */
-  conflictShare: number
+  /** A scope's mean problems and weight, sampled from the cascade's rolls (scope-means.ts). */
+  scopeMeans: ScopeMeans
   /** Take-home per minute, tier L+1 over tier L, at the reference pace. Feel. */
   tierRateStep: number
   /** Scale: tokens one tier-1 reference run takes home. Arbitrary unit. */
@@ -109,24 +120,27 @@ export const ANCHORS: Anchors = {
   // conflict alone takes 1.5 s (GameCanvas.vue HOLD_DURATION).
   pace: { slowestGap: 6, fastestGap: 2 },
   gapShape: 4,
-  transitionSeconds: 4,
-  runFixedSeconds: 20,
+  // Recorded: natural-pace tier-2 runs at a 1.44 s gap (`pnpm recordings`); fixed is the run
+  // without the opening that followed a dev-server restart.
+  transitionSeconds: 4.34,
+  runFixedSeconds: 26,
   overheadPaceExponent: 0,
   // 2 reads as chains of about 3 acts when chains break at random.
   slowestRealizedDepth: 2,
   comboBaseExponent: 0.1,
   capTarget: 3,
+  capFloor: 2,
   windowStep: 1,
   tiers: [
-    { id: 'utility-lib', depth: 1, runMinutes: 3, actsPerScope: 5 },
-    { id: 'app', depth: 2, runMinutes: 4, actsPerScope: 6 },
-    { id: 'framework', depth: 3, runMinutes: 5, actsPerScope: 6 },
-    { id: 'monorepo', depth: 4, runMinutes: 6, actsPerScope: 7 },
-    { id: 'enterprise-app', depth: 5, runMinutes: 7, actsPerScope: 7 },
+    { id: 'utility-lib', depth: 1, runMinutes: 3 },
+    { id: 'app', depth: 2, runMinutes: 4 },
+    { id: 'framework', depth: 3, runMinutes: 5 },
+    { id: 'monorepo', depth: 4, runMinutes: 6 },
+    { id: 'enterprise-app', depth: 5, runMinutes: 7 },
   ],
   packagesPerScope: 18,
   meanPackageWeight: 49,
-  conflictShare: 0.5,
+  scopeMeans: SCOPE_MEANS,
   tierRateStep: 1.6,
   tokensPerReferenceRun: 10,
   tracks: {
@@ -151,6 +165,8 @@ export interface Board {
   /** Scopes the player enters: top-level deps and their compressed children. How they nest is content. */
   scopes: number
   problems: number
+  /** The problems that are conflicts, the rest duplicates. */
+  conflicts: number
   /** Gross installed weight (take-home-gross-weight). */
   weight: number
   /** Weight per package over tier 1's, solved for tierRateStep: heavier packages, depth, golden. */
@@ -441,7 +457,7 @@ function leftBehind(
 ): { reachable: number; behindShare: number } {
   const board = spine.boards[input.tier - 1]!
   const problems = board.problems * surgeScale(input.surge ?? 0)
-  const conflicts = problems * spine.anchors.conflictShare
+  const conflicts = board.conflicts * surgeScale(input.surge ?? 0)
   const target = input.shipQuality * problems
   const merges = Math.min(problems - conflicts, target)
   const behindShare = 1 - 1 / board.scopes
@@ -502,6 +518,33 @@ export function timedLimit(
 }
 
 /**
+ * Problems on a tier's board of `scopes` scopes, `topLevel` of them top-level and the rest
+ * nested at the tier's mean nested scope, from the sampled scope means.
+ */
+function scopeMix(
+  means: ScopeMeans,
+  tier: number,
+  topLevel: number,
+  scopes: number
+): { problems: number; conflicts: number } {
+  const top = means.topLevel[tier - 1]!
+  const nestedCells = means.nested[tier - 1]!
+  const nested = nestedCells.length
+    ? {
+        duplicates:
+          nestedCells.reduce((n, c) => n + c.duplicates, 0) /
+          nestedCells.length,
+        conflicts:
+          nestedCells.reduce((n, c) => n + c.conflicts, 0) / nestedCells.length,
+      }
+    : { duplicates: 0, conflicts: 0 }
+  const inner = Math.max(0, scopes - topLevel)
+  const conflicts = topLevel * top.conflicts + inner * nested.conflicts
+  const duplicates = topLevel * top.duplicates + inner * nested.duplicates
+  return { problems: conflicts + duplicates, conflicts }
+}
+
+/**
  * Every closed-form solved value from the anchors, plus the walk-solved values `solved`
  * (`solveSpine` in src/balance/spine-walk.ts). The game reads the committed solve.
  */
@@ -514,16 +557,30 @@ export function deriveSpine(
   const referenceGap = Math.sqrt(a.pace.slowestGap * a.pace.fastestGap)
   const q = referencePersona(a).shipQuality
 
-  // Scopes per board from the run length: T = fixed + S·(transition + m·q·g_ref).
-  const scopes = a.tiers.map((t) =>
-    Math.max(
-      1,
-      Math.round(
-        (t.runMinutes * 60 - a.runFixedSeconds) /
-          (a.transitionSeconds + t.actsPerScope * q * referenceGap)
+  // Scopes per board from the run length, T = fixed + S·(transition + m·q·g_ref), where m is
+  // the mean problems per scope over the board's scopes. A board holds at least its
+  // top-level scopes and, at depth 1, only those. m depends on S through the mix of
+  // top-level and nested scopes, so S is iterated to a fixed point.
+  const boardScopes = a.tiers.map((t, i) => {
+    const top = TIER_BOARDS[i]!.topLevel
+    const mix = (s: number) => scopeMix(a.scopeMeans, i + 1, top, s)
+    if (t.depth === 1) return { scopes: top, ...mix(top) }
+    let scopes = top
+    for (let k = 0; k < 20; k++) {
+      const { problems } = mix(scopes)
+      const next = Math.max(
+        top,
+        Math.round(
+          (t.runMinutes * 60 - a.runFixedSeconds) /
+            (a.transitionSeconds + (problems / scopes) * q * referenceGap)
+        )
       )
-    )
-  )
+      if (next === scopes) break
+      scopes = next
+    }
+    return { scopes, ...mix(scopes) }
+  })
+  const scopes = boardScopes.map((b) => b.scopes)
   const rawWeight = scopes.map(
     (s) => s * a.packagesPerScope * a.meanPackageWeight
   )
@@ -533,7 +590,7 @@ export function deriveSpine(
   const realized = (w: number) =>
     meanComboDepth(
       scopes[0]!,
-      q * a.tiers[0]!.actsPerScope,
+      (q * boardScopes[0]!.problems) / scopes[0]!,
       a.pace.slowestGap,
       w,
       a.transitionSeconds,
@@ -558,9 +615,10 @@ export function deriveSpine(
     baseWindow,
     comboExponentStep,
     autoResolveIntervals: [Infinity],
-    boards: a.tiers.map((t, i) => ({
+    boards: a.tiers.map((_, i) => ({
       scopes: scopes[i]!,
-      problems: scopes[i]! * t.actsPerScope,
+      problems: boardScopes[i]!.problems,
+      conflicts: boardScopes[i]!.conflicts,
       weight: rawWeight[i]!,
       richness: 1,
     })),

@@ -8,21 +8,8 @@ import { createSeededRNG, type Graph } from '@open-loop/engine'
 import { gameState, graph, graphRevision, rootIdRef, stack } from './state'
 import type { Package, Wire } from './types'
 import { GAME_SPINE } from './spine'
-import { SCOPE_WEIGHTS } from './scope-weights'
-
-export interface TierBoard {
-  /** Top-level deps the root installs. Feel; the monorepo (tier 4) is wider. */
-  topLevel: number
-}
-
-/** Index = tier − 1. A board's depth is its tier. */
-export const TIER_BOARDS: TierBoard[] = [
-  { topLevel: 8 },
-  { topLevel: 6 },
-  { topLevel: 6 },
-  { topLevel: 9 },
-  { topLevel: 9 },
-]
+import { SCOPE_MEANS } from './scope-means'
+import { TIER_BOARDS } from './config'
 
 /** A scope in the plan: the compressed children it holds. */
 export interface PlanScope {
@@ -42,10 +29,9 @@ export function drawBoardPlan(seed: number, tier: number): PlanScope[] {
     { length: TIER_BOARDS[tier - 1]!.topLevel },
     () => ({ children: [] })
   )
-  const open: { scope: PlanScope; depth: number }[] = top.map((scope) => ({
-    scope,
-    depth: 1,
-  }))
+  // A scope can hold children only above the tier's depth.
+  const open: { scope: PlanScope; depth: number }[] =
+    depth > 1 ? top.map((scope) => ({ scope, depth: 1 })) : []
   const nest = (parent: { scope: PlanScope; depth: number }) => {
     const child = { scope: { children: [] }, depth: parent.depth + 1 }
     parent.scope.children.push(child.scope)
@@ -67,9 +53,10 @@ export function drawBoardPlan(seed: number, tier: number): PlanScope[] {
 
 /** Expected raw weight of a plan's scopes, from the sampled table. */
 function expectedRawWeight(plan: PlanScope[], tier: number): number {
-  const nested = SCOPE_WEIGHTS.nested[tier - 1]!
+  const nested = SCOPE_MEANS.nested[tier - 1]!
   const walk = (scope: PlanScope, depth: number): number =>
-    (depth === 1 ? SCOPE_WEIGHTS.topLevel[tier - 1]! : nested[depth - 2]!) +
+    (depth === 1 ? SCOPE_MEANS.topLevel[tier - 1]! : nested[depth - 2]!)
+      .weight +
     scope.children.reduce((sum, child) => sum + walk(child, depth + 1), 0)
   return plan.reduce((sum, scope) => sum + walk(scope, 1), 0)
 }

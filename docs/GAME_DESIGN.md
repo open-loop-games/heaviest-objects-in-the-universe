@@ -148,6 +148,11 @@ root (package.json)
 - Bundlers: webpack vs parcel vs rollup
 - Test runners: jest vs mocha vs vitest
 
+Every scope plants a set number of incompatible pairs, one conflict each (`TIER_BOARDS` in
+`src/game/config.ts`), as it plants duplicate pairs. Chance pairings alone made conflicts a few
+percent of a board's problems, which left auto-resolve, the slow player's equalizer, nothing to
+clear.
+
 **Visual:** Red crackling wire with electric bolts and sparks
 
 **Resolution:** Click and hold wire → progress ring fills → resolved

@@ -48,6 +48,26 @@ export const MAX_SAME_IDENTITY_PER_SCOPE = 4
 // Minimum duplicate pairs guaranteed per scope
 export const MIN_DUPLICATE_PAIRS_PER_SCOPE = 2
 
+export interface TierBoard {
+  /** Top-level deps the root installs. Feel; the monorepo (tier 4) is wider. */
+  topLevel: number
+  /**
+   * Incompatible pairs each scope plants, one conflict apiece. Feel. Without them conflicts
+   * came only from chance pairings, a few percent of a board's problems, which left
+   * auto-resolve, a conflict clearer, nothing to do.
+   */
+  conflictPairs: number
+}
+
+/** The map tiers' board data. Index = tier − 1. A board's depth is its tier. */
+export const TIER_BOARDS: TierBoard[] = [
+  { topLevel: 8, conflictPairs: 1 },
+  { topLevel: 6, conflictPairs: 2 },
+  { topLevel: 6, conflictPairs: 2 },
+  { topLevel: 9, conflictPairs: 2 },
+  { topLevel: 9, conflictPairs: 2 },
+]
+
 // ============================================
 // COMBO SYSTEM (act pace → the ship reward's combo multiplier)
 // ============================================
@@ -156,7 +176,6 @@ export function createInitialState(): GameState {
       pendingSpawns: [],
       lastSpawnTime: 0,
       spawnInterval: 100, // ms between spawns
-      guaranteedCrits: 0, // Earned from inner scope merges
       // Extended cascade data (null when inactive)
       scopePath: null,
       subDepQueue: null,

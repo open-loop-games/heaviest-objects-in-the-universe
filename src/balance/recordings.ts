@@ -313,13 +313,20 @@ function main(): void {
           ...byLabel.map((l) => f(l.depth, 2)),
         ],
         [
-          'conflictShare',
-          a.conflictShare,
+          'conflict share (sampled)',
+          f(
+            GAME_SPINE.boards.reduce((n, b) => n + b.conflicts, 0) /
+              GAME_SPINE.boards.reduce((n, b) => n + b.problems, 0),
+            2
+          ),
           ...byLabel.map((l) => f(l.conflictShare, 2)),
         ],
         ...tierRows(
-          'actsPerScope',
-          (i) => String(a.tiers[i]!.actsPerScope),
+          'problems per scope (sampled)',
+          (i) => {
+            const b = GAME_SPINE.boards[i]!
+            return f(b.problems / b.scopes, 1)
+          },
           (l, i) => f(l.tiers[i]!.perScope, 1)
         ),
         ...tierRows(

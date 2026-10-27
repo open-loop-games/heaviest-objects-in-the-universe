@@ -9,15 +9,11 @@ import {
   getIdentitySize,
   rollGolden,
   rollScopeDepCount,
+  rollScopeDeps,
   rollSubDepCount,
   spawnedSize,
 } from './formulas'
-import {
-  CASCADE_CRIT_CHANCE,
-  MAX_PENDING_DEPS,
-  MAX_SAME_IDENTITY_PER_SCOPE,
-  MIN_DUPLICATE_PAIRS_PER_SCOPE,
-} from './config'
+import { CASCADE_CRIT_CHANCE, MAX_PENDING_DEPS, TIER_BOARDS } from './config'
 import { boardWeightScale, plannedChildren } from './board'
 import { addWeight, attachNodeToScope } from './mutations'
 import { type Package, type Wire, type PendingSpawn } from './types'
@@ -30,9 +26,6 @@ import {
   THIRD_PACKAGE_INTERNAL_DEPS,
   REACT_DOM_INTERNAL_DEPS,
   type PackageIdentity,
-  getConflictingNames,
-  wouldConflictWithAny,
-  pickDistinctDuplicateIdentities,
 } from './registry'
 import { getGraphAtPath, getPackageAtPath } from './scope'
 import { emit } from './events'
@@ -111,60 +104,16 @@ function startCascadeImmediate(
           : []
 
   if (!isCurated) {
-    const hasGuaranteedCrit = gameState.cascade.guaranteedCrits > 0
-    const crit = hasGuaranteedCrit || chance(CASCADE_CRIT_CHANCE)
+    const crit = chance(CASCADE_CRIT_CHANCE)
     const count = rollScopeDepCount(pkg.identity, depth, crit)
-    if (crit) {
-      if (hasGuaranteedCrit) {
-        gameState.cascade.guaranteedCrits--
-      }
-      emit('cascade:crit', { count })
-    }
+    if (crit) emit('cascade:crit', { count })
 
-    const identityCounts = new Map<string, number>()
-    const conflictingIdentityNames = new Set<string>()
-
-    const guaranteedDupes = pickDistinctDuplicateIdentities(
-      MIN_DUPLICATE_PAIRS_PER_SCOPE
+    depIdentities.push(
+      ...rollScopeDeps(
+        count,
+        TIER_BOARDS[gameState.board.tier - 1]!.conflictPairs
+      )
     )
-    for (const identity of guaranteedDupes) {
-      depIdentities.push(identity, identity)
-      identityCounts.set(identity.name, 2)
-    }
-
-    let attempts = 0
-    const maxAttempts = (count - depIdentities.length) * 10
-
-    while (depIdentities.length < count && attempts < maxAttempts) {
-      attempts++
-      const candidate = pickRandomIdentity()
-
-      const currentCount = identityCounts.get(candidate.name) ?? 0
-      if (currentCount >= MAX_SAME_IDENTITY_PER_SCOPE) {
-        continue
-      }
-
-      if (wouldConflictWithAny(candidate, conflictingIdentityNames)) {
-        if (currentCount > 0) {
-          continue
-        }
-      }
-
-      depIdentities.push(candidate)
-      identityCounts.set(candidate.name, currentCount + 1)
-
-      const conflictsWithThis = getConflictingNames(candidate.name)
-      for (const conflictName of conflictsWithThis) {
-        if (identityCounts.has(conflictName)) {
-          conflictingIdentityNames.add(candidate.name)
-          conflictingIdentityNames.add(conflictName)
-        }
-      }
-    }
-
-    const shuffledIdentities = shuffle(depIdentities)
-    depIdentities.length = 0
-    depIdentities.push(...shuffledIdentities)
   }
 
   // The board plan says how many of this scope's deps are scopes of their own; which

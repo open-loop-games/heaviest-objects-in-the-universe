@@ -1,10 +1,25 @@
 // Cost and production formulas based on design doc
 
-import { random, randomInt, chance, type Graph } from '@open-loop/engine'
+import {
+  random,
+  randomInt,
+  chance,
+  shuffle,
+  type Graph,
+} from '@open-loop/engine'
 import type { Package, Wire } from './types'
-import type { PackageIdentity } from './registry'
+import {
+  getConflictingNames,
+  pickConflictPairs,
+  pickDistinctDuplicateIdentities,
+  pickRandomIdentity,
+  wouldConflictWithAny,
+  type PackageIdentity,
+} from './registry'
 import {
   DEPTH_WEIGHT_MULTIPLIERS,
+  MAX_SAME_IDENTITY_PER_SCOPE,
+  MIN_DUPLICATE_PAIRS_PER_SCOPE,
   GOLDEN_MIN_DEPTH,
   GOLDEN_MIN_TIER,
   GOLDEN_SPAWN_CHANCE,
@@ -15,7 +30,7 @@ import {
 // SCOPE ROLLS
 // ============================================
 // The cascade's rolls for what a scope holds. The cascade calls them, and the sampler
-// behind scope-weights.ts runs them, so a board's expected weight follows the rules.
+// behind scope-means.ts runs them, so a board's expected weight and problems follow the rules.
 
 /** Deps a scope spawns before sub-deps; `crit` doubles them. */
 export function rollScopeDepCount(
@@ -33,6 +48,56 @@ export function rollScopeDepCount(
   }
   if (crit) count *= 2
   return Math.max(3, Math.min(40, count))
+}
+
+/**
+ * The deps a scope's cascade spawns, in spawn order: its guaranteed duplicate pairs and
+ * planted conflict pairs, filled to `count` from the general pool. A fill never repeats an
+ * identity already in a conflict, so each planted pair is one conflict.
+ */
+export function rollScopeDeps(
+  count: number,
+  conflictPairs: number
+): PackageIdentity[] {
+  const deps: PackageIdentity[] = []
+  const identityCounts = new Map<string, number>()
+  const conflictingNames = new Set<string>()
+
+  for (const identity of pickDistinctDuplicateIdentities(
+    MIN_DUPLICATE_PAIRS_PER_SCOPE
+  )) {
+    deps.push(identity, identity)
+    identityCounts.set(identity.name, 2)
+  }
+  for (const pair of pickConflictPairs(conflictPairs)) {
+    for (const identity of pair) {
+      if (identityCounts.has(identity.name)) continue
+      deps.push(identity)
+      identityCounts.set(identity.name, 1)
+      conflictingNames.add(identity.name)
+    }
+  }
+
+  let attempts = 0
+  const maxAttempts = (count - deps.length) * 10
+  while (deps.length < count && attempts < maxAttempts) {
+    attempts++
+    const candidate = pickRandomIdentity()
+    const currentCount = identityCounts.get(candidate.name) ?? 0
+    if (currentCount >= MAX_SAME_IDENTITY_PER_SCOPE) continue
+    if (wouldConflictWithAny(candidate, conflictingNames) && currentCount > 0)
+      continue
+
+    deps.push(candidate)
+    identityCounts.set(candidate.name, currentCount + 1)
+    for (const name of getConflictingNames(candidate.name)) {
+      if (identityCounts.has(name)) {
+        conflictingNames.add(candidate.name)
+        conflictingNames.add(name)
+      }
+    }
+  }
+  return shuffle(deps)
 }
 
 /** Sub-deps one uncompressed dep grows. */

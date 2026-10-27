@@ -4,6 +4,7 @@
 import {
   chance,
   randomItem,
+  shuffle,
   weightedPick,
   type WeightedItem,
 } from '@open-loop/engine'
@@ -1836,6 +1837,25 @@ const INCOMPATIBLE_PAIRS: [string, string][] = [
   // Timing/scheduling conflicts (polyfills)
   ['setimmediate', 'process'],
 ]
+
+/** Disjoint incompatible pairs for one scope to plant, both sides in the registry. */
+export function pickConflictPairs(
+  count: number
+): [PackageIdentity, PackageIdentity][] {
+  const pairs: [PackageIdentity, PackageIdentity][] = []
+  const used = new Set<string>()
+  for (const [a, b] of shuffle(INCOMPATIBLE_PAIRS)) {
+    if (pairs.length >= count) break
+    if (used.has(a) || used.has(b)) continue
+    const left = findIdentityByName(a)
+    const right = findIdentityByName(b)
+    if (!left || !right) continue
+    pairs.push([left, right])
+    used.add(a)
+    used.add(b)
+  }
+  return pairs
+}
 
 /**
  * Check if two package names are incompatible

@@ -132,7 +132,6 @@ export interface CascadeState {
   pendingSpawns: PendingSpawn[] // Queue of deps to spawn
   lastSpawnTime: number // For timing between spawns
   spawnInterval: number // ms between spawns (100ms default)
-  guaranteedCrits: number // Stacked guaranteed crits from inner dedup merges
   // Extended cascade data (populated during active cascade)
   scopePath: string[] | null // Full path to the package whose internals are cascading
   subDepQueue: Array<{ parentIndex: number; identity: PackageIdentity }> | null

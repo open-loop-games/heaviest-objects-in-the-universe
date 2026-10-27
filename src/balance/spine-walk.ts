@@ -238,6 +238,19 @@ const FIXED_POINT_ROUNDS = 20
  * the finale for tier 5. Those upgrades depend on the timed rewards the walker earned, so the
  * limits are a fixed point, iterated from the limits with no upgrades.
  */
+/**
+ * Six significant digits, as spine-solved.ts commits them. The solve judges candidates at
+ * this precision: the ratio steps at whole purchases, so a rounding can cross a step.
+ */
+export function roundSolved(solved: Solved): Solved {
+  const n = (x: number) => Number(x.toPrecision(6))
+  return {
+    comboExponentStep: n(solved.comboExponentStep),
+    tierPrices: solved.tierPrices.map(n),
+    timedLimits: solved.timedLimits.map(n),
+  }
+}
+
 export function solveAtStep(
   anchors: Anchors,
   comboExponentStep: number
@@ -277,15 +290,17 @@ export function solveAtStep(
  * capTarget, the cap being a ceiling, with the tier prices and timed limits re-solved at each
  * candidate. The ratio is a step function of Δe (whole runs, whole purchases) and not
  * monotone: a large step sells out the tracks and the price solve. So a scan finds the first
- * crossing, bisection refines its edge, and the solve keeps the largest Δe below it. Throws
- * when overhead alone is over the cap (board pacing reopens), or when the ratio never crosses
- * before the fastest walker owns every combo level (combo growth lacks the leverage).
+ * crossing, bisection refines its edge, and the solve keeps the largest Δe below it. When the
+ * ratio never crosses before the fastest walker owns every combo level, the solve keeps the
+ * scanned Δe with the highest ratio: skill shows as much as the combo track allows. Throws
+ * when overhead alone is over the cap (board pacing reopens), or when the best ratio is under
+ * capFloor (combo growth lacks the leverage).
  */
 export function solveSpine(anchors: Anchors): Solved & { ratio: number } {
   const persona = referencePersona(anchors)
   const target = anchors.capTarget
   const at = (step: number) => {
-    const solved = solveAtStep(anchors, step)
+    const solved = roundSolved(solveAtStep(anchors, step))
     const spine = deriveSpine(anchors, solved)
     return {
       solved,
@@ -303,13 +318,18 @@ export function solveSpine(anchors: Anchors): Solved & { ratio: number } {
       `finale ratio is ${below.ratio.toFixed(2)}x with no combo growth, over the ${target}x cap: reopen board pacing`
     )
   }
+  let best = below
   for (;;) {
     const next = at(lo + scan)
     if (next.ratio >= target) break
+    if (next.ratio > best.ratio) best = next
     if (next.saturated) {
-      throw new Error(
-        `no combo exponent step puts the finale ratio on ${target}x before the combo track saturates: combo growth lacks the leverage`
-      )
+      if (best.ratio < anchors.capFloor) {
+        throw new Error(
+          `the finale ratio peaks at ${best.ratio.toFixed(2)}x before the combo track saturates, under the ${anchors.capFloor}x floor: combo growth lacks the leverage`
+        )
+      }
+      return { ...best.solved, ratio: best.ratio }
     }
     lo += scan
     below = next

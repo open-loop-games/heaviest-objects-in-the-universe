@@ -306,7 +306,6 @@ export function performSymlinkMerge(
   }
 
   if (inScope) {
-    gameState.cascade.guaranteedCrits++
     emit('scope:recalculate', { scopePath: [...stack.path] })
   }
 
