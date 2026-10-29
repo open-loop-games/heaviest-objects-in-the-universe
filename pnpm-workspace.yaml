@@ -1,6 +1,7 @@
-# The engine's registry. Auth is per machine, in ~/.npmrc.
+# The engine's registry, stated here because it overrides a user-level ~/.npmrc
+# that maps @open-loop elsewhere.
 registries:
-  '@open-loop': https://git.gamebois.lol/api/packages/studio/npm/
+  '@open-loop': https://registry.npmjs.org/
 
 # A fresh engine release installs at once, so an engine fix and the consumer
 # change that needs it can land together.

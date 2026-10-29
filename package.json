@@ -26,7 +26,7 @@
     "src/{game/spine,game/spine-solved,game/scope-means,game/config,game/formulas,game/registry,balance/spine-walk,balance/spine-report,balance/scope-means}.ts": "pnpm spine --check"
   },
   "dependencies": {
-    "@open-loop/engine": "^0.9.0",
+    "@open-loop/engine": "^0.10.2",
     "break_eternity.js": "^2.1.3",
     "eternal_notations": "^1.1.1",
     "pixi.js": "^8.17.1",
