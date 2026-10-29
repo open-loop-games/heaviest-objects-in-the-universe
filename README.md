@@ -10,7 +10,7 @@ An incremental game about recursive npm dependencies, where your `node_modules` 
 
 ## Play
 
-**[Play Now](https://namahanna.codeberg.page/heaviest-objects-in-the-universe/)**
+**[Play Now](https://open-loop-games.github.io/heaviest-objects-in-the-universe/)**
 
 Or run locally:
 ```bash
